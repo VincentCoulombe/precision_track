@@ -1,0 +1,13 @@
+{
+    "calibrated_temperature": 0.72,
+    "tracking_thresholds": {
+        "low_thr": 0.05,
+        "conf_thr": 0.4,
+        "init_thr": 0.7
+    },
+    "stitching_hyperparams": {
+        "beta": 1.5,
+        "match_thr": 0.9,
+        "eps": 0.1
+    }
+}

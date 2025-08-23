@@ -1,0 +1,15 @@
+{
+	"mouse": {
+		"mota": 0.997,
+		"idf1": 0.999,
+		"idp": 0.998,
+		"idr": 0.999,
+		"precision": 0.998,
+		"recall": 0.999,
+		"idfp": 18.0,
+		"idfn": 9.0,
+		"idtp": 10037.0,
+		"num_switches": 0.0,
+		"num_detections": 10037.0
+	}
+}

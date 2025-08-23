@@ -1,0 +1,3 @@
+pycuda==2025.1.1
+tensorrt==10.11.0.33
+onnxruntime-gpu[cuda,cudnn]==1.22.0

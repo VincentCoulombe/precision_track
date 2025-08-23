@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -yy && apt-get install -yy --no-install-recommends \
+      libgl1 \
+      libglib2.0-0 \
+      build-essential \
+      gcc \
+      g++ \
+      git \
+      ffmpeg \
+      python3.11 python3.11-dev python3.11-venv \
+      python3-pip \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+
+RUN pip install --no-cache-dir -U pip \
+ && pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir "precision_track[cpu] @ git+https://github.com/VincentCoulombe/precision_track.git"
+
+# Ensure precision_track's files are writables and executables
+RUN chmod -R a+rwx /usr/local/lib/python3.11/site-packages/precision_track/

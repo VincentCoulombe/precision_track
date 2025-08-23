@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 159
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 159
+known_third_party = ["numpy","pandas","scipy","matplotlib", "torch", "seaborn", "supervision", "mmengine"]
+known_first_party = "precision_track"

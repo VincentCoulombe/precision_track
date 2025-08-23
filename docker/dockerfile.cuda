@@ -1,0 +1,24 @@
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -yy && apt-get install -yy --no-install-recommends \
+      libgl1 \
+      libglib2.0-0 \
+      build-essential \
+      gcc \
+      g++ \
+      git \
+      ffmpeg \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Ensure conda is the first PATH 
+ENV PATH=/opt/conda/bin:$PATH
+
+WORKDIR /workspace
+RUN git clone https://github.com/VincentCoulombe/precision_track.git
+WORKDIR /workspace/precision_track
+
+RUN pip install --no-cache-dir -U pip \
+ && pip install --no-cache-dir -e ".[cuda, test]"
+

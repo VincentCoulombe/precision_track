@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="16afc78c-a748-4ba8-ab91-40e3145e0cab" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/configs/coco/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/configs/coco/model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/configs/mice/evaluation.py" beforeDir="false" afterPath="$PROJECT_DIR$/configs/mice/evaluation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/configs/mice/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/configs/mice/model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/configs/mice/tracking.py" beforeDir="false" afterPath="$PROJECT_DIR$/configs/mice/tracking.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/precision_track/models/rtmdet_pose.py" beforeDir="false" afterPath="$PROJECT_DIR$/precision_track/models/rtmdet_pose.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/precision_track/models/rtmdet_pose_head.py" beforeDir="false" afterPath="$PROJECT_DIR$/precision_track/models/rtmdet_pose_head.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/track.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/track.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/track.sh" beforeDir="false" afterPath="$PROJECT_DIR$/tools/track.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/visualize.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/visualize.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 7
+}</component>
+  <component name="ProjectId" id="2gpCzGy1czRQ5YNWWmrXIpoadnk" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.api_client.executor": "Run",
+    "Python.aruco_json_fixer.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.main_massprocess.executor": "Debug",
+    "Python.main_serial.executor": "Run",
+    "Python.scraping.executor": "Run",
+    "Python.track.executor": "Debug",
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "git-widget-placeholder": "pose",
+    "last_opened_file_path": "C:/Users/david/Desktop/Vivarium Intelligent/precision_track",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.keymap",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\david\Desktop\Vivarium Intelligent\precision_track\src\pipeline\utils" />
+      <recent name="C:\Users\david\Desktop\Vivarium Intelligent\precision_track\src\pipeline" />
+      <recent name="C:\Users\david\Desktop\Vivarium Intelligent\precision_track" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\david\Desktop\Vivarium Intelligent\precision_track\src\pipeline\utils" />
+      <recent name="C:\Users\david\Desktop\Vivarium Intelligent\precision_track\src\pipeline\stack" />
+      <recent name="C:\Users\david\Desktop\Vivarium Intelligent\precision_track\weights" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Python.track">
+    <configuration name="main_massprocess" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="precision_track" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/pipeline" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/pipeline/main_massprocess.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="main_serial" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="precision_track" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/pipeline" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="C:\Users\david\Desktop\Vivarium Intelligent\precision_track\src\pipeline\main_serial.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="scraping" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="precision_track" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/scraping.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="track" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="precision_track" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tools" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/tools/track.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="track.sh" type="ShConfigurationType" temporary="true">
+      <option name="SCRIPT_TEXT" value="" />
+      <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+      <option name="SCRIPT_PATH" value="$PROJECT_DIR$/tools/track.sh" />
+      <option name="SCRIPT_OPTIONS" value="" />
+      <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+      <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$/tools" />
+      <option name="INDEPENDENT_INTERPRETER_PATH" value="true" />
+      <option name="INTERPRETER_PATH" value="powershell.exe" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="EXECUTE_IN_TERMINAL" value="true" />
+      <option name="EXECUTE_SCRIPT_FILE" value="true" />
+      <envs />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.track" />
+        <item itemvalue="Shell Script.track.sh" />
+        <item itemvalue="Python.main_serial" />
+        <item itemvalue="Python.scraping" />
+        <item itemvalue="Python.main_massprocess" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-50da183f06c8-2887949eec09-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-233.13135.95" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="16afc78c-a748-4ba8-ab91-40e3145e0cab" name="Changes" comment="" />
+      <created>1716385393002</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1716385393002</updated>
+      <workItem from="1716385394170" duration="7003000" />
+      <workItem from="1716479627946" duration="9020000" />
+      <workItem from="1716820204776" duration="17034000" />
+      <workItem from="1716852851806" duration="780000" />
+      <workItem from="1716907062305" duration="738000" />
+      <workItem from="1717002851671" duration="1009000" />
+      <workItem from="1717166993219" duration="35000" />
+      <workItem from="1717172294927" duration="46000" />
+      <workItem from="1717172353017" duration="13000" />
+      <workItem from="1717172422531" duration="9000" />
+      <workItem from="1718215919096" duration="1916000" />
+      <workItem from="1718220463479" duration="5368000" />
+      <workItem from="1718296975049" duration="619000" />
+      <workItem from="1718380056519" duration="620000" />
+      <workItem from="1718628636085" duration="664000" />
+      <workItem from="1718637383744" duration="11748000" />
+      <workItem from="1718719530516" duration="12517000" />
+      <workItem from="1718890687069" duration="11231000" />
+      <workItem from="1718974834827" duration="5334000" />
+      <workItem from="1718985598719" duration="4288000" />
+      <workItem from="1719006711470" duration="610000" />
+      <workItem from="1719430331678" duration="7672000" />
+      <workItem from="1719449144676" duration="1255000" />
+      <workItem from="1719494104711" duration="7184000" />
+      <workItem from="1719511472026" duration="189000" />
+      <workItem from="1719578995444" duration="7973000" />
+      <workItem from="1719587178294" duration="379000" />
+      <workItem from="1719587886581" duration="1981000" />
+      <workItem from="1719930529292" duration="3083000" />
+      <workItem from="1720032182923" duration="2385000" />
+      <workItem from="1720107944342" duration="1212000" />
+      <workItem from="1720111263174" duration="3090000" />
+      <workItem from="1720541904191" duration="2228000" />
+      <workItem from="1720554131764" duration="169000" />
+      <workItem from="1720555665443" duration="944000" />
+      <workItem from="1720623459808" duration="602000" />
+      <workItem from="1720637064355" duration="1140000" />
+      <workItem from="1720719338758" duration="1019000" />
+      <workItem from="1720811530231" duration="1460000" />
+      <workItem from="1725378904413" duration="1397000" />
+      <workItem from="1725380307284" duration="1057000" />
+      <workItem from="1725381376060" duration="3954000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/tools/track.py</url>
+          <line>86</line>
+          <option name="timeStamp" value="3" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/tools/track.py</url>
+          <line>59</line>
+          <option name="timeStamp" value="5" />
+        </line-breakpoint>
+      </breakpoints>
+      <default-breakpoints>
+        <breakpoint type="python-exception">
+          <properties notifyOnTerminate="true" exception="BaseException">
+            <option name="notifyOnTerminate" value="true" />
+          </properties>
+        </breakpoint>
+      </default-breakpoints>
+    </breakpoint-manager>
+    <watches-manager>
+      <configuration name="PythonConfigurationType">
+        <watch expression="tracker" />
+        <watch expression="formatted_id" />
+        <watch expression="self.aruco_track_data" language="Python" />
+      </configuration>
+    </watches-manager>
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/precision_track$scraping.coverage" NAME="scraping Coverage Results" MODIFIED="1720554252266" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/precision_track$main_massprocess.coverage" NAME="main_massprocess Coverage Results" MODIFIED="1720032639909" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/pipeline" />
+    <SUITE FILE_PATH="coverage/precision_track$api_client.coverage" NAME="api_client Coverage Results" MODIFIED="1716488816976" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/pipeline/task" />
+    <SUITE FILE_PATH="coverage/precision_track$aruco_json_fixer.coverage" NAME="aruco_json_fixer Coverage Results" MODIFIED="1719933430303" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/pipeline/utils" />
+    <SUITE FILE_PATH="coverage/precision_track$track.coverage" NAME="track Coverage Results" MODIFIED="1725384983011" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tools" />
+    <SUITE FILE_PATH="coverage/precision_track$main.coverage" NAME="main_serial Coverage Results" MODIFIED="1716488543085" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/pipeline" />
+    <SUITE FILE_PATH="coverage/precision_track$main_serial.coverage" NAME="main_serial Coverage Results" MODIFIED="1720721054657" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/pipeline" />
+  </component>
+</project>
