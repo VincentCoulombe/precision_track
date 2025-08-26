@@ -1,11 +1,29 @@
 # Docker guide — Build & launch your PrecisionTrack development environment
 
-### 1) Build your Docker image (one time)
+### 1) Install and configure Docker
+
+- **Install Docker:**
+
+  - Simply run the following:
+
+  ```bash
+  sudo apt install docker.io
+  sudo systemctl enable docker
+  ```
+
+- **Add user to the Docker group:**
+  ```bash
+  sudo groupadd docker        # may already exist
+  sudo usermod -aG docker $USER
+  newgrp docker               # apply group change immediately
+  ```
+
+### 2) Build your Docker image (one time)
 
 - **Make the build script executable (once):**
 
 ```bash
-chmod +x ./docker/building_image.sh
+sudo chmod +x ./docker/building_image.sh
 ```
 
 - **Build options:**
@@ -27,19 +45,25 @@ chmod +x ./docker/building_image.sh
   - **Examples:**
 
   ```bash
-  ./docker/building_image.sh # Auto-detect default
-  ./docker/building_image.sh --cuda
-  ./docker/building_image.sh --cpu --skip-tests
-  ./docker/building_image.sh --both
+  sudo ./docker/building_image.sh # Auto-detect default
+  sudo ./docker/building_image.sh --cuda
+  sudo ./docker/building_image.sh --cpu --skip-tests
+  sudo ./docker/building_image.sh --both
   ```
 
-### 2) Launch your development container (each session)
+### 3) Launch your development container (each session)
 
 - **What it does:**
 
   - Starts your PrecisionTrack environment (container).
   - Keeps it running while your terminal stays open.
   - Safe to close/relaunch. Your outputs are save directly on the host.
+
+- **Make the build script executable (once):**
+
+```bash
+sudo
+```
 
 - **Launch options:**
 
@@ -63,9 +87,9 @@ chmod +x ./docker/building_image.sh
   - **Examples:**
 
   ```bash
-  ./docker/launching_container.sh # Auto-detect default
-  ./docker/launching_container.sh --cuda
-  ./docker/launching_container.sh --cpu --update
+  sudo ./docker/launching_container.sh # Auto-detect default
+  sudo ./docker/launching_container.sh --cuda
+  sudo ./docker/launching_container.sh --cpu --update
   ```
 
   - **Notes:**

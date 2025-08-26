@@ -242,11 +242,13 @@ You are going to need Git to clone this repository locally.
 
 Run the following git command in your terminal:
 
-- **Important** We recommend a choosing a stable, memorable path since this folder will be mounted in your Docker container (will be introduced in the next sub-section). thus, will become your main workspace. A sensible choice would be to clone PrecisionTrack in your `documents` directory.
+- **Important** We recommend a choosing a stable, memorable path since this folder will be mounted in your Docker container (will be introduced in the next sub-section). thus, will become your main workspace. A sensible choice would be to clone PrecisionTrack in your `C:\Users\<YourUser>\Documents` directory.
+
+- **Important 2** (Windows users only) Your `C:\Users\<YourUser>\Documents` Windows directory is reachable from inside your WSL instance under the `/mnt/c/Users/<YourUser>/Documents` directory.
 
 ```bash
   sudo apt-get install -y git
-  cd "$HOME/Documents"   # choose a meaningful workspace directory
+  cd /mnt/c/Users/<YourUser>/Documents   # choose a meaningful workspace directory
   git clone https://github.com/VincentCoulombe/precision_track.git
   cd precision_track
 ```
