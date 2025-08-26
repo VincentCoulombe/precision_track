@@ -1,5 +1,9 @@
 FROM python:3.11-slim
 
+ARG UID=1000
+ARG GID=1000
+USER root
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update -yy && apt-get install -yy --no-install-recommends \
@@ -10,14 +14,21 @@ RUN apt-get update -yy && apt-get install -yy --no-install-recommends \
       g++ \
       git \
       ffmpeg \
-      python3.11 python3.11-dev python3.11-venv \
-      python3-pip \
     && rm -rf /var/lib/apt/lists/* && apt-get clean
 
+# Create non-root user (to own mounted host directories)
+RUN groupadd -g ${GID} precision_track && useradd -u ${UID} -g ${GID} -m -s /bin/bash precision_track
+
+WORKDIR /workspace
+RUN git clone https://github.com/VincentCoulombe/precision_track.git
+WORKDIR /workspace/precision_track
 
 RUN pip install --no-cache-dir -U pip \
  && pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cpu \
- && pip install --no-cache-dir "precision_track[cpu] @ git+https://github.com/VincentCoulombe/precision_track.git"
+ && pip install --no-cache-dir -e ".[cpu, test]"
 
-# Ensure precision_track's files are writables and executables
-RUN chmod -R a+rwx /usr/local/lib/python3.11/site-packages/precision_track/
+# Non-root user own the workspace, enables rwx of the container's and the mounted files
+RUN chown -R ${UID}:${GID} /workspace
+ENV HOME=/home/precision_track
+USER precision_track
+CMD ["/bin/bash"]

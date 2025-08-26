@@ -75,7 +75,7 @@ class ONNXRuntime(InferenceOnlyRuntime):
                 f"""The {runtime} package dependency is not installed. Note that the onnxruntime and the onnxruntime-gpu are mutually exclusive,
                 meaning you can not infer with both installed on the same virtual env."""
             )
-        self.log_runtime(f"Inference backend set to: {runtime} {ort_version}, with the following checkpoint {os.path.abspath(self.checkpoint)}")
+        self.log_runtime(f"Inference backend set to: {runtime} {ort_version}, from checkpoint: {os.path.abspath(self.checkpoint)}")
 
     def predict(
         self,

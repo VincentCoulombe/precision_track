@@ -1,5 +1,9 @@
 FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel
 
+ARG UID=1000
+ARG GID=1000
+USER root
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update -yy && apt-get install -yy --no-install-recommends \
@@ -15,10 +19,18 @@ RUN apt-get update -yy && apt-get install -yy --no-install-recommends \
 # Ensure conda is the first PATH 
 ENV PATH=/opt/conda/bin:$PATH
 
+# Create non-root user (to own mounted host directories)
+RUN groupadd -g ${GID} precision_track && useradd -u ${UID} -g ${GID} -m -s /bin/bash precision_track
+
 WORKDIR /workspace
 RUN git clone https://github.com/VincentCoulombe/precision_track.git
 WORKDIR /workspace/precision_track
 
 RUN pip install --no-cache-dir -U pip \
  && pip install --no-cache-dir -e ".[cuda, test]"
+
+# Non-root user own the workspace, enables rwx of the container's and the mounted files
+RUN chown -R ${UID}:${GID} /workspace
+ENV HOME=/home/precision_track
+USER precision_track
 

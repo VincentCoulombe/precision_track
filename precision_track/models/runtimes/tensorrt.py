@@ -1,6 +1,6 @@
 import logging
 from typing import List, Optional, Tuple, Union
-
+import os
 import numpy as np
 import torch
 from mmengine.logging import print_log
@@ -104,7 +104,7 @@ class TensorRTRuntime(InferenceOnlyRuntime):
         self._running_batch_size = -1
         self._outputs = tuple()
 
-        self.log_runtime(f"Inference backend set to: TensorRT: {version.parse(self.trt.__version__)}")
+        self.log_runtime(f"Inference backend set to: TensorRT: {version.parse(self.trt.__version__)}, from checkpoint: {os.path.abspath(self.checkpoint)}")
 
     def _stage_to_gpu(self, tensor: torch.Tensor) -> torch.Tensor:
         if tensor.is_cuda:

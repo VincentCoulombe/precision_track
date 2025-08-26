@@ -57,7 +57,6 @@ Furthermore, we provide postprocessing algorithms such as the Multi-animal Actio
 - [Demos](#demos)
 - [Resources](#resources)
 - [Where to start?](#where-to-start)
-- [Installation](#installation)
 - [Tutorials](#tutorials)
 - [Contributing](#contributing)
 - [Acknowledgements](#acknowledgements)
@@ -131,6 +130,10 @@ It is neither necessary nor efficient to label every single frame from your reco
 
 Choose a sampling interval that captures sufficient variation in your subjects’ positions, postures, and interactions. For example, in scenarios where subjects move slowly, you can use a larger interval between frames, while faster or more dynamic activities may require shorter intervals to capture meaningful changes.
 
+- **Note:** You can extract the frames of a video using [ffmpeg](https://ffmpeg.org/).
+  - [How to do it on windows](https://www.youtube.com/watch%3Fv%3DxH_KEOxeHac&ved=2ahUKEwiP87X9j6mPAxW3lokEHXKgOiIQ3aoNegQIGBAN&usg=AOvVaw3wQwbPsQvgiDkdqgBrC5t6)
+  - [How to do it on Linux](https://www.youtube.com/watch%3Fv%3DYpH6lc8X8BY&ved=2ahUKEwjGgemFkamPAxUvrokEHS_rIaEQ3aoNegQIEBAg&usg=AOvVaw0Rz_30ZvGlB3Ti8V7IrrBx)
+
 #### 3.3) Randomly select the _n_ frames you would like to label
 
 By this stage, you may have accumulated hundreds—or even thousands—of extracted frames. While labelling all of them would not be a waste (as it would inevitably produce a stronger tracker), it is rarely the most efficient use of your time. In our experience, beyond roughly 1,000 labelled frames, the improvement in tracking accuracy per additional labelled frame begins to plateau, leading to steep diminishing returns relative to the time invested labelling frames.
@@ -144,84 +147,202 @@ We suggest reviewing his guide to streamline your labelling workflow.
 
 Would you choose to follow Julien's guide or not, you will need COCO formatted labels in order to train your own custom PrecisionTracker.
 
-### 4) Installing mandatory third party software (for local execution only)
+- **Important:** Your subject’s keypoints labelling order must exactly match the order of the ids in the `keypoint_info` field of your `metadata.py` file.
 
-If you are planning on using PrecisionTrack throught our provided [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/COLAB), then you can simply **ignore this section**, as it is only relevant for users wanting to use PrecisionTrack locally.
+### 4) Installing mandatory third-party software (local execution only)
 
-#### WORK-IN-PROGRESS
+Using our [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab)? You can **skip this entire section**.
 
-#### 4.1) Ensure that your machine is CUDA accelerated
+#### 4.1) Install Windows Subsystem for Linux (WSL) - **Windows users only**
+
+Open [Administrator PowerShell](https://www.youtube.com/watch%3Fv%3DUegCqUZcnq8&ved=2ahUKEwi9q-Dw46aPAxUTwvACHSz9GHsQ3aoNegQIFxAO&usg=AOvVaw3UJ0yzE6YAWzjWEyuyx5py) → run:
+
+```powershell
+wsl --install
+```
+
+Reboot your computer.
+
+**All subsequent commands** are run **inside your WSL (Ubuntu) terminal**.
+If a command is denied, prefix with **sudo** (e.g., `sudo apt-get update`). Doing so, the system will ask you for your password.
+
+#### 4.2) Install Docker (inside WSL/Ubuntu)
+
+To install [Docker](https://www.youtube.com/watch%3Fv%3Datb4nL-wI_M&ved=2ahUKEwj5men36qaPAxW7l4kEHZyuLZU4ChDdqg16BAgVEA4&usg=AOvVaw3w6GndpM3xsu3cwUr7s2rk), simply run the following:
+
+```bash
+# Add Docker's official GPG key:
+sudo apt-get update
+sudo apt-get install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# Add the repository to Apt sources:
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+```
+
+Verify your installation by running:
+
+```bash
+sudo docker run hello-world
+```
+
+### 4.3) Ensure your machine is CUDA-accelerated (for GPU use)
+
+##### 4.3.1) Check for an NVIDIA GPU and driver
+
+First, ensure that your machine contains an NVIDIA Graphic Processor Unit (GPU) with at least 8BG of VRAM.
+
+Inside WSL:
+
+```bash
+  sudo nvidia-smi
+```
+
+- If you see your GPU and a CUDA version as well as its specifications such the number of tensor cores and the amount of VRAM, you’re good.
+- If not: install the latest Windows [NVIDIA driver](<(https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.html)>) (do not install a Linux driver inside WSL), then wsl --update and try again.
+
+##### 4.3.2) Allow Docker containers to access your NVIDIA GPU
 
 Run the following bash command in your terminal:
 
 ```bash
-  nvidia-smi
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+  && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt-get update
+export NVIDIA_CONTAINER_TOOLKIT_VERSION=1.17.8-1
+  sudo apt-get install -y \
+      nvidia-container-toolkit=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      nvidia-container-toolkit-base=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      libnvidia-container-tools=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      libnvidia-container1=${NVIDIA_CONTAINER_TOOLKIT_VERSION}
+
+sudo systemctl restart docker
 ```
 
-- If you get a table with your GPU name and a CUDA Version field. Your system is CUDA accelerated and the proper drivers are already installed.
+Test GPU inside a container:
 
-  - Then, you need to ensure that your NVIDIA GPU have at least 8Gb of VRAM (8000MiB).
+```bash
+sudo docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
+```
 
-- If you get “Command not found”. Your system has either no NVIDIA GPU or your NVIDIA drivers are not properly installed.
-
-  - Please ensure your system is CUDA accelerated before moving forward. Refer to [NVIDIA's driver installation guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.html)
-
-#### 4.2) Clone the PrecisionTrack's repository locally
+#### 4.4) Clone the PrecisionTrack repository
 
 You are going to need Git to clone this repository locally.
 
-- [How to install Git on MAC](https://www.youtube.com/watch%3Fv%3DB4qsvQ5IqWk&ved=2ahUKEwj_pZe2tYiPAxVak4kEHRv2ClUQ3aoNegQIGBAJ&usg=AOvVaw0n2JpqE2yxaD-KHmzrSIb0)
 - [How to install Git on Windows](https://www.youtube.com/watch%3Fv%3Dt2-l3WvWvqg&ved=2ahUKEwiHu-OdtYiPAxV0rYkEHSFYMdAQ3aoNegQIExAO&usg=AOvVaw2BD43-Xq8afuWQ8HnbJxjv)
 
 Run the following git command in your terminal:
 
+- **Important** We recommend a choosing a stable, memorable path since this folder will be mounted in your Docker container (will be introduced in the next sub-section). thus, will become your main workspace. A sensible choice would be to clone PrecisionTrack in your `documents` directory.
+
 ```bash
+  sudo apt-get install -y git
+  cd "$HOME/Documents"   # choose a meaningful workspace directory
   git clone https://github.com/VincentCoulombe/precision_track.git
+  cd precision_track
 ```
 
-#### 4.3) Setup PrecisionTrack's execution environment
+#### 4.5) Setup PrecisionTrack's execution environment
 
-TODO (Docker)
+**Start here:** Read the [Docker guide](https://github.com/VincentCoulombe/precision_track/tree/main/docker) to build and launch the development environment (Docker image + container).
 
-### 5) Define your settings.py (settings file)
+**Edit locally, run in Docker**
 
-The settings file contains all the essential configuration parameters for running PrecisionTrack. In this file, you will specify:
+- Edit your settings, metadatas and datasets on your host machine (as you normally would).
+- Run the PrecisionTrack's tool **inside the launched environment (Docker container)**.
 
-- The paths to your annotations and metadata files
+**Host-side outputs**: All logs, metrics, checkpoints and results are automatically written to the set working directories on your **host machine**. For example, if you keep the [default working directory](https://github.com/VincentCoulombe/precision_track/tree/main/configs), the outputs will get written inside the `precision_track/work_dir` directory.
 
-- Where to save training and testing logs and metrics
+**Read/write scope (IMPORTANT)**:
 
-- Where to store model checkpoints
+- The container has read/write access **only** to your `precision_track` directory.
+- Keep everything under `precision_track/`:
+  - Datasets → `precision_track/datasets/`
+  - Settings → `precision_track/configs/settings/`
+  - Metadata → `precision_track/configs/metadata/`
 
-- The number of subjects you are tracking
+### 5) Define your `settings.py` (settings file)
+
+The `settings.py` file centralizes all configuration parameters required to run PrecisionTrack. In it, you will define:
+
+- Paths to your annotations and metadata files.
+
+- Directories for saving training and testing logs.
+
+- Directories for storing model checkpoints.
+
+- The number of tracked subjects.
 
 - And much more...
 
-For a detailed explanation of the file’s structure and all available options, refer to our [settings guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs). In this section, we will focus on how to create your own `settings.py` file.
+For a detailed breakdown of the file’s structure and all available options, consult our [settings guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs). Below, we outline how to create and adapt your own `settings.py` file.
 
 #### 5.1) Start from an existing settings file
 
-In the `./configs/settings/` subfolder, you will find pre-made metadata files for the MICE, Animal Pose (AP), and Microsoft COCO datasets.
+In the `./configs/settings/` subfolder, you will find ready-to-use configuration files for the **MICE**, **Animal Pose (AP)**, and **Microsoft COCO** datasets.
 We recommend starting by copying one of these files and modifying it to match the requirements of your experiment.
 
 #### 5.2) Modify the existing settings file
 
-Follow our [settings guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs) to properly adapt your copied settings file. In most cases, you will only need to adjust around a dozen fields, such as dataset paths, output directories, and subject counts. We discourage modifying other parameters unless you are experienced with PrecisionTrack’s configuration system, as incorrect changes could lead to unexpected results.
+Using the [settings guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs) as reference, update the relevant fields in your copied file. In most cases, you will only need to adjust around a dozen or so entries (e.g., dataset paths, output directories, subject counts).
 
-### 5) Enjoy PrecisionTrack's Toolkit
+Avoid modifying other parameters unless you are familiar with PrecisionTrack’s configuration system, as incorrect changes may lead to unexpected behavior.
 
-By now, you should have configured all the essential inputs for PrecisionTrack:
+### 6) Register your `settings.py` file
+
+This step ensures PrecisionTrack uses your configuration going forward.
+
+#### 6.1) Pick a model
+
+Choose one of the available models in the `./configs/models/` directory. Inside the chosen model’s config file, update the `_base_` field so it extends your custom settings file rather than the default one (which most probably will be `"../settings/mice.py"`).
+
+For example:
+
+**Before**
+
+```python
+  _base_ = "../settings/mice.py"
+```
+
+**After**
+
+```python
+  _base_ = "path/to/your/settings.py"
+```
+
+#### 6.2) Ensure relevant tasks uses your model
+
+Check the all the configuration files in the `./configs/tasks/` directory and make sure they reference the model you selected.
+
+For exemple, if you chose the `rtmdet-pose` model, the `_base_` setting from all the files should point to `"../models/rtmdet-pose.py"`.
+
+- `./configs/tasks/testing_detection.py` → `_base_ = "../models/rtmdet-pose.py"`
+
+- `./configs/tasks/training_detection.py` → `_base_ = ["../models/rtmdet-pose.py", "../wandb/keys.py"]`
+
+### 7) Get started with PrecisionTrack’s Toolkit
+
+You’ve now configured all the essential inputs:
 
 - **Metadata file**
 - **Annotation files**
 - **Settings file**
 
-…and set up a suitable execution environment:
+…and set up a compatible execution environment:
 
-- **Local Docker container**
+- **Local Docker Container**
 - **Google COLAB Notebooks**
 
-With everything in place, you’re ready to make the most of PrecisionTrack’s features. As such, we encourage you to either follow our [tooling guide](https://github.com/VincentCoulombe/precision_track/tree/main/tools) or our pre-configured [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/COLAB) to train, test, deploy track and visualize your PrecisionTracker.
+With these in place, you’re ready to make the most of PrecisionTrack’s features. We recommend either following our [tooling guide](https://github.com/VincentCoulombe/precision_track/tree/main/tools) or using our pre-configured [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab) to train, test, deploy track and visualize your experiments.
 
 ## Tutorials
 

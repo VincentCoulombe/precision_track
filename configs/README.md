@@ -44,6 +44,7 @@ Follow the step‑by‑step checklist, then consult each section for detailed ex
 ### 2.1 Training
 
 - **`data_root`**: The root folder of your COCO styled dataset. This directory should include training and validation annotations (.json files) as well as images.
+- **`data_mode`**: A MMPose artifact. **Keep, but do not change unless you know what you are doing.**
 - **`training_work_dir`**: Where training logs, checkpoints, and visualisations will be written.
 - **`resume`**: Resume training from the last checkpoint if it exists. If you want to resume training, flag it as True and change the default **training_checkpoint** value for the one you wish to resume at.
 - **`training_checkpoint`**: Path to a starting weight file (pre‑training or previous run).
@@ -136,7 +137,7 @@ When `with_validation = True`:
 
 - **`hyperparams`**: JSON file storing the tuned thresholds. The file is generated during the ./tools.deploy.py script execution.
 - **`low_thr`**, **`high_thr`**, **`init_thr`**: Thresholds used for testing the tracking system. **Keep, but do not change unless you know what you are doing.**
-- **`testing_video_paths`** / **`testing_gt_paths`**: Paths to the tracking testing videos and MOT formatted ground truth files.
+- **`testing_video_paths`** / **`testing_gt_paths`**: Lists of paths to test videos and their corresponding MOT-formatted ground-truth files. Keep both lists the same length and order so each video aligns with its ground truth. **Note** Quantitative evaluation is helpful but not required. For many use cases, a quick qualitative review of tracker outputs on separate/held-out footage is sufficient.
 
 ---
 
@@ -145,7 +146,7 @@ When `with_validation = True`:
 ### 4.0 Runtime (inference)
 
 - **`mart_checkpoint`**: Path to your MART checkpoint.
-- **`inference_resolution`**: `(H, W)` The expected resolution of the inference's recordings.
+- **`inference_resolution`**: `(H, W)` The expected resolution of the inference's recordings. You can inspect your video files properties to find this information. **Note:** A video's dimension (in pixels) correspond to its resolution.
 - **`block_size`**: Number of frames per temporal block. **Keep, but do not change unless you know what you are doing.**
 - **`n_embd_*`**: Embedding dimensions for dynamics, pose, and fused features. **Keep, but do not change unless you know what you are doing.**
 - **`assigner`**: Controls track memory length for feature blocks. **Keep, but do not change unless you know what you are doing.**

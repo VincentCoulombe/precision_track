@@ -7,12 +7,13 @@ wandb_logging = False
 
 # 1) Detection
 with_pose_estimation = True
+half_precision = True
 
 widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = "../../datasets/MICE/pose-estimation/"
+data_root = "../data/pose-estimation/"
 training_work_dir = _base_.work_dir + "training_runs/mice/"
 resume = False
 training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
@@ -51,8 +52,6 @@ else:
 testing_work_dir = _base_.work_dir + "testing_runs/mice/"
 testing_checkpoint = "../tests/configs/model_mice.pth"
 
-half_precision = True
-
 testing_anns_path = validation_anns_path
 testing_imgs_path = validation_imgs_path
 testing_output_file = testing_work_dir + "pose-detection_metrics.csv"
@@ -83,7 +82,6 @@ deployed_name = "model_mice_clustering_DEPLOYED.pth"
 
 # 2) Tracking
 tracking_checkpoint = deployed_directory + "model_mice_clustering_DEPLOYED.onnx"
-
 
 pipelined = True
 tracking_batch_size = 30
@@ -217,7 +215,7 @@ if with_action_recognition:
                 metainfo=metainfo,
             ),
             checkpoint=mart_checkpoint,
-            half_precision=True,
+            half_precision=half_precision,
             freeze=True,
             output_names=action_recognition_output_names,
             input_shapes=[

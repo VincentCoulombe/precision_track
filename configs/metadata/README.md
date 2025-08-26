@@ -3,7 +3,7 @@
 PrecisionTrack's metadata files follows the MMPose format. It consist of a python file containing the `dataset_info` dictionary. This dictionnary declares **what each keypoint means, how they connect, and how to evaluate them**.\
 Below is a step‑by‑step recipe on how to create your own metadata file. To proceed, we will use MICE dataset's `mice.py` metadata file as an example.
 
-______________________________________________________________________
+---
 
 ## 1. Template (minimal)
 
@@ -29,27 +29,29 @@ dataset_info = dict(
 > **Why so many fields?**\
 > Model architectures, training loss, data‑augmentation, visualisation and evaluation all rely on this metadata.
 
-______________________________________________________________________
+---
 
 ## 2. Field‑by‑field cookbook
 
-| Field | Purpose | How to fill it | Quick example |
+| Field               | Purpose                                                                                                                                                                                                                                                                                                                                                             | How to fill it                                                                      | Quick example                                                   |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **`dataset_name`** | Unique short slug used in configs and logs. | • Keep it lowercase, no spaces.<br>• Change whenever the annotation schema changes. | `"dogs_running_v1"` |
-| **`paper_info`** | Auto‑generates citations in reports. | Keys accepted by MMEngine: `author`, `title`, `container`, `year`, `homepage`. | `dict(author="Doe et al.", title="CaninePose 2025", year=2025)` |
-| **`keypoint_info`** | Full specification for _each_ keypoint. Drives:<br>• **The name of the keypoint** (`name`)<br>• **The unique identifier of the keypoint. Must start at 0 and increment continuously without gaps.** (`id`)<br>• **Keypoint symmerical reflection (for the flipping augmentation)** (`swap`)<br>• **Half‑body aug.** (`type`)<br>• Visual colours (optional `color`) | | `dict(name="Right Ear", id=1, type="upper", swap="Left Ear")` |
-| **`skeleton_info`** | Edge list connecting keypoints for drawing limbs & PAF‑based losses. | Order is arbitrary; use tuples of keypoint `name`s. | `0: dict(link=("Nose", "Left Eye"), id=0)` |
-| **`joint_weights`** | Per‑keypoint loss weight. Tip: ↑ weight for small, hard‑to‑see landmarks. | List length == `len(keypoint_info)`; defaults to 1.0. | `[1, 1, 2, 2, …]` |
-| **`sigmas`** | Normalised labelling error (σ) used in **OKS** metric. Smaller σ ⇒ stricter. | Compute `σ = (expected error) / object_size`. Use COCO as rough guide. | Humans (COCO) ≈ 0.026 – 0.107 |
-| **`classes`** | Object categories present in the annotations. | String list; first item becomes default label `id=0`. | `["mouse"]` |
-| **`actions`** | Optional behaviour/action labels for the action-recognition downstream task. | Provide `"Other"`/`"None"` as the filler class. | `["Other", "Running", "Sleeping"]` |
+| **`dataset_name`**  | Unique short slug used in configs and logs.                                                                                                                                                                                                                                                                                                                         | • Keep it lowercase, no spaces.<br>• Change whenever the annotation schema changes. | `"dogs_running_v1"`                                             |
+| **`paper_info`**    | Auto‑generates citations in reports.                                                                                                                                                                                                                                                                                                                                | Keys accepted by MMEngine: `author`, `title`, `container`, `year`, `homepage`.      | `dict(author="Doe et al.", title="CaninePose 2025", year=2025)` |
+| **`keypoint_info`** | Full specification for _each_ keypoint. Drives:<br>• **The name of the keypoint** (`name`)<br>• **The unique identifier of the keypoint. Must start at 0 and increment continuously without gaps.** (`id`)<br>• **Keypoint symmerical reflection (for the flipping augmentation)** (`swap`)<br>• **Half‑body aug.** (`type`)<br>• Visual colours (optional `color`) |                                                                                     | `dict(name="Right Ear", id=1, type="upper", swap="Left Ear")`   |
+| **`skeleton_info`** | Edge list connecting keypoints for drawing limbs & PAF‑based losses.                                                                                                                                                                                                                                                                                                | Order is arbitrary; use tuples of keypoint `name`s.                                 | `0: dict(link=("Nose", "Left Eye"), id=0)`                      |
+| **`joint_weights`** | Per‑keypoint loss weight. Tip: ↑ weight for small, hard‑to‑see landmarks.                                                                                                                                                                                                                                                                                           | List length == `len(keypoint_info)`; defaults to 1.0.                               | `[1, 1, 2, 2, …]`                                               |
+| **`sigmas`**        | Normalised labelling error (σ) used in **OKS** metric. Smaller σ ⇒ stricter.                                                                                                                                                                                                                                                                                        | Compute `σ = (expected error) / object_size`. Use COCO as rough guide.              | Humans (COCO) ≈ 0.026 – 0.107                                   |
+| **`classes`**       | Object categories present in the annotations.                                                                                                                                                                                                                                                                                                                       | String list; first item becomes default label `id=0`.                               | `["mouse"]`                                                     |
+| **`actions`**       | Optional behaviour/action labels for the action-recognition downstream task.                                                                                                                                                                                                                                                                                        | Provide `"Other"`/`"None"` as the filler class.                                     | `["Other", "Running", "Sleeping"]`                              |
 
-______________________________________________________________________
+---
 
 ## 3. Step‑by‑step: Creating your own metadata file.
 
 1. **List keypoints**\
-   Write down every landmark you annotated, decide whether it belongs to the “upper” (head/torso) or “lower” (limbs/tail) group, and set left/right symmerical reflection (swaps).
+    Write down every landmark you annotated, decide whether it belongs to the “upper” (head/torso) or “lower” (limbs/tail) group, and set left/right symmerical reflection (swaps).
+
+   **Important** Make sure that your subject's keypoints order correspond the order with which you labelled the keypoints. For example, if your `keypoint_info` with `id=0` is a snout, then the first labelled keypoint on each of your subjects should be their snouts.
 
 1. **Design the skeleton**\
    Connect adjacent landmarks to make a sensible stick‑figure which we refer to as a pose. Order and colours do **not** affect training; they only influence visualisation and downstream tasks such as action-recognition.
@@ -69,7 +71,7 @@ ______________________________________________________________________
 1. **Populate classes & actions**\
    Add lists containing your dataset classes and actions to those keys respectively. Even if you track a single species without specifying its actions now, future‑proof by keeping the list format.
 
-______________________________________________________________________
+---
 
 ## 4. Worked examples
 
@@ -124,7 +126,7 @@ keypoint_info = {
 sigmas = [0.026, 0.025, 0.025, 0.035, 0.035]  # taken from COCO
 ```
 
-______________________________________________________________________
+---
 
 ## 5. Validation snippet (Python)
 
@@ -135,7 +137,7 @@ info = parse_pose_metainfo(dict(from_file="path_to_your_metadata_file.py"))   # 
 print(f"{info.num_keypoints} keypoints loaded ✔︎")
 ```
 
-______________________________________________________________________
+---
 
 ## 6. Troubleshooting checklist
 
@@ -148,7 +150,7 @@ ______________________________________________________________________
 - **Visual skeleton looks wrong?**\
   Edge names in `skeleton_info` must match `keypoint_info["name"]`.
 
-______________________________________________________________________
+---
 
 ## 7. Further reading
 

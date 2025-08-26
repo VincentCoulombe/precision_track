@@ -140,20 +140,7 @@ if _base_.analyzer is not None:
 
 
 # Visualization
-painters = [
-    dict(
-        type="LabelPainter",
-        info=["id"],
-        metafile_path=metainfo,
-        label_position="TOP_CENTER",
-        text_color=[0, 0, 0],
-        text_scale=2,
-        text_thickness=2,
-        text_padding=1,
-        border_radius=1,
-        format="cxcywh",
-    ),
-]
+painters = []
 if _base_.with_pose_estimation:
     painters += [
         dict(
@@ -197,6 +184,21 @@ if _base_.validator is not None:
             palette=dict(nan_color=[255, 255, 255]),
         )
     ]
+
+painters += [
+    dict(
+        type="LabelPainter",
+        info=["id"],
+        metafile_path=metainfo,
+        label_position="TOP_CENTER",
+        text_color=[0, 0, 0],
+        text_scale=2,
+        text_thickness=2,
+        text_padding=1,
+        border_radius=1,
+        format="cxcywh",
+    ),
+]
 
 writers = [
     dict(

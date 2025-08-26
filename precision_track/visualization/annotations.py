@@ -27,9 +27,9 @@ class Annotation(metaclass=abc.ABCMeta):
         img: np.ndarray,
         output_values: np.ndarray,
     ) -> np.ndarray:
-        assert isinstance(img, np.ndarray)
+        assert isinstance(img, np.ndarray), f"the provided image is expected to be a numpy array. Received: {img}."
         assert img.size >= 2
-        assert isinstance(output_values, np.ndarray)
+        assert isinstance(output_values, np.ndarray), f"the provided output_values are expected to be a numpy array. Received: {output_values}."
 
 
 class DetAnnotation(Annotation):
