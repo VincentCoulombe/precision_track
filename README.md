@@ -402,7 +402,7 @@ If you find this project useful in your research, please consider citing:
 
 ```latex
 @misc{precision_track2025,
-    title={Scaling Up Social Behavior Studies: Real-Time, Large-Scale and Prolonged Social Behavior Analysis with PrecisionTrack},
+    title={PrecisionTrack: A Platform for Automated Long-Term Social Behavior Analysis in Naturalized Environments},
     author={Coulombe & al},
     year={2025}
 }
