@@ -235,7 +235,7 @@ class BottomupRandomAffine(BaseTransform):
         # warp image and keypoints
         results["img"] = self._transform(results["img"], warp_mat, (int(w), int(h)))
 
-        if "keypoints" in results:
+        if "keypoints" in results and results["keypoints"].shape[0] > 0:
             # Only transform (x, y) coordinates
             kpts = cv2.transform(results["keypoints"], warp_mat)
             if kpts.shape[-1] == 3:
@@ -247,7 +247,7 @@ class BottomupRandomAffine(BaseTransform):
                     results["keypoints"], "keypoints_vis", max_width=w, max_height=h, keypoints_visible=results["keypoints_visible"]
                 )
 
-        if "bbox" in results:
+        if "bbox" in results and results["bbox"].shape[0] > 0:
             bbox = reformat(results["bbox"], "xyxy", "corner")
             bbox = cv2.transform(bbox, warp_mat)
             if bbox.shape[-1] == 3:
@@ -258,7 +258,7 @@ class BottomupRandomAffine(BaseTransform):
                 bbox = clip(bbox, "xyxy", w, h)
             results["bbox"] = bbox
 
-        if "area" in results:
+        if "area" in results and results["area"].shape[0] > 0:
             warp_mat_for_area = warp_mat
             if warp_mat.shape[0] == 2:
                 aux_row = np.array([[0.0, 0.0, 1.0]], dtype=warp_mat.dtype)

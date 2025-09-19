@@ -171,6 +171,7 @@ ckpt/*
 ckpts/*
 work_dir/*
 profiles/*
+configs/*
 *.npy
 *.prof
 precision_track/evaluation/comparisons/ckpts/*

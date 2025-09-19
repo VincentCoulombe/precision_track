@@ -108,6 +108,14 @@ def xyxy_cxcywh(bboxes: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, 
     return bboxes
 
 
+def xyxy_cxcywh_torch_1d(bboxe: torch.Tensor) -> torch.Tensor:
+    bboxe[2] = bboxe[2] - bboxe[0]
+    bboxe[3] = bboxe[3] - bboxe[1]
+    bboxe[0] = bboxe[0] + bboxe[2] / 2
+    bboxe[1] = bboxe[1] + bboxe[3] / 2
+    return bboxe
+
+
 @njit
 def xyxy_cxcywh_1d(bboxe: np.ndarray) -> np.ndarray:
     bboxe[2] = bboxe[2] - bboxe[0]
@@ -214,6 +222,7 @@ def corner_xyxy(bbox: np.ndarray):
 
 transformation_functions = {
     "xyxy_cxcywh_torch": xyxy_cxcywh,
+    "xyxy_cxcywh_torch_1d": xyxy_cxcywh_torch_1d,
     "xyxy_cxcywh": xyxy_cxcywh,
     "xyxy_cxcywh_1d": xyxy_cxcywh_1d,
     "xyxy_xywh": xyxy_xywh,

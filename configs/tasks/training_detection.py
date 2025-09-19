@@ -203,6 +203,19 @@ custom_hooks = [
     ),
     dict(type="ModuleFreezingHook", modules_to_freeze=["feature_extraction_head"], priority=30),
 ]
+model = dict(
+    head=dict(
+        display_assignment_hook=dict(
+            type="ActivatedPriorsVisualizationHook",
+            augmentations=train_pipeline_stage1,  # To modify to fit the visualization's requirements
+            radius=4,
+            font_size=4.0,
+            palette_size=100,
+            interval=50,
+            out_dir=_base_.work_dir + "prior_activations/",
+        )
+    )
+)
 # /Hooks
 
 # Visualization

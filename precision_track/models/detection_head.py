@@ -17,7 +17,7 @@ from mmengine.model import BaseModule
 from mmengine.structures import InstanceData
 from torch import Tensor
 
-from precision_track.registry import MODELS, TASK_UTILS
+from precision_track.registry import MODELS, TASK_UTILS, HOOKS
 from precision_track.utils import PoseDataSample
 
 from .modules.heads.yolox import YOLOXPoseHeadModule
@@ -57,6 +57,7 @@ class DetectionHead(BaseModule):
         loss_oks: Optional[Config] = None,
         loss_vis: Optional[Config] = None,
         overlaps_power: float = 1.0,
+        display_assignment_hook: Optional[Config] = None,
         **kwargs,
     ):
         super().__init__(init_cfg)
@@ -90,6 +91,8 @@ class DetectionHead(BaseModule):
         self.loss_vis = MODELS.build(loss_vis) if loss_vis is not None else None
 
         self.temperature = 1
+
+        self.assignment_visualization_hook = HOOKS.build(display_assignment_hook) if display_assignment_hook is not None else None
 
     def forward(self, x: Tuple[Tensor]) -> Tuple[List]:
         """Forward features from the upstream network.
@@ -405,6 +408,7 @@ class DetectionHead(BaseModule):
         decoded_kpts: Tensor,
         kpt_vis: Tensor,
         data_sample: PoseDataSample,
+        display_assignment: bool = False,
     ) -> tuple:
         """Compute classification, bbox, keypoints and objectness targets for
         priors in a single image.
@@ -496,6 +500,11 @@ class DetectionHead(BaseModule):
         num_pos_per_img = pos_inds.size(0)
         pos_gt_labels = assign_result["labels"][pos_inds]
         pos_assigned_gt_inds = assign_result["gt_inds"][pos_inds] - 1
+
+        if self.assignment_visualization_hook is not None and display_assignment:
+            self.assignment_visualization_hook.after_assignment_iter(
+                data_sample, priors[pos_inds].tolist(), pos_assigned_gt_inds.tolist(), self.prior_generator.strides
+            )
 
         # bbox target
         bbox_target = gt_instances.bboxes[pos_assigned_gt_inds.long()]

@@ -1,6 +1,7 @@
 from .annotations import Box, Corner, Dot, Ellipse
 from .painters import BoundingBoxPainter, KeypointsPainter, LabelPainter, SearchAreaPainter, ValidationPainter, VelocityPainter
 from .writers import FrameIdWriter, TagsDetectionWriter
+from .palette import ColorPalette
 
 __all__ = [
     "Dot",
@@ -15,4 +16,5 @@ __all__ = [
     "TagsDetectionWriter",
     "SearchAreaPainter",
     "ValidationPainter",
+    "ColorPalette",
 ]

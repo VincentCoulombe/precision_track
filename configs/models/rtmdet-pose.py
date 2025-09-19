@@ -1,4 +1,4 @@
-_base_ = "../settings/mice.py"
+_base_ = "../settings/ap.py"
 
 input_size = _base_.input_size
 pad_value = _base_.pad_value

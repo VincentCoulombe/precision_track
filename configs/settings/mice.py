@@ -13,7 +13,7 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = "../data/pose-estimation/"
+data_root = "../../datasets/MICE/pose-estimation/"
 training_work_dir = _base_.work_dir + "training_runs/mice/"
 resume = False
 training_checkpoint = "../checkpoints/model_ap/model_ap.pth"

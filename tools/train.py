@@ -27,4 +27,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(parse_args())
+    # main(parse_args())
+    from addict import Dict
+
+    main(Dict({"config": "../configs/tasks/training_detection.py", "launcher": "none"}))

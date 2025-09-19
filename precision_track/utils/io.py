@@ -748,3 +748,46 @@ def _process_mmcls_checkpoint(checkpoint):
     new_checkpoint = dict(state_dict=new_state_dict)
 
     return new_checkpoint
+
+
+def put_text_with_underbox(
+    img,
+    text,
+    rect_origin=(50, 150),
+    font=cv2.FONT_HERSHEY_SIMPLEX,
+    font_scale=1.0,
+    thickness=2,
+    text_color=(255, 255, 255),
+    rect_color=(0, 0, 0),
+    rect_alpha=0.6,
+    text_pad=(10, 10),
+    gap=6,
+    underline_height_ratio=0.35,
+):
+    """
+    Draw text and a fitted rectangle placed UNDER the text.
+    The rectangle top-left is fixed at rect_origin; text is positioned above it.
+    """
+    x, y = rect_origin
+
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    pad_x, pad_y = text_pad
+
+    rect_w = text_w + 2 * pad_x
+    rect_h = max(2, int(underline_height_ratio * text_h)) + 2 * pad_y
+
+    text_base_x = x + pad_x
+    text_base_y = y - gap
+
+    if text_base_y - (text_h + baseline) < 0:
+        shift = (text_h + baseline) - text_base_y + 5
+        y += shift
+        text_base_y += shift
+
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x, y), (x + rect_w, y + rect_h), rect_color, thickness=-1)
+    cv2.addWeighted(overlay, rect_alpha, img, 1 - rect_alpha, 0, dst=img)
+
+    cv2.putText(img, text, (text_base_x, text_base_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+
+    return img
