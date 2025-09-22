@@ -29,6 +29,7 @@ from precision_track.utils import (
     parse_pose_metainfo,
     reformat,
     update_dynamics_2d,
+    read_sequence_fast,
 )
 
 warnings.simplefilter("ignore", UserWarning)
@@ -73,6 +74,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
         from_file: str,
         bboxes_gt_format: Optional[str] = "CsvBoundingBoxes",
         keypoints_gt_format: Optional[str] = "CsvKeypoints",
+        actions_gt_format: Optional[str] = "CsvActions",
         data_root: Optional[str] = ".",
         data_prefix: dict = dict(
             sequences=["."],
@@ -83,6 +85,8 @@ class OnlineRandomSequenceDataset(BaseDataset):
         test_mode: bool = False,
         block_size: Optional[int] = 2,
         img_ext: Optional[str] = ".jpg",
+        *args,
+        **kwargs,
     ):
         self.logger = MMLogger.get_current_instance()
         self.METAINFO.update(from_file=from_file)
@@ -91,6 +95,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
         self.bboxes_gt_format = bboxes_gt_format
         self.keypoints_gt_format = keypoints_gt_format
+        self.actions_gt_format = actions_gt_format
 
         self.img_ext = img_ext
         self._length = 0
@@ -103,208 +108,6 @@ class OnlineRandomSequenceDataset(BaseDataset):
             test_mode=test_mode,
             serialize_data=False,
         )
-
-    def _join_prefix(self):
-        missing_keys = [k for k in self.MANDATORY_PREFIX_KEYS if k not in self.data_prefix]
-        assert not missing_keys, f"Missing mandatory keys: {missing_keys}"
-
-        for key in ["sequences", "bboxes_gt_paths", "keypoints_gt_paths"]:
-            if isinstance(self.data_prefix[key], str):
-                assert os.path.isdir(self.data_prefix[key]), f"{key} is expected to be a list or a directory."
-                new_prefix = []
-                for file in os.listdir(self.data_prefix[key]):
-                    new_prefix.append(os.path.join(self.data_prefix[key], file))
-                self.data_prefix[key] = new_prefix
-            else:
-                assert isinstance(self.data_prefix[key], list), f"{key} is expected to be a list or a directory."
-
-        lengths = [len(self.data_prefix[key]) for key in ["sequences", "bboxes_gt_paths", "keypoints_gt_paths"]]
-        assert len(set(lengths)) == 1, "Ensure that you have the same number of gt paths than of image directories."
-
-        full_sequences, keypoints_outputs, bboxes_outputs = [], [], []
-        for img_dir, bboxes_path, kpts_path in zip(*[self.data_prefix[k] for k in self.MANDATORY_PREFIX_KEYS]):
-            full_dir = os.path.join(self.data_root, img_dir)
-            assert os.path.isdir(full_dir), f"{full_dir} is not a valid image directory."
-            full_sequences.append(full_dir)
-
-            bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "path": os.path.join(self.data_root, bboxes_path)})
-            bboxes_output.read()
-            bboxes_outputs.append(bboxes_output)
-
-            kpts_output = OUTPUTS.build({"type": self.keypoints_gt_format, "path": os.path.join(self.data_root, kpts_path)})
-            kpts_output.read()
-            keypoints_outputs.append(kpts_output)
-
-        self.data_prefix.update({"sequences": full_sequences, "bboxes_outputs": bboxes_outputs, "keypoints_outputs": keypoints_outputs})
-
-    def prepare_data(self, _):
-        random_seq = np.random.randint(low=0, high=len(self.data_list))
-        random_seq_idx = np.random.randint(low=0, high=len(self.data_list[random_seq]) - self.block_size)
-
-        block_inputs = []
-        block_data_samples = []
-        block_transform_attr = dict()
-        for i in range(self.block_size):
-            frame_data = deepcopy(self.data_list[random_seq][random_seq_idx + i])
-            if i > 0:
-                for k, v in block_transform_attr.items():
-                    frame_data[k] = v
-            frame_data = self.pipeline(self.load_metadata(frame_data))
-            if i == 0:
-                for k, v in frame_data["data_samples"].to_dict().items():
-                    if k not in self.DEFAULT_KEYS:
-                        block_transform_attr[k] = v
-
-            block_inputs.append(frame_data["inputs"])
-            block_data_samples.append(frame_data["data_samples"])
-
-        return {"inputs": torch.stack(block_inputs), "data_samples": block_data_samples}
-
-    @classmethod
-    def _load_metainfo(cls, metainfo: dict = None) -> dict:
-        """Collect meta information from the dictionary of meta.
-
-        Args:
-            metainfo (dict): Raw data of pose meta information.
-
-        Returns:
-            dict: Parsed meta information.
-        """
-
-        if metainfo is None:
-            metainfo = deepcopy(cls.METAINFO)
-
-        if not isinstance(metainfo, dict):
-            raise TypeError(f"metainfo should be a dict, but got {type(metainfo)}")
-
-        # parse pose metainfo if it has been assigned
-        if metainfo:
-            metainfo = parse_pose_metainfo(metainfo)
-        return metainfo
-
-    def load_metadata(self, data_info: int) -> dict:
-        for key in self.METAINFO_KEYS:
-            if key not in data_info:
-                data_info[key] = deepcopy(self._metainfo[key])
-        return data_info
-
-    @force_full_init
-    def __len__(self) -> int:
-        return self._length
-
-    def load_data_list(self) -> List[dict]:
-        self.logger.info("Loading sequences...")
-        prefix_map = []
-        sequences_name = [os.path.basename(os.path.normpath(i)) for i in self.data_prefix["sequences"]]
-        for i, sequence_name in enumerate(sequences_name):
-            j = find_path_in_dir(sequence_name, self.data_prefix["bboxes_gt_paths"])
-            k = find_path_in_dir(sequence_name, self.data_prefix["keypoints_gt_paths"])
-            prefix_map.append([i, j, k])
-
-        data_list = [[] for _ in sequences_name]
-        for sequence_idx, kpts_idx, bboxes_idx in tqdm(prefix_map):
-            img_dir = self.data_prefix["sequences"][sequence_idx]
-            sequence_name = sequences_name[sequence_idx]
-            kpts_output = self.data_prefix["keypoints_outputs"][kpts_idx]
-            bboxes_output = self.data_prefix["bboxes_outputs"][bboxes_idx]
-
-            for i, (frame_kpts, frame_bboxes) in enumerate(zip(kpts_output, bboxes_output)):
-                if frame_kpts and frame_bboxes:
-                    frame_kpts = np.asarray(frame_kpts)
-                    frame_bboxes = np.asarray(frame_bboxes)
-                    assert np.allclose(
-                        frame_kpts[:, :3], frame_bboxes[:, :3]
-                    ), f"the bounding boxes and the keypoints ground truth do not agree on the {i}th frame."
-                    assert frame_bboxes[0, 0] == frame_kpts[0, 0] == i, f"The {i}th frame do not have an output at its expected idx."
-
-                    img_path = os.path.join(img_dir, f"{i}{self.img_ext}")
-                    assert os.path.isfile(img_path)
-
-                    category_ids = frame_bboxes[:, 1] + 1
-                    instance_ids = frame_kpts[:, 2]
-                    bboxes = frame_bboxes[:, 3:7]
-                    scores = np.ones_like(category_ids)
-                    areas = np.clip(bboxes[:, 2] * bboxes[:, 3] * 0.53, a_min=1.0, a_max=None)
-
-                    kpts = frame_kpts[:, 3:].reshape(-1, self._metainfo["num_keypoints"], 3)
-                    kpt_scores = kpts[..., -1]
-                    kpts = kpts[..., :2]
-
-                    assert category_ids.shape[0] == bboxes.shape[0] == scores.shape[0] == kpt_scores.shape[0] == kpts.shape[0] == instance_ids.shape[0]
-
-                    data_list[sequence_idx].append(
-                        dict(
-                            sequence_name=sequence_name,
-                            img_id=i,
-                            img_path=img_path,
-                            nb_instances=bboxes.shape[0],
-                            id=instance_ids.astype(int),
-                            bbox=reformat(bboxes, "xywh", "xyxy").astype(np.float32),
-                            bbox_score=scores.astype(np.float32),
-                            category_id=category_ids.astype(np.float32),
-                            keypoints=kpts.astype(np.float32),
-                            keypoints_visible=kpt_scores.astype(np.float32),
-                            area=areas.astype(np.float32),
-                        )
-                    )
-                    self._length += 1
-        return data_list
-
-
-class OfflineRandomSequenceDataset(OnlineRandomSequenceDataset, metaclass=ABCMeta):
-    MANDATORY_PREFIX_KEYS = ["sequences", "bboxes_gt_paths", "keypoints_gt_paths"]
-
-    def __init__(
-        self,
-        from_file: str,
-        detector: Config,
-        bboxes_gt_format: Optional[str] = "CsvBoundingBoxes",
-        keypoints_gt_format: Optional[str] = "CsvKeypoints",
-        actions_gt_format: Optional[str] = None,
-        data_root: Optional[str] = ".",
-        data_prefix: dict = dict(
-            sequences=["."],
-            bboxes_gt_paths=[""],
-            keypoints_gt_paths=[""],
-            actions_gt_paths=[None],
-        ),
-        pipeline: List[Union[dict, Callable]] = [],
-        test_mode: bool = False,
-        block_size: Optional[int] = 2,
-        inference_resolution: Optional[tuple] = None,
-        *args,
-        **kwargs,
-    ):
-        self.detector = DetectionBackend(**detector)
-        self.actions_gt_format = actions_gt_format
-        self.action_to_label_map = dict()
-        self.input_scale = inference_resolution
-        self.input_center = None
-        self.cat_warned = False
-        if isinstance(self.input_scale, (Tuple, list, np.ndarray)):
-            self.input_scale = np.array(self.input_scale)
-            self.input_center = self.input_scale // 2
-        super().__init__(
-            from_file=from_file,
-            bboxes_gt_format=bboxes_gt_format,
-            keypoints_gt_format=keypoints_gt_format,
-            data_root=data_root,
-            data_prefix=data_prefix,
-            pipeline=pipeline,
-            test_mode=test_mode,
-            block_size=block_size,
-        )
-
-    def _init_data_prefix_key(self, key):
-        if isinstance(self.data_prefix[key], str):
-            directory = os.path.join(self.data_root, self.data_prefix[key])
-            assert os.path.isdir(directory), f"{key} is expected to be a list or a directory."
-            new_prefix = []
-            for file in os.listdir(directory):
-                new_prefix.append(os.path.join(directory, file))
-            self.data_prefix[key] = new_prefix
-        else:
-            assert isinstance(self.data_prefix[key], list), f"{key} is expected to be a list or a directory."
 
     def _join_prefix(self):
         missing_keys = [k for k in self.MANDATORY_PREFIX_KEYS if k not in self.data_prefix]
@@ -349,6 +152,137 @@ class OfflineRandomSequenceDataset(OnlineRandomSequenceDataset, metaclass=ABCMet
                 "keypoints_outputs": keypoints_outputs,
                 "actions_outputs": actions_outputs,
             }
+        )
+
+    def prepare_data(self, _):
+        # TODO ajouter rdm timestep (uniforme dans [0, 1])
+        # TODO ajouter sequence miner
+        # TODO ajouter rdm occlusion (transform)
+        random_seq = self.data_list[np.random.randint(low=0, high=len(self.data_list))]
+        video_path = random_seq["video_path"]
+        ground_truth = random_seq["actions_output"]
+        random_seq_idx = np.random.randint(low=0, high=len(ground_truth) - self.block_size)
+        inputs = read_sequence_fast(video_path, random_seq_idx, self.block_size)
+
+        # TODO réécrire les augments pour setter les probabilités pour toute la séquence
+        return self.pipeline(dict(inputs=inputs, data_samples=PoseDataSample))
+
+    @classmethod
+    def _load_metainfo(cls, metainfo: dict = None) -> dict:
+        """Collect meta information from the dictionary of meta.
+
+        Args:
+            metainfo (dict): Raw data of pose meta information.
+
+        Returns:
+            dict: Parsed meta information.
+        """
+
+        if metainfo is None:
+            metainfo = deepcopy(cls.METAINFO)
+
+        if not isinstance(metainfo, dict):
+            raise TypeError(f"metainfo should be a dict, but got {type(metainfo)}")
+
+        # parse pose metainfo if it has been assigned
+        if metainfo:
+            metainfo = parse_pose_metainfo(metainfo)
+        return metainfo
+
+    def load_metadata(self, data_info: int) -> dict:
+        for key in self.METAINFO_KEYS:
+            if key not in data_info:
+                data_info[key] = deepcopy(self._metainfo[key])
+        return data_info
+
+    @force_full_init
+    def __len__(self) -> int:
+        return self._length
+
+    def _init_data_prefix_key(self, key):
+        if isinstance(self.data_prefix[key], str):
+            directory = os.path.join(self.data_root, self.data_prefix[key])
+            assert os.path.isdir(directory), f"{key} is expected to be a list or a directory."
+            new_prefix = []
+            for file in os.listdir(directory):
+                new_prefix.append(os.path.join(directory, file))
+            self.data_prefix[key] = new_prefix
+        else:
+            assert isinstance(self.data_prefix[key], list), f"{key} is expected to be a list or a directory."
+
+    def load_data_list(self) -> List[dict]:
+        # TODO Éventuellement, setter les miners offline en lisant les ground truths.
+        self.logger.info("Loading sequences...")
+        prefix_map = []
+        self.action_to_label_map = {ac: i for i, ac in enumerate(self.metainfo.get("actions", []))}
+        # TODO Avoir des folders d'images à place... load SIGNIFICATIVEMENT plus vite! S'inspirer de DanceTrack.
+        sequence_paths = [os.path.abspath(i) for i in self.data_prefix["sequences"]]
+        sequence_names = [os.path.basename(os.path.normpath(i)) for i in sequence_paths]
+        for i, sequence_name in enumerate(sequence_names):
+            j = find_path_in_dir(sequence_name, self.data_prefix["bboxes_gt_paths"])
+            k = find_path_in_dir(sequence_name, self.data_prefix["keypoints_gt_paths"])
+            a = self.data_prefix.get("actions_gt_paths")
+            if a is not None:
+                a = find_path_in_dir(sequence_name, a)
+            prefix_map.append([i, j, k, a])
+
+        data_list = []
+        for sequence_idx, kpts_idx, bboxes_idx, actions_idx in tqdm(prefix_map):
+            data = dict()
+            data["video_path"] = sequence_paths[sequence_idx]
+            assert os.path.isfile(data["video_path"])
+            data["kpts_output"] = self.data_prefix["keypoints_outputs"][kpts_idx]
+            data["bboxes_output"] = self.data_prefix["bboxes_outputs"][bboxes_idx]
+            if actions_idx is not None and actions_idx >= 0:
+                data["actions_output"] = self.data_prefix["actions_outputs"][actions_idx]
+            assert (
+                len(data["kpts_output"]) == len(data["bboxes_output"]) == len(data["actions_output"])
+            ), "Ground truths from the same sequence must have the same length."
+            self._length += len(data["kpts_output"]) // self.block_size
+            data_list.append(data)
+        return data_list
+
+
+class OfflineRandomSequenceDataset(OnlineRandomSequenceDataset, metaclass=ABCMeta):
+    MANDATORY_PREFIX_KEYS = ["sequences", "bboxes_gt_paths", "keypoints_gt_paths"]
+
+    def __init__(
+        self,
+        from_file: str,
+        detector: Config,
+        bboxes_gt_format: Optional[str] = "CsvBoundingBoxes",
+        keypoints_gt_format: Optional[str] = "CsvKeypoints",
+        data_root: Optional[str] = ".",
+        data_prefix: dict = dict(
+            sequences=["."],
+            bboxes_gt_paths=[""],
+            keypoints_gt_paths=[""],
+            actions_gt_paths=[None],
+        ),
+        pipeline: List[Union[dict, Callable]] = [],
+        test_mode: bool = False,
+        block_size: Optional[int] = 2,
+        inference_resolution: Optional[tuple] = None,
+        *args,
+        **kwargs,
+    ):
+        self.detector = DetectionBackend(**detector)
+        self.action_to_label_map = dict()
+        self.input_scale = inference_resolution
+        self.input_center = None
+        self.cat_warned = False
+        if isinstance(self.input_scale, (Tuple, list, np.ndarray)):
+            self.input_scale = np.array(self.input_scale)
+            self.input_center = self.input_scale // 2
+        super().__init__(
+            from_file=from_file,
+            bboxes_gt_format=bboxes_gt_format,
+            keypoints_gt_format=keypoints_gt_format,
+            data_root=data_root,
+            data_prefix=data_prefix,
+            pipeline=pipeline,
+            test_mode=test_mode,
+            block_size=block_size,
         )
 
     @abstractmethod

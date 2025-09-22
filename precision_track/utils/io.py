@@ -15,6 +15,8 @@ import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
 from typing import Callable, Dict, List, Union
+import ffmpeg
+import numpy as np
 
 import cv2
 import mmengine
@@ -791,3 +793,62 @@ def put_text_with_underbox(
     cv2.putText(img, text, (text_base_x, text_base_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
 
     return img
+
+
+def read_sequence_fast(
+    path: str, first_frame: int, num_frames: int, width: int | None = None, height: int | None = None, pix_fmt: str = "rgb24"
+) -> np.ndarray:
+    """
+    Frame-accurate extraction of a contiguous sequence.
+
+    Args:
+        path: video path
+        first_frame: 0-based frame index of the first frame to extract
+        num_frames: number of frames to extract
+        width, height: optional resize at decode time (faster than post-resize)
+        pix_fmt: 'rgb24' (3ch) or 'gray' (1ch), etc.
+
+    Returns:
+        np.ndarray [T,H,W,C] where C=3 for rgb24 and C=1 for gray
+    """
+    if first_frame < 0 or num_frames <= 0:
+        raise ValueError("first_frame must be >= 0 and num_frames > 0")
+
+    # Probe dimensions if not provided
+    if width is None or height is None:
+        info = ffmpeg.probe(path)
+        vstreams = [s for s in info["streams"] if s["codec_type"] == "video"]
+        if not vstreams:
+            raise RuntimeError("No video stream found.")
+        width = int(vstreams[0]["width"])
+        height = int(vstreams[0]["height"])
+
+    # Build filtergraph: select exact frame range, reset PTS
+    start_f = int(first_frame)
+    end_f = start_f + int(num_frames)
+    vf = [
+        f"trim=start_frame={start_f}:end_frame={end_f}",
+        "setpts=PTS-STARTPTS",
+    ]
+    if width and height:
+        vf.append(f"scale={width}:{height}")
+
+    out, _ = (
+        ffmpeg.input(path)  # decode from start for exact frame counts
+        .output("pipe:", format="rawvideo", pix_fmt=pix_fmt, vf=",".join(vf))
+        .global_args("-loglevel", "error")  # clean stderr
+        .run(capture_stdout=True, capture_stderr=True)
+    )
+
+    ch = 1 if pix_fmt == "gray" else 3
+    bytes_per_frame = width * height * ch
+    T = len(out) // bytes_per_frame
+    if T != num_frames or len(out) != num_frames * bytes_per_frame:
+        raise RuntimeError(
+            f"Expected {num_frames} frames ({num_frames*bytes_per_frame} bytes) "
+            f"but got {T} frames ({len(out)} bytes). "
+            "Video may be shorter than requested, or filters/pix_fmt/dimensions mismatch."
+        )
+
+    arr = np.frombuffer(out, dtype=np.uint8)
+    return arr.reshape(T, height, width, ch)
