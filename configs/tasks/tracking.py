@@ -1,4 +1,4 @@
-_base_ = "../models/rtmdet-pose.py"
+_base_ = "../models/yolox-pose.py"
 
 # Settings
 half_precision = _base_.half_precision

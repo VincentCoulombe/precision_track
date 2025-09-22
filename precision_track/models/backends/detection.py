@@ -1,7 +1,7 @@
 import json
 import logging
 import os.path as osp
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 import numpy as np
 import torch
@@ -159,8 +159,8 @@ class DetectionBackend(BaseBackend):
             i_labels = labels[i]
             i_features = features[i]
 
-            i_bboxes, i_scores, i_kpts, i_kpt_vis, i_labels, i_features, i_kept_idxs = self.post_processor(
-                i_bboxes, i_scores, i_kpts, i_kpt_vis, i_labels, i_features, torch.tensor(0)
+            i_bboxes, i_scores, i_kpts, i_kpt_vis, i_labels, i_features, i_priors, i_kept_idxs = self.post_processor(
+                i_bboxes, i_scores, i_kpts, i_kpt_vis, i_labels, i_features, priors[0], torch.tensor(0)
             )
 
             i_scores = i_scores.flatten()
@@ -185,6 +185,8 @@ class DetectionBackend(BaseBackend):
             pred_instances.labels = i_labels
             pred_instances.features = i_features
             pred_instances.kept_idxs = i_kept_idxs
+            pred_instances.feature_maps = features[i]
+            pred_instances.priors = i_priors
 
             formatted_pred_instances = {
                 "ori_shape": data_sample.ori_shape,

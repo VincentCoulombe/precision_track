@@ -301,7 +301,18 @@ class AssociationStep(nn.Module):
             **kwargs,
         )
         self.num_tracks += data_sample["pred_track_instances"]["ids"].shape[0] - len(self.tracks)
-        self.update(frame_ids=frame_id, **data_sample["pred_track_instances"])
+        self.update(
+            frame_ids=frame_id,
+            ids=data_sample["pred_track_instances"]["ids"],
+            bboxes=data_sample["pred_track_instances"]["bboxes"],
+            scores=data_sample["pred_track_instances"]["scores"],
+            keypoints=data_sample["pred_track_instances"]["keypoints"],
+            keypoint_scores=data_sample["pred_track_instances"]["keypoint_scores"],
+            labels=data_sample["pred_track_instances"]["labels"],
+            features=data_sample["pred_track_instances"]["features"],
+            kept_idxs=data_sample["pred_track_instances"]["kept_idxs"],
+            next_frame_bboxes=data_sample["pred_track_instances"]["next_frame_bboxes"],
+        )
         data_sample["pred_track_instances"]["classes"] = np.array([self.classes[lbl] for lbl in data_sample["pred_track_instances"]["labels"]])
         data_sample["pred_track_instances"]["instances_id"] = np.array(self.memo_ids)
         data_sample["pred_track_instances"]["confirmed"] = np.array(self.memo_confirmed)

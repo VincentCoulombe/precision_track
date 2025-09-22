@@ -81,9 +81,9 @@ deployed_name = "model_mice_clustering_DEPLOYED.pth"
 
 
 # 2) Tracking
-tracking_checkpoint = deployed_directory + "model_mice_clustering_DEPLOYED.onnx"
+tracking_checkpoint = deployed_directory + "model_mice_clustering_DEPLOYED.pth"
 
-pipelined = True
+pipelined = False
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
