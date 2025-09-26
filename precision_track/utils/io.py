@@ -14,7 +14,7 @@ import pkgutil
 import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
-from typing import Callable, Dict, List, Union
+from typing import Callable, Dict, List, Union, Optional
 import ffmpeg
 import numpy as np
 
@@ -852,3 +852,57 @@ def read_sequence_fast(
 
     arr = np.frombuffer(out, dtype=np.uint8)
     return arr.reshape(T, height, width, ch)
+
+
+def get_seq_from_img_folder(start_idx: int, seq_length: int, folder_dir: str) -> List[str]:
+    """
+    Return absolute paths for an image sequence [start_idx, start_idx+seq_length-1]
+    from `folder_dir`, where each file's index is the trailing digits in its basename.
+    E.g., frame_00001.jpg -> index 1. Leading zeros are allowed/ignored.
+
+    Raises:
+        AssertionError: if inputs invalid or folder doesn't exist.
+        FileNotFoundError: if any frame in the requested range is missing.
+    """
+    start_idx = int(start_idx)
+    assert start_idx >= 0
+    seq_length = int(seq_length)
+    assert seq_length > 0
+    assert os.path.isdir(folder_dir)
+
+    end_idx = start_idx + seq_length - 1
+    needed = set(range(start_idx, end_idx + 1))
+
+    by_index = {}
+    with os.scandir(folder_dir) as it:
+        for de in it:
+            if not de.is_file():
+                continue
+            idx = _extract_trailing_index(de.name)
+            if idx is None:
+                continue
+            if idx in needed:
+                by_index[idx] = os.path.join(folder_dir, de.name)
+                if len(by_index) == len(needed):
+                    break
+
+    missing = [i for i in range(start_idx, end_idx + 1) if i not in by_index]
+    if missing:
+        raise FileNotFoundError(f"Missing frames in range [{start_idx}, {end_idx}]: {missing[:10]}{'...' if len(missing)>10 else ''}")
+
+    return [by_index[i] for i in range(start_idx, end_idx + 1)]
+
+
+def _extract_trailing_index(filename: str) -> Optional[int]:
+    """
+    Extract the integer formed by the trailing digits before the extension.
+    Returns None if no trailing digits.
+    Example: 'img_00012.jpg' -> 12 ; '00001.png' -> 1 ; 'foo.jpg' -> None
+    """
+    stem, _ = os.path.splitext(filename)
+    i = len(stem) - 1
+    while i >= 0 and stem[i].isdigit():
+        i -= 1
+    if i == len(stem) - 1:
+        return None
+    return int(stem[i + 1 :])

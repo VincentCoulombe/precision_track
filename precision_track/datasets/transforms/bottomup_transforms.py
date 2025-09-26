@@ -235,7 +235,7 @@ class BottomupRandomAffine(BaseTransform):
         # warp image and keypoints
         results["img"] = self._transform(results["img"], warp_mat, (int(w), int(h)))
 
-        if "keypoints" in results and results["keypoints"].shape[0] > 0:
+        if "keypoints" in results and results["keypoints"].shape[0] > 0 and results["keypoints"].shape[1] > 0:
             # Only transform (x, y) coordinates
             kpts = cv2.transform(results["keypoints"], warp_mat)
             if kpts.shape[-1] == 3:

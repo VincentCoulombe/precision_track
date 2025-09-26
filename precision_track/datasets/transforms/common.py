@@ -844,6 +844,7 @@ class FilterAnnotations(BaseTransform):
             "id",
             "action",
             "action_label",
+            "instance_id",
         )
         for key in keys:
             if key in results:
@@ -956,11 +957,12 @@ class RandomCrop(BaseTransform):
         crop_x1, crop_x2 = offset_w, offset_w + crop_size[1]
 
         # Record the warp matrix for the RandomCrop
-        warp_mat = np.array([[1, 0, -offset_w], [0, 1, -offset_h], [0, 0, 1]], dtype=np.float32)
-        if results.get("warp_mat", None) is None:
-            results["warp_mat"] = warp_mat
-        else:
-            results["warp_mat"] = warp_mat @ results["warp_mat"]
+        # TODO to refactor
+        # warp_mat = np.array([[1, 0, -offset_w], [0, 1, -offset_h], [0, 0, 1]], dtype=np.float32)
+        # if results.get("warp_mat", None) is None:
+        #     results["warp_mat"] = warp_mat
+        # else:
+        #     results["warp_mat"] = warp_mat @ results["warp_mat"]
 
         # crop the image
         img = img[crop_y1:crop_y2, crop_x1:crop_x2, ...]
@@ -988,7 +990,7 @@ class RandomCrop(BaseTransform):
             results["bbox"] = bboxes[valid_inds]
             meta_keys = ["bbox_score", "id", "category_id", "raw_ann_info", "iscrowd"]
             for key in meta_keys:
-                if results.get(key):
+                if results.get(key, None) is not None:
                     if isinstance(results[key], list):
                         results[key] = np.asarray(results[key])[valid_inds].tolist()
                     else:
@@ -1019,6 +1021,15 @@ class RandomCrop(BaseTransform):
                 results["masks"] = results["masks"][valid_inds.nonzero()[0]].crop(np.asarray([crop_x1, crop_y1, crop_x2, crop_y2]))
                 if self.recompute_bbox:
                     results["bbox"] = results["masks"].get_bboxes(type(results["bbox"]))
+
+            if results.get("action", None) is not None:
+                results["action"] = results["action"][valid_inds]
+
+            if results.get("action_label", None) is not None:
+                results["action_label"] = results["action_label"][valid_inds]
+
+            if results.get("instance_id", None) is not None:
+                results["instance_id"] = results["instance_id"][valid_inds]
 
         return results
 

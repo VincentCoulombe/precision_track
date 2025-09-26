@@ -61,3 +61,13 @@ def display_mot_results(evaluation: dict, precision=3):
             stralign="left",
         )
     )
+
+
+def display_class_balance(data: dict):
+    total = sum(data.values())
+    table = []
+    for k, v in sorted(data.items(), key=lambda x: -x[1]):
+        bar = "█" * (v * 50 // total)  # scale to max 50 chars
+        table.append([k, v, f"{v/total:.2%}", bar])
+
+    print("\n" + tabulate(table, headers=["Class", "Count", "Percent", "Bar"]) + "\n")

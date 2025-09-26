@@ -30,3 +30,11 @@ class BaseOutput(metaclass=abc.ABCMeta):
         Args:
             source_path (str): The path to the output, the extension is inferred.
         """
+
+    @abc.abstractmethod
+    def scale(self) -> None:
+        """Scale the output's annotations."""
+
+    @abc.abstractmethod
+    def valid(self) -> bool:
+        """Return True if the output's path is valid, else False."""

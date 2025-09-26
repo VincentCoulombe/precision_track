@@ -1,12 +1,13 @@
 import copy
 import os
+import shutil
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from copy import deepcopy
 from logging import WARNING
 from typing import Callable, List, Optional, Tuple, Union
-
+import cv2
 import numpy as np
 import torch
 from addict import Dict
@@ -15,9 +16,12 @@ from mmengine.dataset.base_dataset import BaseDataset, force_full_init
 from mmengine.logging import MMLogger, print_log
 from mmengine.structures import InstanceData
 from tqdm import tqdm
+from collections import defaultdict
 
 from precision_track.models.backends import DetectionBackend
 from precision_track.registry import DATASETS, OUTPUTS
+from precision_track.outputs.display import display_class_balance
+from precision_track.apis import Result
 from precision_track.utils import (
     PoseDataSample,
     VideoReader,
@@ -29,15 +33,17 @@ from precision_track.utils import (
     parse_pose_metainfo,
     reformat,
     update_dynamics_2d,
-    read_sequence_fast,
+    get_seq_from_img_folder,
 )
+
+from .transforms.formatting import image_to_tensor
 
 warnings.simplefilter("ignore", UserWarning)
 
 
 @DATASETS.register_module()
 class OnlineRandomSequenceDataset(BaseDataset):
-    MANDATORY_PREFIX_KEYS = ["sequences", "bboxes_gt_paths", "keypoints_gt_paths"]
+    MANDATORY_PREFIX_KEYS = ["sequences", "bboxes_gt_paths"]
     METAINFO = dict()
     METAINFO_KEYS = [
         "dataset_name",
@@ -72,14 +78,13 @@ class OnlineRandomSequenceDataset(BaseDataset):
     def __init__(
         self,
         from_file: str,
-        bboxes_gt_format: Optional[str] = "CsvBoundingBoxes",
-        keypoints_gt_format: Optional[str] = "CsvKeypoints",
-        actions_gt_format: Optional[str] = "CsvActions",
+        bboxes_gt_format: str,
+        keypoints_gt_format: Optional[str] = None,
+        actions_gt_format: Optional[str] = None,
         data_root: Optional[str] = ".",
         data_prefix: dict = dict(
             sequences=["."],
             bboxes_gt_paths=[""],
-            keypoints_gt_paths=[""],
         ),
         pipeline: List[Union[dict, Callable]] = [],
         test_mode: bool = False,
@@ -94,11 +99,14 @@ class OnlineRandomSequenceDataset(BaseDataset):
         self.block_size = block_size
 
         self.bboxes_gt_format = bboxes_gt_format
-        self.keypoints_gt_format = keypoints_gt_format
-        self.actions_gt_format = actions_gt_format
+        self.keypoints_gt_format = keypoints_gt_format if keypoints_gt_format is not None else "CsvKeypoints"
+        self.actions_gt_format = actions_gt_format if actions_gt_format is not None else "CsvActions"
 
         self.img_ext = img_ext
         self._length = 0
+
+        self.action_counter = defaultdict(int)
+        self.action_to_label_map = dict()
 
         super().__init__(
             ann_file=None,
@@ -109,6 +117,14 @@ class OnlineRandomSequenceDataset(BaseDataset):
             serialize_data=False,
         )
 
+    def _add_prefix_key(self, prefix_keys: list, new_prefix_key: str):
+        prefix_keys = prefix_keys + [new_prefix_key]
+        if new_prefix_key in self.data_prefix:
+            self._init_data_prefix_key(new_prefix_key)
+        else:
+            self.data_prefix[new_prefix_key] = ["" for _ in self.data_prefix[self.MANDATORY_PREFIX_KEYS[0]]]
+        return prefix_keys
+
     def _join_prefix(self):
         missing_keys = [k for k in self.MANDATORY_PREFIX_KEYS if k not in self.data_prefix]
         assert not missing_keys, f"Missing mandatory keys: {missing_keys}"
@@ -116,11 +132,9 @@ class OnlineRandomSequenceDataset(BaseDataset):
         for key in self.MANDATORY_PREFIX_KEYS:
             self._init_data_prefix_key(key)
 
-        prefix_keys = self.MANDATORY_PREFIX_KEYS + ["actions_gt_paths"]
-        if "actions_gt_paths" in self.data_prefix:
-            self._init_data_prefix_key("actions_gt_paths")
-        else:
-            self.data_prefix["actions_gt_paths"] = [None for _ in self.data_prefix[self.MANDATORY_PREFIX_KEYS[0]]]
+        prefix_keys = self.MANDATORY_PREFIX_KEYS
+        prefix_keys = self._add_prefix_key(prefix_keys, "keypoints_gt_paths")
+        prefix_keys = self._add_prefix_key(prefix_keys, "actions_gt_paths")
 
         lengths = [len(self.data_prefix[key]) for key in prefix_keys]
         assert len(set(lengths)) == 1, "Ensure that you have the same number of gt paths than of image directories."
@@ -135,14 +149,21 @@ class OnlineRandomSequenceDataset(BaseDataset):
             bboxes_outputs.append(bboxes_output)
 
             kpts_output = OUTPUTS.build({"type": self.keypoints_gt_format, "path": os.path.join(self.data_root, kpts_path)})
-            kpts_output.read()
+            if kpts_output.valid():
+                kpts_output.read()
+            else:
+                self.logger.warning(
+                    f"This training run will not consider the subject poses. To consider it, please provide path to the ground truth's files to the data_prefix dictionnary."
+                )
             keypoints_outputs.append(kpts_output)
 
-            if self.actions_gt_format is not None and actions_path is not None:
-                actions_output = OUTPUTS.build({"type": self.actions_gt_format, "path": os.path.join(self.data_root, actions_path)})
+            actions_output = OUTPUTS.build({"type": self.actions_gt_format, "path": os.path.join(self.data_root, actions_path)})
+            if actions_output.valid():
                 actions_output.read()
             else:
-                actions_output = None
+                self.logger.warning(
+                    f"This training run will not train the model for action recognition. To do so, please provide path to the ground truth's files to the data_prefix dictionnary."
+                )
             actions_outputs.append(actions_output)
 
         self.data_prefix.update(
@@ -154,18 +175,165 @@ class OnlineRandomSequenceDataset(BaseDataset):
             }
         )
 
+    def get_data_info(self, idx: int) -> dict:
+        data_info = super().get_data_info(idx)
+
+        # Add metainfo items that are required in the pipeline and the model
+        metainfo_keys = ["dataset_name", "upper_body_ids", "lower_body_ids", "flip_pairs", "dataset_keypoint_weights", "flip_indices", "skeleton_links"]
+
+        for key in metainfo_keys:
+            assert key not in data_info, f'"{key}" is a reserved key for `metainfo`, but already ' "exists in the `data_info`."
+
+            data_info[key] = deepcopy(self._metainfo[key])
+
+        return data_info
+
+    def set_sequence_transforms(self):
+        for transform in self.pipeline.transforms:
+            if hasattr(transform, "set_stochastic_params"):
+                transform.set_stochastic_params()
+
     def prepare_data(self, _):
-        # TODO ajouter rdm timestep (uniforme dans [0, 1])
+        # TODO ajouter rdm timestep (uniforme dans [1, 4])
         # TODO ajouter sequence miner
         # TODO ajouter rdm occlusion (transform)
-        random_seq = self.data_list[np.random.randint(low=0, high=len(self.data_list))]
-        video_path = random_seq["video_path"]
-        ground_truth = random_seq["actions_output"]
-        random_seq_idx = np.random.randint(low=0, high=len(ground_truth) - self.block_size)
-        inputs = read_sequence_fast(video_path, random_seq_idx, self.block_size)
+        # TODO loader ground truth pour le block_size+1 frame
 
-        # TODO réécrire les augments pour setter les probabilités pour toute la séquence
-        return self.pipeline(dict(inputs=inputs, data_samples=PoseDataSample))
+        random_seq = self.get_data_info(np.random.randint(low=0, high=len(self.data_list)))
+        sequence_dir = random_seq["sequence_dir"]
+        ground_truth = random_seq["bboxes_output"]
+        if len(ground_truth) == self.block_size:
+            random_seq_idx = 0
+        else:
+            random_seq_idx = np.random.randint(low=0, high=len(ground_truth) - self.block_size)
+
+        seq = get_seq_from_img_folder(random_seq_idx, self.block_size, sequence_dir)
+
+        self.set_sequence_transforms()
+
+        running_idx = random_seq_idx
+        inputs = []
+        data_sample = PoseDataSample()
+        data_sample.action_label_counter = self.action_label_counter
+        data_sample.seq_id = random_seq_idx
+
+        gt_instance_labels = defaultdict(list)
+        gt_instances = defaultdict(list)
+
+        bboxes_output = random_seq.pop("bboxes_output")
+
+        kpts_output = random_seq.pop("kpts_output")
+        kpts_out_valid = kpts_output.valid() and kpts_output.results
+
+        actions_output = random_seq.pop("actions_output")
+        actions_out_valid = actions_output.valid() and actions_output.results
+
+        for image_path in seq:
+            bboxes = np.array(bboxes_output[running_idx])
+            N = bboxes.shape[0]
+            random_seq["category_id"] = bboxes[:, 1].astype(int)
+            random_seq["instance_id"] = bboxes[:, 2].astype(int)
+            random_seq["bbox"] = reformat(bboxes[:, 3:7], "xywh", "xyxy")
+            random_seq["bbox_score"] = bboxes[:, 7]
+
+            if kpts_out_valid:
+                kpts = np.array(kpts_output[running_idx])
+                assert np.all(
+                    kpts[:, 1].astype(int) == random_seq["category_id"]
+                ), f"Incoherance found between the keypoints ground truth's class ids and the bounding boxes ground truth's class ids on frame: {running_idx}."
+                assert np.all(
+                    kpts[:, 2].astype(int) == random_seq["instance_id"]
+                ), f"Incoherance found between the keypoints ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {running_idx}."
+                kpts = kpts[:, 3:]
+                num_kpts = kpts.shape[1] // 3
+                kpts = kpts.reshape(-1, num_kpts, 3)
+                random_seq["keypoints_visible"] = kpts[..., -1]
+                random_seq["keypoints"] = kpts[..., :2]
+            else:
+                num_kpts = 0
+                random_seq["keypoints"] = np.zeros((N, num_kpts, 2))
+                random_seq["keypoints_visible"] = np.zeros((N, num_kpts, 1))
+            random_seq["num_keypoints"] = np.array([num_kpts])
+
+            if actions_out_valid:
+                actions = np.array(actions_output[running_idx])
+                assert np.all(
+                    actions[:, 1].astype(int) == random_seq["category_id"]
+                ), f"Incoherance found between the actions ground truth's class ids and the bounding boxes ground truth's class ids on frame: {running_idx}."
+                assert np.all(
+                    actions[:, 2].astype(int) == random_seq["instance_id"]
+                ), f"Incoherance found between the actions ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {running_idx}."
+                random_seq["action_label"] = actions[:, 3]
+                random_seq["action"] = np.array([self.action_to_label_map[a] for a in actions[:, 3]])
+            else:
+                random_seq["action_label"] = np.zeros((N, 1)) - 1
+                random_seq["action"] = np.zeros((N, 1)) - 1
+
+            random_seq["img_path"] = image_path
+
+            transformed_random_seq = self.pipeline(random_seq)
+            inputs.append(transformed_random_seq.pop("img"))
+
+            gt_instance_labels["action_labels"].append(random_seq["action_label"].reshape(-1, 1))
+            gt_instances["actions"].append(random_seq["action"].reshape(-1, 1))
+            gt_instances["bboxes"].append(reformat(random_seq["bbox"], "xyxy", "cxcywh"))
+            gt_instances["scores"].append(random_seq["bbox_score"])
+            gt_instances["keypoints"].append(random_seq["keypoints"])
+            gt_instances["keypoints_visible"].append(random_seq["keypoints_visible"])
+            gt_instances["instances_id"].append(random_seq["instance_id"])
+            gt_instances["labels"].append(random_seq["category_id"])
+            gt_instances["frame_id"].append(np.full((random_seq["action"].shape[0],), running_idx))
+
+            running_idx += 1
+
+        inst_gt_instance_labels = InstanceData(action_labels=np.concatenate(gt_instance_labels.pop("action_labels")))
+        inst_gt_instances = InstanceData()
+        for k, v in gt_instances.items():
+            inst_gt_instances.set_data({k: torch.tensor(np.concatenate(v))})
+        data_sample.gt_instance_labels = inst_gt_instance_labels
+        data_sample.gt_instances = inst_gt_instances
+
+        self.save_sequence(random_seq_idx, inputs, gt_instances)  # TODO externalize this hack
+
+        return dict(inputs=image_to_tensor(inputs), data_samples=data_sample)
+
+    def save_sequence(self, seq_idx: int, images: list, gt_instances: dict):
+        save_dir = os.path.abspath(os.path.join(self.data_root, "augmented_sequences", str(seq_idx)))
+        os.makedirs(save_dir, exist_ok=True)
+
+        outputs = dict(
+            bboxes=OUTPUTS.build({"type": self.bboxes_gt_format, "path": ""}),
+            keypoints=OUTPUTS.build({"type": self.keypoints_gt_format, "path": ""}),
+            actions=OUTPUTS.build({"type": self.actions_gt_format, "path": ""}),
+        )
+        for k, o in outputs.items():
+            o.path = os.path.join(save_dir, f"{k}{o.EXTENSION}")
+
+        for i, image in enumerate(images):
+            os.makedirs(os.path.join(save_dir, "frames"), exist_ok=True)
+            cv2.imwrite(os.path.join(save_dir, "frames", f"{i}.png"), image)
+            N = gt_instances["frame_id"][i].shape[0]
+
+            frame_ids = gt_instances["frame_id"][i].reshape(N).tolist()
+            labels = gt_instances["labels"][i].reshape(N).tolist()
+            instance_ids = gt_instances["instances_id"][i].reshape(N).tolist()
+
+            bboxes = gt_instances["bboxes"][i].reshape(N, 4).tolist()
+            scores = gt_instances["scores"][i].reshape(N).tolist()
+            keypoints = (
+                np.concatenate((gt_instances["keypoints"][i].reshape(N, -1, 2), gt_instances["keypoints_visible"][i].reshape(N, -1, 1)), axis=2)
+                .reshape(N, -1)
+                .tolist()
+            )
+            actions = gt_instances["actions"][i].reshape(N).tolist()
+            for j in range(N):
+                bbox = bboxes[j]
+                outputs["bboxes"]._add_row(frame_ids[j], labels[j], instance_ids[j], *bbox, scores[j])
+                outputs["keypoints"]._add_row(frame_ids[j], labels[j], instance_ids[j], keypoints[j])
+                outputs["actions"]._add_row(frame_ids[j], labels[j], instance_ids[j], actions[j], scores[j])
+
+        for output in outputs.values():
+            output.save()
 
     @classmethod
     def _load_metainfo(cls, metainfo: dict = None) -> dict:
@@ -215,31 +383,66 @@ class OnlineRandomSequenceDataset(BaseDataset):
         self.logger.info("Loading sequences...")
         prefix_map = []
         self.action_to_label_map = {ac: i for i, ac in enumerate(self.metainfo.get("actions", []))}
-        # TODO Avoir des folders d'images à place... load SIGNIFICATIVEMENT plus vite! S'inspirer de DanceTrack.
-        sequence_paths = [os.path.abspath(i) for i in self.data_prefix["sequences"]]
-        sequence_names = [os.path.basename(os.path.normpath(i)) for i in sequence_paths]
+        sequence_dirs = [os.path.abspath(i) for i in self.data_prefix["sequences"]]
+        sequence_names = [os.path.basename(os.path.normpath(i)) for i in sequence_dirs]
         for i, sequence_name in enumerate(sequence_names):
             j = find_path_in_dir(sequence_name, self.data_prefix["bboxes_gt_paths"])
-            k = find_path_in_dir(sequence_name, self.data_prefix["keypoints_gt_paths"])
-            a = self.data_prefix.get("actions_gt_paths")
-            if a is not None:
+            k = self.data_prefix.get("keypoints_gt_paths", "")
+            if k:
+                k = find_path_in_dir(sequence_name, k)
+            a = self.data_prefix.get("actions_gt_paths", "")
+            if a:
                 a = find_path_in_dir(sequence_name, a)
             prefix_map.append([i, j, k, a])
 
         data_list = []
         for sequence_idx, kpts_idx, bboxes_idx, actions_idx in tqdm(prefix_map):
+
+            actions_valid = actions_idx and actions_idx >= 0
+            if not actions_valid:
+                actions_idx = bboxes_idx
+
+            kpts_valid = kpts_idx and kpts_idx >= 0
+            if not kpts_valid:
+                kpts_idx = bboxes_idx
             data = dict()
-            data["video_path"] = sequence_paths[sequence_idx]
-            assert os.path.isfile(data["video_path"])
+            seq_path = sequence_dirs[sequence_idx]
+            data["sequence_dir"] = seq_path
+            assert os.path.isdir(seq_path), f"{seq_path} is not a valid directory."
             data["kpts_output"] = self.data_prefix["keypoints_outputs"][kpts_idx]
             data["bboxes_output"] = self.data_prefix["bboxes_outputs"][bboxes_idx]
-            if actions_idx is not None and actions_idx >= 0:
-                data["actions_output"] = self.data_prefix["actions_outputs"][actions_idx]
-            assert (
-                len(data["kpts_output"]) == len(data["bboxes_output"]) == len(data["actions_output"])
-            ), "Ground truths from the same sequence must have the same length."
-            self._length += len(data["kpts_output"]) // self.block_size
+            data["actions_output"] = self.data_prefix["actions_outputs"][actions_idx]
+            actions = data["actions_output"]
+            if actions_valid:
+                actions_really_valid = actions.valid() and actions.results
+                assert actions_really_valid, f"The provided ground truths: {actions.path} is either invalid or contains no results."
+                if actions_really_valid:
+                    actions_np = np.array(actions.results)[:, -1]
+                    uniques, counts = np.unique(actions_np, return_counts=True)
+                    for unique, count in zip(uniques, counts):
+                        if unique not in self.action_to_label_map.keys():
+                            raise ValueError(
+                                f"The action: {unique} from the dataset, is not in the actions defined in the metadata file: {list(self.action_to_label_map.keys())}"
+                            )
+                        self.action_counter[unique] += count
+
+            ref_len = data["bboxes_output"]
+            if actions_valid:
+                assert len(ref_len) == len(data["actions_output"]), "Ground truths from the same sequence must have the same length."
+            if kpts_valid:
+                assert len(ref_len) == len(data["kpts_output"]), "Ground truths from the same sequence must have the same length."
+            assert len(ref_len) <= len(
+                os.listdir(seq_path)
+            ), f"{len(ref_len) } are labelled, but only {len(os.listdir(seq_path))} frames are saved at the {seq_path} directory."
+            self._length += len(ref_len) // self.block_size
             data_list.append(data)
+        if self.action_counter:
+            self.logger.info("Your labelled action's proportions: ")
+            display_class_balance(self.action_counter)
+        self.action_label_counter = np.zeros(len(self.action_to_label_map))
+        for action, a_count in self.action_counter.items():
+            idx = self.action_to_label_map[action]
+            self.action_label_counter[idx] = a_count
         return data_list
 
 

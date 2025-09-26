@@ -94,15 +94,18 @@ class Visualizer:
     ) -> np.ndarray:
         if isinstance(frame, str):
             self._assert_img_ext(os.path.splitext(frame)[1])
-            frame = cv2.imread(frame)
+            np_frame = cv2.imread(frame)
+        else:
+            np_frame = frame
+        assert isinstance(np_frame, np.ndarray)
         if self.h is None:
-            self.h, self.w = frame.shape[:2]
+            self.h, self.w = np_frame.shape[:2]
         for painter in self.painters:
-            frame = painter(frame, outputs, idx)
-        frame = cv2.resize(frame, (self.w, self.h))
+            np_frame = painter(np_frame, outputs, idx)
+        np_frame = cv2.resize(np_frame, (self.w, self.h))
         for writer in self.writers:
-            frame = writer(frame, outputs, idx)
-        return frame
+            np_frame = writer(np_frame, outputs, idx)
+        return np_frame
 
     def __call__(
         self,
@@ -134,7 +137,8 @@ class Visualizer:
                 source_ids.append(int(re.search(pattern, filename).group()))
                 source_names.append(os.path.join(source_name, filename))
 
-            iterator = zip(track_iter_progress(sorted(zip(source_ids, source_names), key=lambda x: x[0]), len(source_ids)), result)
+            sources = [s[1] for s in sorted(zip(source_ids, source_names), key=lambda x: x[0])]
+            iterator = enumerate(zip(track_iter_progress((sources, len(source_ids))), result))
             fps = 30
         else:
             video_reader = VideoReader(source_path)
@@ -184,6 +188,6 @@ class Visualizer:
             print_log("Attempted to render empty file(s).", logger="current", level=WARNING)
 
     def _write_to_folder(self, sink_folder: str, iterator: Iterator):
-        for (idx, frame_name), outputs in iterator:
+        for idx, (frame_name, outputs) in iterator:
             frame = self._process_frame(frame_name, outputs, idx)
             cv2.imwrite(os.path.join(sink_folder, os.path.basename(frame_name)), frame)
