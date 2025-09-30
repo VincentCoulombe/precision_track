@@ -23,7 +23,7 @@ from mmengine.utils import apply_to, digit_version, get_git_hash
 from mmengine.visualization import Visualizer
 from mmengine.dist import master_only
 from mmengine.optim import OptimWrapper, build_optim_wrapper
-from mmengine.runner.checkpoint import _load_checkpoint, weights_to_cpu, save_checkpoint
+from mmengine.runner.checkpoint import weights_to_cpu, save_checkpoint
 from mmengine.fileio import FileClient, join_path
 from mmengine.runner.activation_checkpointing import turn_on_activation_checkpointing
 from mmengine.model.efficient_conv_bn_eval import turn_on_efficient_conv_bn_eval
@@ -320,6 +320,9 @@ def setup_multi_processes(cfg):
 
 @RUNNERS.register_module()
 class TrackingRunner(SingleRunner):
+    DETECTOR_CKPT_NAME = "detector.pth"
+    MODEL_CKPT_NAME = "model.pth"
+
     def __init__(self, cfg: Union[str, Config], launcher: str, mode: str = "test"):
 
         model_config = cfg.get("model")
@@ -330,73 +333,36 @@ class TrackingRunner(SingleRunner):
 
         super().__init__(cfg, launcher, mode)
 
+        if self._resume:
+            assert os.path.isdir(
+                self._load_from
+            ), f"The TrackingRunner expects the load_from argument to be a directory containing the {self.DETECTOR_CKPT_NAME} and {self.MODEL_CKPT_NAME} checkpoints."
+
         self.detector = MODELS.build(detector_config)
         self.detector = self.wrap_model(self.cfg.get("model_wrapper_cfg"), self.detector)
 
         self.det_optim_wrapper = None
         self.detector_param_schedulers = None
-
         self.one_stage = False
-        training_cfg = cfg.get("training_cfg", {})
-        self.training_mode = str(training_cfg.get("mode", "two-stage"))
-        self.train_frames = training_cfg.get("train_frames", 0)
 
-        if "one-stage" in self.training_mode.lower():
-            self.one_stage = True
-            self.det_optim_wrapper = cfg.get("det_optim_wrapper")
-            assert isinstance(self.det_optim_wrapper, dict), "One-stage training requires an optimizer for the detector."
+    def load_detector_checkpoint(
+        self, filename: str, map_location: Union[str, Callable] = "cpu", strict: bool = False, revise_keys: list = [(r"^module.", "")]
+    ):
 
-            detector_param_scheduler = cfg.get("detector_param_scheduler")
-            self._check_scheduler_cfg(detector_param_scheduler)
-            self.detector_param_schedulers = detector_param_scheduler
+        checkpoint = CheckpointLoader.load_checkpoint(filename, map_location)
 
-    def _load_checkpoint_to_model(self, model, checkpoint, type_, strict=False, logger=None, revise_keys=[(r"^module\.", "")]):
-
-        # get state_dict from checkpoint
-        if "state_dict" in checkpoint:
-            state_dict = checkpoint["state_dict"].get(type_)
-        else:
-            state_dict = checkpoint.get(type_)
-
-        if type_ is None:
-            self.logger.warn(
-                f"{type_} is not saved in the provided checkpoint, will continue without loading it... This might not impact performances if the checkpoint is loaded in the model's init configuration."
-            )
-            return checkpoint
-
-        # strip prefix of state_dict
-        metadata = getattr(state_dict, "_metadata", OrderedDict())
-        for p, r in revise_keys:
-            state_dict = OrderedDict({re.sub(p, r, k): v for k, v in state_dict.items()})
-        # Keep metadata in state_dict
-        state_dict._metadata = metadata
-
-        # load state_dict
-        load_state_dict(model, state_dict, strict, logger)
-        return checkpoint
-
-    def load_checkpoint(self, filename: str, map_location: Union[str, Callable] = "cpu", strict: bool = False, revise_keys: list = [(r"^module.", "")]):
-
-        checkpoint = _load_checkpoint(filename, map_location=map_location)
-
-        # Add comments to describe the usage of `after_load_ckpt`
-        self.call_hook("after_load_checkpoint", checkpoint=checkpoint)
-
-        if is_model_wrapper(self.model):
-            model = self.model.module
-        else:
-            model = self.model
-        checkpoint = self._load_checkpoint_to_model(model, "model", checkpoint, strict, revise_keys=revise_keys)
+        self.call_hook("after_load_detector_checkpoint", checkpoint=checkpoint)
 
         if is_model_wrapper(self.detector):
-            detector = self.detector.module
+            model = self.detector.module
         else:
-            detector = self.detector
-        checkpoint = self._load_checkpoint_to_model(detector, "detector", checkpoint, strict, revise_keys=revise_keys)
+            model = self.detector
+
+        checkpoint = load_checkpoint_to_model(model, checkpoint, strict, revise_keys=revise_keys)
 
         self._has_loaded = True
 
-        self.logger.info(f"Load checkpoint from {filename}")
+        self.logger.info(f"Load detector checkpoint from {filename}")
 
         return checkpoint
 
@@ -405,31 +371,62 @@ class TrackingRunner(SingleRunner):
     ) -> None:
         if map_location == "default":
             device = get_device()
-            checkpoint = self.load_checkpoint(filename, map_location=device)
+            detector_checkpoint = self.load_detector_checkpoint(os.path.join(filename, self.DETECTOR_CKPT_NAME), map_location=device)
         else:
-            checkpoint = self.load_checkpoint(filename, map_location=map_location)
+            detector_checkpoint = self.load_detector_checkpoint(os.path.join(filename, self.DETECTOR_CKPT_NAME), map_location=map_location)
 
-        if "det_optim_wrapper" in checkpoint and resume_optimizer:
+        if "det_optim_wrapper" in detector_checkpoint and resume_optimizer:
             self.det_optim_wrapper = self.build_optim_wrapper(self.det_optim_wrapper)
-            self.det_optim_wrapper.load_state_dict(checkpoint["det_optim_wrapper"])  # type: ignore
+            self.det_optim_wrapper.load_state_dict(detector_checkpoint["det_optim_wrapper"])  # type: ignore
 
         # resume param scheduler
         if resume_param_scheduler and self.detector_param_schedulers is None:
             self.logger.warning("`resume_param_scheduler` is True but `self.detector_param_schedulers` " "is None, so skip resuming parameter schedulers")
             resume_param_scheduler = False
-        if "detector_param_schedulers" in checkpoint and resume_param_scheduler:
+        if "detector_param_schedulers" in detector_checkpoint and resume_param_scheduler:
             self.detector_param_schedulers = self.build_param_scheduler(  # type: ignore
                 self.detector_param_schedulers
             )  # type: ignore
             if isinstance(self.detector_param_schedulers, dict):
                 for name, schedulers in self.detector_param_schedulers.items():
-                    for scheduler, ckpt_scheduler in zip(schedulers, checkpoint["detector_param_schedulers"][name]):
+                    for scheduler, ckpt_scheduler in zip(schedulers, detector_checkpoint["detector_param_schedulers"][name]):
                         scheduler.load_state_dict(ckpt_scheduler)
             else:
-                for scheduler, ckpt_scheduler in zip(self.detector_param_schedulers, checkpoint["detector_param_schedulers"]):  # type: ignore
+                for scheduler, ckpt_scheduler in zip(self.detector_param_schedulers, detector_checkpoint["detector_param_schedulers"]):  # type: ignore
                     scheduler.load_state_dict(ckpt_scheduler)
 
-        super().resume(filename=filename, resume_optimizer=resume_optimizer, resume_param_scheduler=resume_param_scheduler, map_location=map_location)
+        super().resume(
+            filename=os.path.join(filename, self.MODEL_CKPT_NAME),
+            resume_optimizer=resume_optimizer,
+            resume_param_scheduler=resume_param_scheduler,
+            map_location=map_location,
+        )
+
+    @staticmethod
+    def save_model_checkpoint(checkpoint: dict, model: nn.Module, optim_wrapper: OptimWrapper, param_schedulers: Union[dict, list]) -> dict:
+        if is_model_wrapper(model):
+            model = model.module
+
+        checkpoint["state_dict"] = weights_to_cpu(model.state_dict())
+
+        # save optimizer state dict to checkpoint
+        if isinstance(optim_wrapper, OptimWrapper):
+            checkpoint["optimizer"] = apply_to(optim_wrapper.state_dict(), lambda x: hasattr(x, "cpu"), lambda x: x.cpu())
+
+        # save param scheduler state dict
+        if isinstance(param_schedulers, dict):
+            checkpoint["param_schedulers"] = dict()
+            for name, schedulers in param_schedulers.items():
+                checkpoint["param_schedulers"][name] = []
+                for scheduler in schedulers:
+                    state_dict = scheduler.state_dict()
+                    checkpoint["param_schedulers"][name].append(state_dict)
+        else:
+            checkpoint["param_schedulers"] = []
+            for scheduler in param_schedulers:  # type: ignore
+                state_dict = scheduler.state_dict()  # type: ignore
+                checkpoint["param_schedulers"].append(state_dict)
+        return checkpoint
 
     @master_only
     def save_checkpoint(
@@ -443,34 +440,6 @@ class TrackingRunner(SingleRunner):
         by_epoch: bool = True,
         backend_args: Optional[dict] = None,
     ):
-        def save_optim(checkpoint: dict, save_optimizer: bool, save_param_scheduler: bool, optim_wrapper: str, param_scheduler: str):
-            # save optimizer state dict to checkpoint
-            if save_optimizer:
-                optim_wrapper_attr = getattr(self, optim_wrapper)
-                if isinstance(optim_wrapper_attr, OptimWrapper):
-                    checkpoint["optim_wrapper"] = apply_to(optim_wrapper_attr.state_dict(), lambda x: hasattr(x, "cpu"), lambda x: x.cpu())
-                else:
-                    raise TypeError("optim_wrapper should be an `OptimWrapper` " "or `OptimWrapperDict` instance, but got " f"{optim_wrapper_attr}")
-
-            # save param scheduler state dict
-            param_scheduler_attr = getattr(self, param_scheduler)
-            if save_param_scheduler and param_scheduler_attr is None:
-                self.logger.warning("`save_param_scheduler` is True but `param_scheduler_attr` " "is None, so skip saving parameter schedulers")
-                save_param_scheduler = False
-            if save_param_scheduler:
-                if isinstance(param_scheduler_attr, dict):
-                    checkpoint["param_scheduler"] = dict()
-                    for name, schedulers in param_scheduler_attr.items():
-                        checkpoint["param_scheduler"][name] = []
-                        for scheduler in schedulers:
-                            state_dict = scheduler.state_dict()
-                            checkpoint["param_scheduler"][name].append(state_dict)
-                else:
-                    checkpoint["param_scheduler"] = []
-                    for scheduler in param_scheduler_attr:  # type: ignore
-                        state_dict = scheduler.state_dict()  # type: ignore
-                        checkpoint["param_scheduler"].append(state_dict)
-
         if meta is None:
             meta = {}
         elif not isinstance(meta, dict):
@@ -508,30 +477,18 @@ class TrackingRunner(SingleRunner):
         if hasattr(self.train_dataloader.dataset, "metainfo"):
             meta.update(dataset_meta=self.train_dataloader.dataset.metainfo)
 
-        if is_model_wrapper(self.model):
-            model = self.model.module
-        else:
-            model = self.model
-
-        if is_model_wrapper(self.detector):
-            detector = self.detector.module
-        else:
-            detector = self.detector
-
-        state_dict = {"model": weights_to_cpu(model.state_dict()), "detector": weights_to_cpu(detector.state_dict())}
-
         checkpoint = {
             "meta": meta,
-            "state_dict": state_dict,
             "message_hub": apply_to(self.message_hub.state_dict(), lambda x: hasattr(x, "cpu"), lambda x: x.cpu()),
         }
-        # save optimizer state dict to checkpoint
-        save_optim(checkpoint, save_optimizer, save_param_scheduler, "optim_wrapper", "param_schedulers")
-        if self.one_stage:
-            save_optim(checkpoint, save_optimizer, save_param_scheduler, "det_optim_wrapper", "detector_param_schedulers")
+
+        model_checkpoint = self.save_model_checkpoint(checkpoint, self.model, self.optim_wrapper, self.param_schedulers)
+        detector_checkpoint = self.save_model_checkpoint(copy.deepcopy(checkpoint), self.detector, self.det_optim_wrapper, self.detector_param_schedulers)
 
         self.call_hook("before_save_checkpoint", checkpoint=checkpoint)
-        save_checkpoint(checkpoint, filepath, file_client_args=file_client_args, backend_args=backend_args)
+
+        save_checkpoint(model_checkpoint, os.path.join(filepath, self.MODEL_CKPT_NAME), file_client_args=file_client_args, backend_args=backend_args)
+        save_checkpoint(detector_checkpoint, os.path.join(filepath, self.DETECTOR_CKPT_NAME), file_client_args=file_client_args, backend_args=backend_args)
 
     def train(self) -> nn.Module:
         """Launch training.
@@ -558,12 +515,21 @@ class TrackingRunner(SingleRunner):
 
         self._train_loop = self.build_train_loop(self._train_loop)  # type: ignore
 
-        # `build_optimizer` should be called before `build_param_scheduler`
-        #  because the latter depends on the former
+        training_cfg = self.cfg.get("training_cfg", {})
+        self.training_mode = str(training_cfg.get("mode", "two-stage"))
+        self.train_frames = training_cfg.get("train_frames", 0)
+
+        if "one-stage" in self.training_mode.lower():
+            self.one_stage = True
+            self.det_optim_wrapper = self.cfg.get("det_optim_wrapper")
+            assert isinstance(self.det_optim_wrapper, dict), "One-stage training requires an optimizer for the detector."
+            self.det_optim_wrapper = build_optim_wrapper(self.detector, self.det_optim_wrapper)
+
+            detector_param_scheduler = self.cfg.get("detector_param_scheduler")
+            self._check_scheduler_cfg(detector_param_scheduler)
+            self.detector_param_schedulers = detector_param_scheduler
 
         self.optim_wrapper = self.build_optim_wrapper(self.optim_wrapper)
-        if self.one_stage:
-            self.det_optim_wrapper = build_optim_wrapper(self.detector, self.det_optim_wrapper)
 
         # Automatically scaling lr by linear scaling rule
         self.scale_lr(self.optim_wrapper, self.auto_scale_lr)
@@ -585,6 +551,14 @@ class TrackingRunner(SingleRunner):
 
         # initialize the model weights
         self._init_model_weights()
+
+        detector_ckpt = os.path.join(self._load_from, self.DETECTOR_CKPT_NAME)
+        if not os.path.isfile(detector_ckpt):
+            self.logger.warn(
+                f"{detector_ckpt} is not a valid path for the detector's checkpoint. About to start a tracking training run without a detector checkpoint..."
+            )
+        else:
+            self.load_detector_checkpoint(detector_ckpt)
 
         # try to enable activation_checkpointing feature
         modules = self.cfg.get("activation_checkpointing", None)

@@ -23,6 +23,7 @@ from .postprocessing.filtering import LowScoresFiltering, NearnessBasedActionFil
 from .postprocessing.nms import NMSPostProcessor
 from .postprocessing.refinement import KeypointBasedActionRefinement
 from .postprocessing.steps import ActionPostProcessingSteps, PostProcessingSteps
+from .postprocessing.base import BasePostProcessor, BaseActionPostProcessor
 from .preprocessing.action_recognition_preprocessor import ActionRecognitionPreprocessor
 from .preprocessing.inference_preprocessor import InferencePreprocessor
 from .preprocessing.training_preprocessor import BatchSyncRandomResize, PoseDataPreprocessor
@@ -81,4 +82,6 @@ __all__ = [
     "MART",
     "YOLOXPAFPN",
     "ActionRecognitionPreprocessor",
+    "BasePostProcessor",
+    "BaseActionPostProcessor",
 ]

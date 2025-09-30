@@ -554,6 +554,7 @@ def load_checkpoint(model, filename, map_location=None, strict=False, logger=Non
 
 
 def load_checkpoint_to_model(model, checkpoint, strict=False, logger=None, revise_keys=[(r"^module\.", "")]):
+    assert isinstance(checkpoint, dict)
 
     # get state_dict from checkpoint
     if "state_dict" in checkpoint:

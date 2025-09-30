@@ -276,9 +276,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
             gt_instance_labels["action_labels"].append(random_seq["action_label"].reshape(-1, 1))
             gt_instances["actions"].append(random_seq["action"].reshape(-1, 1))
-            cxcywh = reformat(random_seq["bbox"], "xyxy", "cxcywh")
-            gt_instances["bboxes"].append(cxcywh)
-            gt_instances["areas"].append(cxcywh[:, 2] * cxcywh[:, 3])
+            gt_instances["bboxes"].append(random_seq["bbox"])
+            x1, y1, x2, y2 = random_seq["bbox"].T
+            assert np.all(x2 > x1) and np.all(y2 > y1)
+            gt_instances["areas"].append(np.clip((x2 - x1) * (y2 - y1) * 0.53, a_min=1.0, a_max=None))
             gt_instances["scores"].append(random_seq["bbox_score"])
             gt_instances["keypoints"].append(random_seq["keypoints"])
             gt_instances["keypoints_visible"].append(random_seq["keypoints_visible"])
