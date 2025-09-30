@@ -1,7 +1,8 @@
 import argparse
 import os
 
-from precision_track import Runner
+from mmengine.config import Config
+from precision_track.apis import SingleRunner, TrackingRunner
 
 if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:
     import torch._dynamo
@@ -22,7 +23,14 @@ def parse_args():
 
 
 def main(args):
-    runner = Runner(args.config, args.launcher, mode="train")
+    cfg = Config.fromfile(args.config)
+    runner = cfg.pop("runner", "SingleRunner")
+    if runner == "SingleRunner":
+        runner = SingleRunner(cfg=cfg, launcher=args.launcher, mode="train")
+    elif runner == "TrackingRunner":
+        runner = TrackingRunner(cfg=cfg, launcher=args.launcher, mode="train")
+    else:
+        raise ValueError(f"{runner} not supported.")
     runner()
 
 

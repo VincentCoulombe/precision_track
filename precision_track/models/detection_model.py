@@ -78,6 +78,13 @@ class DetectionModel(BaseModel):
                 layer.switch_to_deploy(self.test_cfg)
 
     @property
+    def device(self) -> bool:
+        if self.data_preprocessor is None:
+            return None
+        else:
+            return self.data_preprocessor.device
+
+    @property
     def with_neck(self) -> bool:
         """bool: whether the pose estimator has a neck."""
         return hasattr(self, "neck") and self.neck is not None

@@ -33,13 +33,7 @@ class SequenceRandomFlip(RandomFlip, BaseSequenceTransform):
         results["flip_direction"] = self.cur_dir
         results["flip"] = False if self.cur_dir is None else True
 
-        out = super().transform(results)
-        if self.cur_dir == None:
-            assert out["flip"] == False
-        else:
-            assert out["flip"] == True
-        return out
-        # return super().transform(results)
+        return super().transform(results)
 
 
 @TRANSFORMS.register_module()

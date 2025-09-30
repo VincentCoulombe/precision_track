@@ -276,7 +276,9 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
             gt_instance_labels["action_labels"].append(random_seq["action_label"].reshape(-1, 1))
             gt_instances["actions"].append(random_seq["action"].reshape(-1, 1))
-            gt_instances["bboxes"].append(reformat(random_seq["bbox"], "xyxy", "cxcywh"))
+            cxcywh = reformat(random_seq["bbox"], "xyxy", "cxcywh")
+            gt_instances["bboxes"].append(cxcywh)
+            gt_instances["areas"].append(cxcywh[:, 2] * cxcywh[:, 3])
             gt_instances["scores"].append(random_seq["bbox_score"])
             gt_instances["keypoints"].append(random_seq["keypoints"])
             gt_instances["keypoints_visible"].append(random_seq["keypoints_visible"])
@@ -293,7 +295,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
         data_sample.gt_instance_labels = inst_gt_instance_labels
         data_sample.gt_instances = inst_gt_instances
 
-        self.save_sequence(random_seq_idx, inputs, gt_instances)  # TODO externalize this hack
+        # self.save_sequence(random_seq_idx, inputs, gt_instances)  # TODO externalize this hack
 
         return dict(inputs=image_to_tensor(inputs), data_samples=data_sample)
 

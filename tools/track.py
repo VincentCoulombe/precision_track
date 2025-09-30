@@ -59,4 +59,4 @@ if __name__ == "__main__":
     # main(parse_args())
     from addict import Dict
 
-    main(Dict({"video": "../assets/20mice_sanity_check.avi"}))
+    main(Dict({"video": "/home/vincent/Downloads//MONKEY_TESTING.mp4"}))
