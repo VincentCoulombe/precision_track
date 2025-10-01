@@ -77,7 +77,7 @@ nvidia_container_toolkit_missing(){
 docker_supports_gpus() { ${DOCKER_BIN} run --help | grep -q -- '--gpus'; }
 
 check_docker_gpu() {
-  if ! ${DOCKER_BIN} run --rm --gpus all --pull=never "$GPU_CHECK_IMAGE" nvidia-smi >/dev/null 2>&1; then
+  if ! ${DOCKER_BIN} run --rm --gpus all "$GPU_CHECK_IMAGE" nvidia-smi >/dev/null 2>&1; then
     nvidia_container_toolkit_missing
     return 1
   fi
