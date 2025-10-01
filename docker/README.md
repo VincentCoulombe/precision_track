@@ -12,11 +12,14 @@
   ```
 
 - **Add user to the Docker group:**
+
   ```bash
   sudo groupadd docker        # may already exist
   sudo usermod -aG docker $USER
   newgrp docker               # apply group change immediately
   ```
+
+- **Restart your shell**
 
 ### 2) Build your Docker image (one time)
 
@@ -45,10 +48,10 @@ sudo chmod +x ./docker/building_image.sh
   - **Examples:**
 
   ```bash
-  sudo ./docker/building_image.sh # Auto-detect default
-  sudo ./docker/building_image.sh --cuda
-  sudo ./docker/building_image.sh --cpu --skip-tests
-  sudo ./docker/building_image.sh --both
+  bash ./docker/building_image.sh # Auto-detect default
+  bash ./docker/building_image.sh --cuda
+  bash ./docker/building_image.sh --cpu --skip-tests
+  bash ./docker/building_image.sh --both
   ```
 
 ### 3) Launch your development container (each session)
@@ -87,9 +90,9 @@ sudo
   - **Examples:**
 
   ```bash
-  sudo ./docker/launching_container.sh # Auto-detect default
-  sudo ./docker/launching_container.sh --cuda
-  sudo ./docker/launching_container.sh --cpu --update
+  bash ./docker/launching_container.sh # Auto-detect default
+  bash ./docker/launching_container.sh --cuda
+  bash ./docker/launching_container.sh --cpu --update
   ```
 
   - **Notes:**
