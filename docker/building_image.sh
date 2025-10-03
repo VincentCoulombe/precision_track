@@ -1,4 +1,7 @@
-source ./utils.sh
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$(cd $(dirname "${BASH_SOURCE[0]}") && pwd)"
+source "$SCRIPT_DIR/utils.sh"
 
 main() {
   check_system || exit 1
@@ -38,10 +41,10 @@ main() {
       ;;
     cuda)
       info "CUDA build selected."
-      if ! docker_supports_gpus; then
-        nvidia_container_toolkit_missing
-        exit 1
-      fi
+      # if ! docker_supports_gpus; then
+      #   nvidia_container_toolkit_missing
+      #   exit 1
+      # fi
       check_docker_gpu || exit 1
       build_image "${CUDA_DOCKERFILE}" "${TAG_CUDA}"
       [[ "$run_tests" == "yes" ]] && run_pytest "${TAG_CUDA}"
@@ -51,14 +54,14 @@ main() {
       build_image "${CPU_DOCKERFILE}" "${TAG_CPU}"
       [[ "$run_tests" == "yes" ]] && run_pytest "${TAG_CPU}"
 
-      if docker_supports_gpus; then
-        check_docker_gpu || exit 1
-        build_image "${CUDA_DOCKERFILE}" "${TAG_CUDA}"
-        [[ "$run_tests" == "yes" ]] && run_pytest "${TAG_CUDA}"
-      else
-        nvidia_container_toolkit_missing
-        exit 1
-      fi
+      # if docker_supports_gpus; then
+      check_docker_gpu || exit 1
+      build_image "${CUDA_DOCKERFILE}" "${TAG_CUDA}"
+      [[ "$run_tests" == "yes" ]] && run_pytest "${TAG_CUDA}"
+      # else
+      #   nvidia_container_toolkit_missing
+      #   exit 1
+      # fi
       ;;
   esac
 
