@@ -213,9 +213,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
         running_idx = random_seq_idx
         inputs = []
-        data_sample = PoseDataSample()
-        data_sample.action_label_counter = self.action_label_counter
-        data_sample.seq_id = random_seq_idx
+        metainfo = dict()
 
         gt_instance_labels = defaultdict(list)
         gt_instances = defaultdict(list)
@@ -272,6 +270,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
             random_seq["img_path"] = image_path
 
             transformed_random_seq = self.pipeline(random_seq)
+            metainfo["input_size"] = transformed_random_seq["input_size"]
+            metainfo["input_scale"] = transformed_random_seq["input_scale"]
+            metainfo["input_center"] = transformed_random_seq["input_center"]
+
             inputs.append(transformed_random_seq.pop("img"))
 
             gt_instance_labels["action_labels"].append(random_seq["action_label"].reshape(-1, 1))
@@ -293,6 +295,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
         inst_gt_instances = InstanceData()
         for k, v in gt_instances.items():
             inst_gt_instances.set_data({k: torch.tensor(np.concatenate(v))})
+
+        data_sample = PoseDataSample(metainfo=metainfo)
+        data_sample.action_label_counter = self.action_label_counter
+        data_sample.seq_id = random_seq_idx
         data_sample.gt_instance_labels = inst_gt_instance_labels
         data_sample.gt_instances = inst_gt_instances
 

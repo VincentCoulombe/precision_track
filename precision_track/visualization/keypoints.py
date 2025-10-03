@@ -114,6 +114,8 @@ class VertexAnnotator(sv.VertexAnnotator):
         if len(key_points) == 0:
             return scene
 
+        H, W, _ = scene.shape
+
         for i, xy in enumerate(key_points.xy):
             color = resolve_color(
                 color=self.color,
@@ -128,7 +130,7 @@ class VertexAnnotator(sv.VertexAnnotator):
                     continue
                 cv2.circle(
                     img=scene,
-                    center=(int(x), int(y)),
+                    center=(np.clip(int(x), 0, W), np.clip(int(y), 0, H)),
                     radius=self.radius,
                     color=color.as_bgr(),
                     thickness=-1,
@@ -155,6 +157,8 @@ class EdgeAnnotator(sv.EdgeAnnotator):
         if len(key_points) == 0:
             return scene
 
+        H, W, _ = scene.shape
+
         for i, xy in enumerate(key_points.xy):
             color = resolve_color(
                 color=self.color,
@@ -173,8 +177,8 @@ class EdgeAnnotator(sv.EdgeAnnotator):
 
                 cv2.line(
                     img=scene,
-                    pt1=(int(xy_a[0]), int(xy_a[1])),
-                    pt2=(int(xy_b[0]), int(xy_b[1])),
+                    pt1=(int(np.clip(xy_a[0], 0, W)), int(np.clip(xy_a[1], 0, H))),
+                    pt2=(int(np.clip(xy_b[0], 0, W)), int(np.clip(xy_b[1], 0, H))),
                     color=color.as_bgr(),
                     thickness=self.thickness,
                 )

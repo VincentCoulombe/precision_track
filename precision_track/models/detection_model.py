@@ -206,13 +206,12 @@ class DetectionModel(BaseModel):
                 data_samples,
                 train_cfg=self.train_cfg,
                 return_features=True,
+                return_preds=return_preds,
                 *args,
                 **kwargs,
             )
             if val_step or return_preds:
                 losses["detections"] = head_feats
-            if return_preds:
-                losses["feature_maps"] = feats
             if self.with_feature_extraction:
                 loss_feat, feats = self.feature_extraction_head.loss(
                     detection_head_features=head_feats,

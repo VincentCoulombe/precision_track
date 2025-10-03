@@ -8,7 +8,7 @@
 
 
 from abc import ABCMeta, abstractmethod
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import numpy as np
 import torch
@@ -518,3 +518,26 @@ class ImageShape(InputShape):
         for arg_ in [n_channels, width, height]:
             assert 0 < arg_
         self.shape = (n_channels, width, height)
+
+
+def unflatten_predictions(flat_preds: torch.Tensor, shapes: List[Tuple[int, int]]):
+    """
+    Reconstructs original list of prediction tensors from the flattened tensor.
+
+    Args:
+        flat_preds: Tensor of shape (N, Σ(H*W), C).
+        shapes: List of (H, W) for each original feature map.
+    """
+    outputs = []
+    N = flat_preds.shape[0]
+    C = flat_preds.shape[-1]
+
+    idx = 0
+    for H, W in shapes:
+        numel = H * W
+        chunk = flat_preds[:, idx : idx + numel, :]  # (N, H*W, C)
+        chunk = chunk.view(N, H, W, C).permute(0, 3, 1, 2)  # back to (N, C, H, W)
+        outputs.append(chunk)
+        idx += numel
+
+    return outputs

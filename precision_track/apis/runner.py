@@ -36,7 +36,7 @@ warnings.simplefilter("ignore", category=FutureWarning)
 
 
 @RUNNERS.register_module()
-class SingleRunner(MMENGINERunner):
+class PrecisionTrackRunner(MMENGINERunner):
 
     def __init__(self, cfg: Union[str, Config], launcher: str, mode: str = "test"):
         self.mode = mode
@@ -319,29 +319,29 @@ def setup_multi_processes(cfg):
 
 
 @RUNNERS.register_module()
-class TrackingRunner(SingleRunner):
+class SequenceRunner(PrecisionTrackRunner):
     DETECTOR_CKPT_NAME = "detector.pth"
     MODEL_CKPT_NAME = "model.pth"
 
     def __init__(self, cfg: Union[str, Config], launcher: str, mode: str = "test"):
 
         model_config = cfg.get("model")
-        assert isinstance(model_config, dict), "The TrackingRunner expects a model configuration."
+        assert isinstance(model_config, dict), "The SequenceRunner expects a model configuration."
 
         detector_config = cfg.get("detector")
-        assert isinstance(model_config, dict), "The TrackingRunner expects a detector configuration."
+        assert isinstance(model_config, dict), "The SequenceRunner expects a detector configuration."
 
         super().__init__(cfg, launcher, mode)
 
         if self._resume:
             assert os.path.isdir(
                 self._load_from
-            ), f"The TrackingRunner expects the load_from argument to be a directory containing the {self.DETECTOR_CKPT_NAME} and {self.MODEL_CKPT_NAME} checkpoints."
+            ), f"The SequenceRunner expects the load_from argument to be a directory containing the {self.DETECTOR_CKPT_NAME} and {self.MODEL_CKPT_NAME} checkpoints."
 
         self.detector = MODELS.build(detector_config)
         self.detector = self.wrap_model(self.cfg.get("model_wrapper_cfg"), self.detector)
 
-        self.det_optim_wrapper = None
+        self.det_optim_wrapper = None  # TODO setter param_groups à place!
         self.detector_param_schedulers = None
         self.one_stage = False
 

@@ -1,4 +1,5 @@
-from typing import Dict, Optional, List
+from typing import Optional, List
+from addict import Dict
 import torch
 
 from precision_track.utils import PoseDataSample, xyxy_cxcywh
@@ -25,10 +26,6 @@ def postprocess_one_stage_detections(
 
     formatted_outputs = []
     for i, data_sample in enumerate(data_samples):
-        input_size = data_sample.metainfo["input_size"]
-        input_center = data_sample.metainfo["input_center"]
-        input_scale = data_sample.metainfo["input_scale"]
-
         i_bboxes = bboxes[i]
         i_scores = scores[i]
         i_kpts = kpts[i]
@@ -43,6 +40,10 @@ def postprocess_one_stage_detections(
         i_scores = i_scores.flatten()
         i_kpt_vis = i_kpt_vis.sigmoid()
         i_labels = i_labels.flatten()
+
+        input_size = data_sample.metainfo["input_size"]
+        input_center = data_sample.metainfo["input_center"]
+        input_scale = data_sample.metainfo["input_scale"]
 
         scale = torch.tensor(input_scale, dtype=torch.float32, device=i_bboxes.device)
         rescale = scale / torch.tensor(input_size, dtype=torch.float32, device=i_bboxes.device)
@@ -66,8 +67,8 @@ def postprocess_one_stage_detections(
         pred_instances.priors = i_priors
 
         formatted_pred_instances = {
-            "ori_shape": data_sample.ori_shape,
-            "img_id": data_sample.img_id,
+            "ori_shape": getattr(data_sample, "ori_shape", None),
+            "img_id": getattr(data_sample, "img_id", None),
             "img_path": getattr(data_sample, "img_path", None),
             "id": getattr(data_sample, "id", None),
             "category_id": getattr(data_sample, "category_id", 1),

@@ -8,7 +8,7 @@
 
 
 from functools import partial
-from typing import Optional
+from typing import Optional, Sequence
 
 import torch
 import torch.nn as nn
@@ -403,3 +403,89 @@ class TripletLoss(nn.Module):
             return 0
         indices_tuple = self.miner(embeddings, y)
         return self.loss(embeddings, y, indices_tuple) * self.loss_weight
+
+
+@MODELS.register_module()
+class LDAMWithDRW(nn.Module):
+    """
+    LDAM loss (Cao et al., NeurIPS'19) with optional DRW (Deferred Re-Weighting) applied in forward.
+    - Pass cls_num_list and epoch at runtime to .forward(...)
+    - If use_drw=True and epoch >= drw_start_epoch, uses class-balanced weights
+      (effective number of samples; Cui et al., CVPR'19).
+    """
+
+    def __init__(
+        self,
+        max_m: float = 0.5,  # max margin
+        s: float = 30.0,  # scaling on logits
+        use_drw: bool = True,  # turn DRW on/off
+        drw_start_epoch: int = 0,  # start epoch for DRW (inclusive)
+        beta: float = 0.9999,  # CB weight beta
+        label_smoothing: float = 0.0,
+    ):
+        super().__init__()
+        self.max_m = float(max_m)
+        self.s = float(s)
+        self.use_drw = bool(use_drw)
+        self.drw_start_epoch = int(drw_start_epoch)
+        self.beta = float(beta)
+        self.label_smoothing = float(label_smoothing)
+
+        # small cache to avoid recomputing per class-counts
+        self.register_buffer("_cached_m_list", torch.tensor([]), persistent=False)
+        self.register_buffer("_cached_cb_weight", torch.tensor([]), persistent=False)
+        self._cached_counts_key = None  # (tuple(counts), device, dtype)
+
+    @torch.no_grad()
+    def _maybe_update_cache(self, cls_num_list: Sequence[int], device, dtype):
+        key = (tuple(map(int, cls_num_list)), device, dtype)
+        if key == self._cached_counts_key:
+            return
+
+        counts = torch.tensor(cls_num_list, device=device, dtype=torch.float32).clamp_min(1.0)
+
+        # LDAM margins: m_c ∝ 1 / sqrt(sqrt(n_c)), normalized to max_m
+        m_list = counts.sqrt().sqrt()  # (n_c)^(1/4)
+        m_list = 1.0 / m_list
+        m_list = m_list * (self.max_m / m_list.max())
+        self._cached_m_list = m_list.to(device=device, dtype=dtype)
+
+        # DRW weights: Class-Balanced weights via effective number
+        # w_c ∝ (1 - beta) / (1 - beta^{n_c}), normalized to mean=1
+        eff_num = 1.0 - torch.pow(torch.tensor(self.beta, device=device, dtype=torch.float32), counts)
+        cb_w = (1.0 - self.beta) / eff_num
+        cb_w = cb_w / cb_w.mean()  # normalize to mean 1 for stability
+        self._cached_cb_weight = cb_w.to(device=device, dtype=dtype)
+
+        self._cached_counts_key = key
+
+    def forward(
+        self, logits: torch.Tensor, target: torch.Tensor, *, cls_num_list: Optional[Sequence[int]] = None, epoch: Optional[int] = None  # [B, C]  # [B]
+    ) -> torch.Tensor:
+        if logits.ndim != 2:
+            raise ValueError(f"logits must be [B, C], got {tuple(logits.shape)}")
+        if target.ndim != 1:
+            raise ValueError(f"target must be [B], got {tuple(target.shape)}")
+
+        B, C = logits.shape
+        device, dtype = logits.device, logits.dtype
+
+        if not cls_num_list:
+            return F.cross_entropy(logits, target, reduction="mean", label_smoothing=self.label_smoothing)
+
+        self._maybe_update_cache(cls_num_list, device, dtype)
+
+        # --- Build LDAM-adjusted logits (subtract margin on the GT logit only) ---
+        # gather per-sample margins
+        margins = self._cached_m_list.gather(0, target)  # [B]
+        # subtract margins on GT positions
+        adjusted = logits.clone()
+        adjusted[torch.arange(B, device=device), target] -= margins
+        adjusted = self.s * adjusted
+
+        # --- DRW weights ---
+        weight = None
+        if self.use_drw and (epoch is not None) and (epoch >= self.drw_start_epoch):
+            weight = self._cached_cb_weight  # [C]
+
+        return F.cross_entropy(adjusted, target, weight=weight, reduction="mean", label_smoothing=self.label_smoothing)

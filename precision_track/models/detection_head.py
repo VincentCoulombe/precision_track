@@ -216,6 +216,7 @@ class DetectionHead(BaseModule):
         batch_data_samples: Optional[List[PoseDataSample]],
         train_cfg: Config = {},
         return_features: Optional[bool] = False,
+        return_preds: Optional[bool] = False,
     ) -> dict:
         """Calculate losses from a batch of inputs and data samples.
 
@@ -308,6 +309,18 @@ class DetectionHead(BaseModule):
             kpt_vis_preds = vis_targets[0]
             cls_preds = cls_targets[0]
             feat_preds = cls_preds.new_zeros((0, self.feat_channels))
+
+        if return_preds:
+            return losses, (
+                flatten_cls_scores,
+                flatten_objectness,
+                flatten_bbox_decoded,
+                flatten_kpt_decoded,
+                flatten_kpt_vis,
+                flatten_priors_features,
+                flatten_priors[:, :2].view(1, -1, 2),
+                flatten_strides,
+            )
 
         if return_features:
             return losses, (
