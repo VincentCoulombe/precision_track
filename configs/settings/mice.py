@@ -31,7 +31,7 @@ num_epochs = 300
 num_epochs_pipeline1 = 280
 warmup_epochs = 5
 
-val_interval = 100
+val_interval = 10000
 
 training_anns_path = data_root + "annotations/train.json"
 training_imgs_path = data_root + "images/"

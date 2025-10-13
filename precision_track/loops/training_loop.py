@@ -1,6 +1,7 @@
 from typing import Sequence, Union, Dict, Optional, List, Tuple
 import itertools
 import torch
+from torch.optim.lr_scheduler import MultiStepLR
 from collections import OrderedDict, defaultdict
 from torch.utils.data import DataLoader
 from mmengine.runner import EpochBasedTrainLoop
@@ -42,6 +43,7 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
             val_interval,
             dynamic_intervals,
         )
+
         self._cls_num_list = None
 
     def run_iter(self, idx, data_batch: Sequence[dict]) -> None:
@@ -114,13 +116,19 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         if num_train_frames > 0:
             self.runner.detector.train()
             flatten_ds = list(itertools.chain.from_iterable(det_train_data_samples))
-            data = self.runner.detector.data_preprocessor(dict(inputs=train_frames, data_samples=flatten_ds), True)
-            out = self.runner.detector.loss(**data, return_preds=True)
-            det_train_outputs = out.pop("detections")
-            det_train_losses, log_vars = self.runner.detector.parse_losses(out)
+            with self.runner.optim_wrapper.optim_context(self.runner.detector):
+                data = self.runner.detector.data_preprocessor(dict(inputs=train_frames, data_samples=flatten_ds), True)
+                # TODO return pas feature maps tout suite (FPV Hack)
+                # out = self.runner.detector.loss(**data, return_preds=True)
+                out = self.runner.detector.loss(**data, return_preds=False)
+
+            det_train_outputs = out.pop("detections", None)
+            det_losses, det_log_vars = self.runner.detector.parse_losses(out)
+            det_log_vars.pop("loss", None)
         else:
             det_train_outputs = None
-            det_train_losses = None
+            det_losses = None
+            det_log_vars = dict()
 
         self.runner.detector.eval()
         with torch.inference_mode():
@@ -145,18 +153,18 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
             pred.append(det_pred_outputs[i])
 
         feature_maps = []
-        mlvl_features_pred = unflatten_predictions(det_pred_outputs[5], [(80, 80), (40, 40), (20, 20)])
-        if num_train_frames > 0:
-            mlvl_features_train = unflatten_predictions(det_train_outputs[5], [(80, 80), (40, 40), (20, 20)])
-        else:
-            mlvl_features_train = [] * len(mlvl_features_pred)
+        # mlvl_features_pred = unflatten_predictions(det_pred_outputs[5], [(80, 80), (40, 40), (20, 20)])
+        # if num_train_frames > 0:
+        #     mlvl_features_train = unflatten_predictions(det_train_outputs[5], [(80, 80), (40, 40), (20, 20)])
+        # else:
+        #     mlvl_features_train = [] * len(mlvl_features_pred)
 
-        for mlvl_f_t, mlvl_f_p, mlvl_s in zip(mlvl_features_train, mlvl_features_pred, [(80, 80), (40, 40), (20, 20)]):
-            if isinstance(mlvl_f_t, torch.Tensor):
-                mlvl_f = torch.cat((mlvl_f_t, mlvl_f_p))
-            else:
-                mlvl_f = mlvl_f_p
-            feature_maps.append(mlvl_f.view(B, T, -1, mlvl_s[0], mlvl_s[1])[:, go_back_frame_idxs, :, :])
+        # for mlvl_f_t, mlvl_f_p, mlvl_s in zip(mlvl_features_train, mlvl_features_pred, [(80, 80), (40, 40), (20, 20)]):
+        #     if isinstance(mlvl_f_t, torch.Tensor):
+        #         mlvl_f = torch.cat((mlvl_f_t, mlvl_f_p))
+        #     else:
+        #         mlvl_f = mlvl_f_p
+        #     feature_maps.append(mlvl_f.view(B, T, -1, mlvl_s[0], mlvl_s[1])[:, go_back_frame_idxs, :, :])
 
         priors = det_pred_outputs[-2]
         P = priors.shape[1]
@@ -214,8 +222,16 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         t3 = perf_counter()  # TODO TEMP
         print(f"it took: {t3-t2} seconds to postprocess the sequence")  # TODO TEMP
         print(f"it took: {t3-t0} seconds to process the sequence")  # TODO TEMP
-        outputs = self.runner.model.loss(**inputs, data_samples=splitted_seq_data_samples, cls_num_list=self._cls_num_list)
+        with self.runner.optim_wrapper.optim_context(self.runner.model):
+            outputs = self.runner.model.loss(**inputs, data_samples=splitted_seq_data_samples, cls_num_list=self._cls_num_list)
+        losses, log_vars = self.runner.model.parse_losses(outputs)
 
+        if isinstance(det_losses, torch.Tensor):
+            losses = losses + det_losses
+        outputs = log_vars | det_log_vars
+        outputs["loss"] = losses
+
+        self.runner.optim_wrapper.update_params(losses)
         self.runner.call_hook("after_train_iter", batch_idx=idx, data_batch=data_batch, outputs=outputs)
         self._iter += 1
 

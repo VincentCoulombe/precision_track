@@ -10,6 +10,7 @@ import re
 import time
 
 import cv2
+import torch
 import mmengine
 import torch.nn as nn
 import torch.multiprocessing as mp
@@ -17,7 +18,7 @@ from mmengine.config import Config
 from mmengine.hooks import Hook
 from mmengine.logging import print_log
 from mmengine.model import is_model_wrapper
-from mmengine.registry import LOOPS, VISUALIZERS, DefaultScope
+from mmengine.registry import OPTIMIZERS, OPTIM_WRAPPERS, LOOPS, VISUALIZERS, DefaultScope
 from mmengine.runner import Runner as MMENGINERunner
 from mmengine.utils import apply_to, digit_version, get_git_hash
 from mmengine.visualization import Visualizer
@@ -333,13 +334,13 @@ class SequenceRunner(PrecisionTrackRunner):
 
         super().__init__(cfg, launcher, mode)
 
+        self.detector = MODELS.build(detector_config)
+        self.detector = self.wrap_model(cfg.get("model_wrapper_cfg"), self.detector)
+
         if self._resume:
             assert os.path.isdir(
                 self._load_from
             ), f"The SequenceRunner expects the load_from argument to be a directory containing the {self.DETECTOR_CKPT_NAME} and {self.MODEL_CKPT_NAME} checkpoints."
-
-        self.detector = MODELS.build(detector_config)
-        self.detector = self.wrap_model(self.cfg.get("model_wrapper_cfg"), self.detector)
 
         self.det_optim_wrapper = None  # TODO setter param_groups à place!
         self.detector_param_schedulers = None
@@ -513,21 +514,19 @@ class SequenceRunner(PrecisionTrackRunner):
                 "initializing runner."
             )
 
-        self._train_loop = self.build_train_loop(self._train_loop)  # type: ignore
-
         training_cfg = self.cfg.get("training_cfg", {})
         self.training_mode = str(training_cfg.get("mode", "two-stage"))
         self.train_frames = training_cfg.get("train_frames", 0)
 
-        if "one-stage" in self.training_mode.lower():
-            self.one_stage = True
-            self.det_optim_wrapper = self.cfg.get("det_optim_wrapper")
-            assert isinstance(self.det_optim_wrapper, dict), "One-stage training requires an optimizer for the detector."
-            self.det_optim_wrapper = build_optim_wrapper(self.detector, self.det_optim_wrapper)
+        # if "one-stage" in self.training_mode.lower():
+        #     self.one_stage = True
+        #     self.det_optim_wrapper = self.cfg.get("det_optim_wrapper")
+        #     assert isinstance(self.det_optim_wrapper, dict), "One-stage training requires an optimizer for the detector."
+        #     self.det_optim_wrapper = build_optim_wrapper(self.detector, self.det_optim_wrapper)
 
-            detector_param_scheduler = self.cfg.get("detector_param_scheduler")
-            self._check_scheduler_cfg(detector_param_scheduler)
-            self.detector_param_schedulers = detector_param_scheduler
+        #     detector_param_scheduler = self.cfg.get("detector_param_scheduler")
+        #     self._check_scheduler_cfg(detector_param_scheduler)
+        #     self.detector_param_schedulers = detector_param_scheduler
 
         self.optim_wrapper = self.build_optim_wrapper(self.optim_wrapper)
 
@@ -543,6 +542,8 @@ class SequenceRunner(PrecisionTrackRunner):
             self.detector_param_schedulers = self.build_param_scheduler(  # type: ignore
                 self.detector_param_schedulers
             )  # type: ignore
+
+        self._train_loop = self.build_train_loop(self._train_loop)  # type: ignore
 
         if self._val_loop is not None:
             self._val_loop = self.build_val_loop(self._val_loop)  # type: ignore
@@ -579,10 +580,11 @@ class SequenceRunner(PrecisionTrackRunner):
         self.optim_wrapper.initialize_count_status(
             self.model, self._train_loop.iter, self._train_loop.max_iters  # type: ignore
         )  # type: ignore
-        if self.one_stage:
-            self.det_optim_wrapper.initialize_count_status(
-                self.detector, self._train_loop.iter, self._train_loop.max_iters  # type: ignore
-            )  # type: ignore
+
+        # if self.one_stage:
+        #     self.det_optim_wrapper.initialize_count_status(
+        #         self.detector, self._train_loop.iter, self._train_loop.max_iters  # type: ignore
+        #     )  # type: ignore
 
         # Maybe compile the model according to options in self.cfg.compile
         # This must be called **AFTER** model has been wrapped.
@@ -591,3 +593,40 @@ class SequenceRunner(PrecisionTrackRunner):
         model = self.train_loop.run()  # type: ignore
         self.call_hook("after_run")
         return model
+
+    def build_optim_wrapper(self, optim_wrapper_cfg: Dict) -> OptimWrapper:
+        detector_ow = build_optim_wrapper(self.detector, copy.deepcopy(optim_wrapper_cfg))
+        model_ow = build_optim_wrapper(self.model, copy.deepcopy(optim_wrapper_cfg))
+
+        det_opt = detector_ow.optimizer
+        base_opt = model_ow.optimizer
+
+        # 2) Cloner l’optimizer du modèle (pas la config)
+        merged_opt = copy.deepcopy(base_opt)
+
+        det_lr_scale = 0.5  # TODO From CFG
+
+        base_params = {id(p) for g in base_opt.param_groups for p in g["params"]}
+        det_params = {id(p) for g in det_opt.param_groups for p in g["params"]}
+        inter = base_params & det_params
+        assert not inter, f"Parameters are present in both the detector's and the model's optimizers (n={len(inter)})"
+
+        for g in det_opt.param_groups:
+            cfg = {k: v for k, v in g.items() if k != "params"}
+            if "lr" in cfg:
+                cfg["lr"] = cfg["lr"] * det_lr_scale
+            merged_opt.add_param_group({"params": g["params"], **cfg})
+
+        for p, st in det_opt.state.items():
+            merged_opt.state[p] = st
+
+        return OPTIM_WRAPPERS.build(
+            dict(
+                type=optim_wrapper_cfg.get("type", "OptimWrapper"),
+                dtype=optim_wrapper_cfg.get("dtype"),
+                loss_scale=optim_wrapper_cfg.get("loss_scale"),
+                optimizer=merged_opt,
+                accumulative_counts=optim_wrapper_cfg.get("accumulative_counts", 1),
+                clip_grad=optim_wrapper_cfg.get("clip_grad", None),
+            )
+        )
