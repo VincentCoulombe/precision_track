@@ -1,11 +1,11 @@
 import argparse
 import os
 
-from precision_track import Runner
+from precision_track import PrecisionTrackRunner
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a detector")
+    parser = argparse.ArgumentParser(description="Test a detector")
     parser.add_argument("config", help="Path to the desired testing config")
     parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
     parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
@@ -16,9 +16,12 @@ def parse_args():
 
 
 def main(args):
-    runner = Runner(args.config, args.launcher, mode="test")
+    runner = PrecisionTrackRunner(args.config, args.launcher, mode="test")
     runner()
 
 
 if __name__ == "__main__":
-    main(parse_args())
+    # main(parse_args())
+    from addict import Dict
+
+    main(Dict({"config": "../configs/tasks/testing_action_recognition.py", "launcher": "none"}))

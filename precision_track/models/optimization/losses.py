@@ -408,20 +408,18 @@ class TripletLoss(nn.Module):
 @MODELS.register_module()
 class LDAMWithDRW(nn.Module):
     """
-    LDAM loss (Cao et al., NeurIPS'19) with optional DRW (Deferred Re-Weighting) applied in forward.
-    - Pass cls_num_list and epoch at runtime to .forward(...)
-    - If use_drw=True and epoch >= drw_start_epoch, uses class-balanced weights
-      (effective number of samples; Cui et al., CVPR'19).
+    LDAM (Cao et al., NeurIPS'19) with optional DRW (Cui et al., CVPR'19),
     """
 
     def __init__(
         self,
-        max_m: float = 0.5,  # max margin
-        s: float = 30.0,  # scaling on logits
-        use_drw: bool = True,  # turn DRW on/off
-        drw_start_epoch: int = 0,  # start epoch for DRW (inclusive)
-        beta: float = 0.9999,  # CB weight beta
+        max_m: float = 0.5,
+        s: float = 30.0,
+        use_drw: bool = True,
+        drw_start_epoch: int = 0,
+        beta: float = 0.9999,
         label_smoothing: float = 0.0,
+        ignore_index: int = -100,
     ):
         super().__init__()
         self.max_m = float(max_m)
@@ -430,11 +428,11 @@ class LDAMWithDRW(nn.Module):
         self.drw_start_epoch = int(drw_start_epoch)
         self.beta = float(beta)
         self.label_smoothing = float(label_smoothing)
+        self.ignore_index = int(ignore_index)
 
-        # small cache to avoid recomputing per class-counts
         self.register_buffer("_cached_m_list", torch.tensor([]), persistent=False)
         self.register_buffer("_cached_cb_weight", torch.tensor([]), persistent=False)
-        self._cached_counts_key = None  # (tuple(counts), device, dtype)
+        self._cached_counts_key = None
 
     @torch.no_grad()
     def _maybe_update_cache(self, cls_num_list: Sequence[int], device, dtype):
@@ -444,23 +442,25 @@ class LDAMWithDRW(nn.Module):
 
         counts = torch.tensor(cls_num_list, device=device, dtype=torch.float32).clamp_min(1.0)
 
-        # LDAM margins: m_c ∝ 1 / sqrt(sqrt(n_c)), normalized to max_m
-        m_list = counts.sqrt().sqrt()  # (n_c)^(1/4)
-        m_list = 1.0 / m_list
+        m_list = 1.0 / counts.sqrt().sqrt()
         m_list = m_list * (self.max_m / m_list.max())
         self._cached_m_list = m_list.to(device=device, dtype=dtype)
 
-        # DRW weights: Class-Balanced weights via effective number
-        # w_c ∝ (1 - beta) / (1 - beta^{n_c}), normalized to mean=1
         eff_num = 1.0 - torch.pow(torch.tensor(self.beta, device=device, dtype=torch.float32), counts)
         cb_w = (1.0 - self.beta) / eff_num
-        cb_w = cb_w / cb_w.mean()  # normalize to mean 1 for stability
+        cb_w = cb_w / cb_w.mean()
         self._cached_cb_weight = cb_w.to(device=device, dtype=dtype)
 
         self._cached_counts_key = key
 
     def forward(
-        self, logits: torch.Tensor, target: torch.Tensor, *, cls_num_list: Optional[Sequence[int]] = None, epoch: Optional[int] = None  # [B, C]  # [B]
+        self,
+        logits: torch.Tensor,
+        target: torch.Tensor,
+        cls_num_list: Optional[Sequence[int]] = None,
+        epoch: Optional[int] = None,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
         if logits.ndim != 2:
             raise ValueError(f"logits must be [B, C], got {tuple(logits.shape)}")
@@ -471,21 +471,43 @@ class LDAMWithDRW(nn.Module):
         device, dtype = logits.device, logits.dtype
 
         if not cls_num_list:
-            return F.cross_entropy(logits, target, reduction="mean", label_smoothing=self.label_smoothing)
+            return F.cross_entropy(
+                logits,
+                target,
+                reduction="mean",
+                label_smoothing=self.label_smoothing,
+                ignore_index=self.ignore_index,
+            )
 
         self._maybe_update_cache(cls_num_list, device, dtype)
 
-        # --- Build LDAM-adjusted logits (subtract margin on the GT logit only) ---
-        # gather per-sample margins
-        margins = self._cached_m_list.gather(0, target)  # [B]
-        # subtract margins on GT positions
+        valid = target != self.ignore_index
+        if not torch.any(valid):
+            return logits.sum() * 0.0
+
+        t_valid = target[valid]
+        if not (t_valid.dtype == torch.long and t_valid.numel() > 0):
+            raise ValueError("target must be torch.long indices (with possible ignore_index).")
+        if t_valid.min() < 0 or t_valid.max() >= self._cached_m_list.numel():
+            raise ValueError("target out of range for number of classes.")
+
         adjusted = logits.clone()
-        adjusted[torch.arange(B, device=device), target] -= margins
+        margins = torch.zeros(B, device=device, dtype=dtype)
+        margins_valid = self._cached_m_list.gather(0, t_valid.to(torch.long))
+        margins[valid] = margins_valid
+        rows = torch.arange(B, device=device)[valid]
+        adjusted[rows, t_valid] -= margins_valid
         adjusted = self.s * adjusted
 
-        # --- DRW weights ---
         weight = None
         if self.use_drw and (epoch is not None) and (epoch >= self.drw_start_epoch):
-            weight = self._cached_cb_weight  # [C]
+            weight = self._cached_cb_weight
 
-        return F.cross_entropy(adjusted, target, weight=weight, reduction="mean", label_smoothing=self.label_smoothing)
+        return F.cross_entropy(
+            adjusted,
+            target,
+            weight=weight,
+            reduction="mean",
+            label_smoothing=self.label_smoothing,
+            ignore_index=self.ignore_index,
+        )

@@ -9,12 +9,12 @@ from precision_track.utils import get_device, kpts_to_poses, parse_pose_metainfo
 
 
 class ActionTube:
-    def __init__(self, block_size, embedding_dim, device=None, dtype=torch.float32):
+    def __init__(self, block_size, embedding_dim, device=None, dtype=torch.float32, null_value=0):
         self.T = block_size
         self.E = embedding_dim
         self.device = device
         self.dtype = dtype
-        self._buffer = torch.zeros((self.T, self.E), device=self.device, dtype=self.dtype)
+        self._buffer = torch.ones((self.T, self.E), device=self.device, dtype=self.dtype) * null_value
         self.n_filled = 0
 
     def append(self, x):

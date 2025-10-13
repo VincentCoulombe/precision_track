@@ -129,6 +129,33 @@ def image_to_tensor(img: Union[np.ndarray, Sequence[np.ndarray]]) -> torch.torch
     return tensor
 
 
+def tensor_to_image(t: Union[torch.Tensor, Sequence[torch.Tensor]]) -> Union[np.ndarray, List[np.ndarray]]:
+    if isinstance(t, torch.Tensor):
+        t = t.detach().cpu()
+
+        if t.ndim == 4:
+            return [tensor_to_image(t[i]) for i in range(t.shape[0])]
+
+        if t.ndim == 2:
+            img = t.numpy()
+            return np.ascontiguousarray(img)
+
+        if t.ndim != 3:
+            raise ValueError("Expected 3D (C,H,W) or 4D (N,C,H,W) tensor.")
+
+        img = t.permute(1, 2, 0).contiguous().numpy()
+
+        if img.shape[-1] == 1:
+            img = img[..., 0]
+
+        return np.ascontiguousarray(img)
+
+    # Sequence of tensors
+    # If you use mmcv/mmengine, you can replace this with `assert is_seq_of(t, torch.Tensor)`
+    assert isinstance(t, Sequence) and all(isinstance(_x, torch.Tensor) for _x in t)
+    return [tensor_to_image(_x) for _x in t]
+
+
 def keypoints_to_tensor(keypoints: Union[np.ndarray, Sequence[np.ndarray]]) -> torch.torch.Tensor:
     """Translate keypoints or sequence of keypoints to tensor. Multiple
     keypoints tensors will be stacked.

@@ -214,6 +214,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
         running_idx = random_seq_idx
         inputs = []
         metainfo = dict()
+        img_shape = None
 
         gt_instance_labels = defaultdict(list)
         gt_instances = defaultdict(list)
@@ -273,6 +274,9 @@ class OnlineRandomSequenceDataset(BaseDataset):
             metainfo["input_size"] = transformed_random_seq["input_size"]
             metainfo["input_scale"] = transformed_random_seq["input_scale"]
             metainfo["input_center"] = transformed_random_seq["input_center"]
+            metainfo["img_shape"] = transformed_random_seq["img_shape"]
+            if img_shape is None:
+                img_shape = transformed_random_seq["img_shape"]
 
             inputs.append(transformed_random_seq.pop("img"))
 
@@ -301,6 +305,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
         data_sample.seq_id = random_seq_idx
         data_sample.gt_instance_labels = inst_gt_instance_labels
         data_sample.gt_instances = inst_gt_instances
+        # data_sample.img_shape = img_shape
 
         # self.save_sequence(random_seq_idx, inputs, gt_instances)  # TODO externalize this hack
 
@@ -407,7 +412,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
         data_list = []
         for sequence_idx, kpts_idx, bboxes_idx, actions_idx in tqdm(prefix_map):
 
-            actions_valid = actions_idx and actions_idx >= 0
+            actions_valid = isinstance(actions_idx, int) and actions_idx >= 0
             if not actions_valid:
                 actions_idx = bboxes_idx
 
@@ -452,6 +457,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
         for action, a_count in self.action_counter.items():
             idx = self.action_to_label_map[action]
             self.action_label_counter[idx] = a_count
+        self.action_label_counter = self.action_label_counter.tolist()
         return data_list
 
 

@@ -27,6 +27,7 @@ from .postprocessing.base import BasePostProcessor, BaseActionPostProcessor
 from .preprocessing.action_recognition_preprocessor import ActionRecognitionPreprocessor
 from .preprocessing.inference_preprocessor import InferencePreprocessor
 from .preprocessing.training_preprocessor import BatchSyncRandomResize, PoseDataPreprocessor
+from .preprocessing.online import OnlinePreprocessor, FPVOnlinePreprocessor
 
 __all__ = [
     "RTMDetPoseHead",
@@ -84,4 +85,6 @@ __all__ = [
     "ActionRecognitionPreprocessor",
     "BasePostProcessor",
     "BaseActionPostProcessor",
+    "OnlinePreprocessor",
+    "FPVOnlinePreprocessor",
 ]

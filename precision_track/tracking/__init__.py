@@ -1,5 +1,5 @@
 from .byte_track import ByteTrack
-from .ground_truth import GroundTruth
+from .ground_truth import GroundTruth, OnlineGroundTruth
 from .motion.dynamic_kalman_filter import DynamicKalmanFilter
 from .motion.kalman_filter import KalmanFilter
 from .precision_track import PrecisionTrack
@@ -17,5 +17,6 @@ __all__ = [
     "PrecisionTrack",
     "SearchBasedStitching",
     "GroundTruth",
+    "OnlineGroundTruth",
     "PrecisionTrackReID",
 ]

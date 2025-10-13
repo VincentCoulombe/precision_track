@@ -7,10 +7,11 @@ import pandas as pd
 import torch
 from addict import Dict
 from mmengine import Config
-from mmengine.logging import MMLogger
+from mmengine.logging import MMLogger, print_log
+import logging
 
 from precision_track.registry import MODELS, TRACKING
-from precision_track.utils import iou_batch, linear_assignment, reformat
+from precision_track.utils import iou_batch, linear_assignment, reformat, calculate_pose_velocities, calculate_bbox_velocities
 
 from .base import BaseAssignationAlgorithm
 
@@ -295,3 +296,73 @@ class GroundTruth(BaseAssignationAlgorithm):
                     "representations": representations,
                 }
             )
+
+
+class OnlineGroundTruth:
+    def __init__(self, match_thr: Optional[float] = 0.65, falling_thr: Optional[int] = 5):
+        self.match_iou_thr = match_thr
+        self.matched_gts_ratio = 1.0
+        self.falling_streak = 0
+        self.falling_thr = int(falling_thr)
+
+    def _update_ratio(self, num_gts: int, num_matched_gts: int):
+        actual_ratio = self.matched_gts_ratio
+        self.matched_gts_ratio = 0.8 * self.matched_gts_ratio + 0.2 * (num_matched_gts / num_gts)
+        if self.matched_gts_ratio < actual_ratio:
+            self.falling_streak += 1
+        if self.falling_streak > self.falling_thr:
+            print_log(
+                f"The ratio of tracked grund truths has been falling for the past: {self.falling_streak} frames. It is now of : {self.matched_gts_ratio}.",
+                logger="current",
+                level=logging.WARNING,
+            )
+
+    def __call__(self, data_sample, previous_gt_instances):
+        gts = data_sample["gt_instances"]
+        gt_bboxes = reformat(gts.bboxes.detach().cpu().numpy(), "xyxy", "cxcywh")
+        gt_labels = gts.labels.detach().cpu().numpy()
+        num_gts = gt_labels.shape[0]
+
+        preds = data_sample.pop("pred_instances")
+        pred_bboxes = preds["bboxes"]
+        device = pred_bboxes.device
+        pred_bboxes = pred_bboxes.detach().cpu().numpy()
+        pred_labels = preds["labels"].detach().cpu().numpy()
+
+        if gt_bboxes.shape[0] == 0 or pred_bboxes.shape[0] == 0:
+            dists = np.zeros((gt_bboxes.shape[0], pred_bboxes.shape[0]), dtype=np.float32)
+        else:
+            dists = iou_batch(gt_bboxes, pred_bboxes)
+            same_labels = pred_labels[None, :] == gt_labels[:, None]
+            dists = (dists * same_labels).astype(np.float32)
+
+        matched_gts, matched_preds = linear_assignment(1 - dists, self.match_iou_thr)
+        matched_gts = matched_gts.astype(int)
+        num_matched_gts = matched_gts.shape[0]
+        self._update_ratio(num_gts, num_matched_gts)
+        matched_preds = matched_preds.astype(int)
+        gts = gts[matched_gts].to(device)
+        gts.keypoints = preds["keypoints"][matched_preds]
+        gts.keypoint_scores = preds["keypoint_scores"][matched_preds]
+        gts.features = preds["features"][matched_preds]
+        gts.bboxes = preds["bboxes"][matched_preds]
+        gts.scores = preds["scores"][matched_preds]
+        gts.priors = preds["priors"][matched_preds]
+
+        if previous_gt_instances is None:
+            gts.keypoint_velocities = torch.zeros_like(gts.keypoints)
+            gts.velocities = torch.zeros_like(gts.priors)
+        else:
+            dt = gts.frame_id[0] - previous_gt_instances.frame_id[0]
+            gts.keypoint_velocities = calculate_pose_velocities(
+                gts,
+                previous_gt_instances,
+                dt,
+            )
+            gts.velocities = calculate_bbox_velocities(
+                gts,
+                previous_gt_instances,
+                dt,
+            )
+
+        return gts

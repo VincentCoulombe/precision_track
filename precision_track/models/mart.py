@@ -24,12 +24,14 @@ class MART(BaseModel):
         config: Config,
         metainfo: str,
         data_preprocessor: Optional[Union[dict, nn.Module]] = None,
-        loss_embs: Optional[Config] = None,
+        loss_actions: Optional[Config] = None,
         *args,
         **kwargs,
     ):
         super().__init__(data_preprocessor=data_preprocessor)
-        self.n_pose = len(parse_pose_metainfo(dict(from_file=metainfo)).get("skeleton_links"))
+        metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        self.n_pose = len(metainfo.get("skeleton_links", []))
+        self.n_kpts = metainfo.get("num_keypoints", 0)
         n_embd_feats = config.n_embd
         self.block_size = config.block_size
 
@@ -68,7 +70,9 @@ class MART(BaseModel):
 
         self.proj = TransformerMLP(config)
 
-        self.loss_embs = MODELS.build(loss_embs) if loss_embs is not None else None
+        self.loss_actions = loss_actions
+        if loss_actions is not None:
+            self.loss_actions = MODELS.build(loss_actions)
         self.dropout = nn.Dropout(config.dropout)
 
     def _init_weights(self, module):
@@ -101,21 +105,19 @@ class MART(BaseModel):
         else:
             raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss, predict and tensor mode.")
 
-    def loss(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, labels: torch.Tensor) -> dict:
+    def loss(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, data_samples: List[PoseDataSample], *args, **kwargs) -> dict:
         features = self.dropout(features)
         dynamics = self.dropout(dynamics)
         poses = self.dropout(poses)
 
         class_logits, decoder_embs = self._forward(features, poses, dynamics, return_embs=True)
-        N, T, E = decoder_embs.shape
+        N, T, _ = decoder_embs.shape
         losses = dict()
 
-        labels_flat = labels.reshape(N * T)
-        losses["classification_loss"] = F.cross_entropy(class_logits.reshape(N * T, self.n_class), labels_flat)
-
-        if self.loss_embs is not None:
-            decoder_embs = decoder_embs.reshape(N * T, E)
-            losses["embedding_loss"] = self.loss_embs(decoder_embs, labels_flat)
+        action_labels = kwargs.get("actions")
+        if action_labels is not None:
+            action_labels = action_labels.reshape(N * T)
+            losses["classification_loss"] = self.loss_actions(class_logits.reshape(N * T, self.n_class), action_labels, *args, **kwargs)
 
         return losses
 

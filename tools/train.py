@@ -4,6 +4,8 @@ import os
 from mmengine.config import Config
 from precision_track.apis import PrecisionTrackRunner, SequenceRunner
 
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+
 if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:
     import torch._dynamo
 

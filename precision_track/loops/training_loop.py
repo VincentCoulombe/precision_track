@@ -1,7 +1,7 @@
 from typing import Sequence, Union, Dict, Optional, List, Tuple
 import itertools
 import torch
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from torch.utils.data import DataLoader
 from mmengine.runner import EpochBasedTrainLoop
 from mmengine.structures import InstanceData
@@ -9,6 +9,9 @@ from mmengine.config import Config
 from precision_track.registry import LOOPS
 from precision_track.utils import PoseDataSample, postprocess_one_stage_detections, unflatten_predictions
 from precision_track.models.postprocessing.steps import PostProcessingSteps
+from precision_track.tracking import OnlineGroundTruth
+
+from time import perf_counter  # TODO TEMP
 
 
 @LOOPS.register_module()
@@ -29,6 +32,7 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         assert hasattr(runner, "det_optim_wrapper")
 
         self.post_processor = PostProcessingSteps(post_processor)
+        self.tracker = OnlineGroundTruth()
 
         super().__init__(
             runner,
@@ -38,6 +42,7 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
             val_interval,
             dynamic_intervals,
         )
+        self._cls_num_list = None
 
     def run_iter(self, idx, data_batch: Sequence[dict]) -> None:
         """Iterate one min-batch.
@@ -45,6 +50,7 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         Args:
             data_batch (Sequence[dict]): Batch of data from dataloader.
         """
+        t0 = perf_counter()  # TODO TEMP
         self.runner.call_hook("before_train_iter", batch_idx=idx, data_batch=data_batch)
 
         # Enable gradient accumulation mode and avoid unnecessary gradient
@@ -74,9 +80,10 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
 
         splitted_seq_data_samples = [OrderedDict() for _ in sequences_data_samples]
 
-        # TODO inférer sur toutes les séquences de manière itérative
-
         for i, (sequence_inputs, sequence_data_samples) in enumerate(zip(sequences_inputs, sequences_data_samples)):
+
+            if hasattr(sequence_data_samples, "action_label_counter") and self._cls_num_list is None:
+                self._cls_num_list = sequence_data_samples.action_label_counter
 
             seq_train_frames = []
             seq_train_ds = []
@@ -104,12 +111,10 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         train_frames = torch.cat(train_frames).view(num_train_frames * B, C, H, W)
         no_grad_frames = torch.cat(no_grad_frames).view((T - num_train_frames) * B, C, H, W)
 
-        # TODO vérifier labels are OK
         if num_train_frames > 0:
             self.runner.detector.train()
-            data = self.runner.detector.data_preprocessor(
-                dict(inputs=train_frames, data_samples=list(itertools.chain.from_iterable(det_train_data_samples))), True
-            )
+            flatten_ds = list(itertools.chain.from_iterable(det_train_data_samples))
+            data = self.runner.detector.data_preprocessor(dict(inputs=train_frames, data_samples=flatten_ds), True)
             out = self.runner.detector.loss(**data, return_preds=True)
             det_train_outputs = out.pop("detections")
             det_train_losses, log_vars = self.runner.detector.parse_losses(out)
@@ -123,6 +128,9 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
                 dict(inputs=no_grad_frames, data_samples=[PoseDataSample() for _ in range(no_grad_frames.shape[0])]), False
             )
             det_pred_outputs = self.runner.detector.test_step(data)
+
+        t1 = perf_counter()  # TODO TEMP
+        print(f"it took: {t1-t0} seconds to generate the predictions")  # TODO TEMP
 
         scores = []
         objectness = []
@@ -162,6 +170,11 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         kpts = torch.cat(kpts).view(B, T, P, -1, 2)[:, go_back_frame_idxs, :, :, :].detach()
         kpt_vis = torch.cat(kpt_vis).view(B, T, P, -1)[:, go_back_frame_idxs, :, :].detach()
 
+        t2 = perf_counter()  # TODO TEMP
+        print(f"it took: {t2-t1} seconds to format the sequence")  # TODO TEMP
+
+        inputs = defaultdict(list)
+        input_dims = defaultdict(tuple)
         for i, ds in enumerate(splitted_seq_data_samples):
             splitted_seq_data_samples[i] = [t[1] for t in sorted(ds.items())]
             with torch.inference_mode():
@@ -176,18 +189,32 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
                     priors,
                     splitted_seq_data_samples[i],
                 )
-            seq_anns = PoseDataSample()
+            seq_data_sample = PoseDataSample()
+            seq_anns = []
+            previous_anns = None
             for post_processed_frame in post_processed_seq:
-                frame_anns = self.tracker(post_processed_frame)  # TODO Associe l'action et le bon id (from gt) aux bboxes, kpts, features et priors
-
-            # TODO concat efficacement frame_anns
-
-            splitted_seq_data_samples[i] = seq_anns
-            # TODO vérifier labels are OK
+                frame_anns = self.tracker(post_processed_frame, previous_anns)
+                seq_inputs = self.runner.model.data_preprocessor(dict(inputs=feature_maps, instances=frame_anns))
+                frame_anns = seq_inputs.pop("instances")
+                block_ids = seq_inputs.pop("block_ids")
+                seq_anns.append(frame_anns)
+                previous_anns = frame_anns
+            for seq_input in seq_inputs:
+                inputs[seq_input].append(seq_inputs[seq_input])
+                input_dims[seq_input] = tuple(seq_inputs[seq_input].shape[1:])
+            seq_data_sample.gt_instances = InstanceData.cat(seq_anns)
+            seq_data_sample.block_ids = block_ids
+            splitted_seq_data_samples[i] = seq_data_sample
+        for in_ in inputs:
+            in_dims = input_dims[in_]
+            inputs[in_] = torch.cat(inputs[in_]).view(-1, *in_dims)
 
         # TODO forward MART
         # NOTE Les feature_maps sont cohérente avec les gts! Vérifié le 03/10/2025
-        outputs = self.runner.model.loss(feature_maps, splitted_seq_data_samples)
+        t3 = perf_counter()  # TODO TEMP
+        print(f"it took: {t3-t2} seconds to postprocess the sequence")  # TODO TEMP
+        print(f"it took: {t3-t0} seconds to process the sequence")  # TODO TEMP
+        outputs = self.runner.model.loss(**inputs, data_samples=splitted_seq_data_samples, cls_num_list=self._cls_num_list)
 
         self.runner.call_hook("after_train_iter", batch_idx=idx, data_batch=data_batch, outputs=outputs)
         self._iter += 1
@@ -201,4 +228,5 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         out.img_id = None
         out.img_path = None
         out.id = None
+        # out.img_shape = data_samples.img_shape
         return out

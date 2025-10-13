@@ -500,7 +500,7 @@ class VelocityShape(InputShape):
 
     def __init__(self, block_size: int):
         assert 0 < block_size
-        self.shape = (block_size, 2)
+        self.shape = (block_size, 16)  # TODO to refactor
 
 
 @TASK_UTILS.register_module()

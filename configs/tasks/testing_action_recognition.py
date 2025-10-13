@@ -1,7 +1,7 @@
 _base_ = "../models/yolox-pose.py"
 
 # Settings
-balanced = True
+balanced = False
 work_dir = _base_.training_work_dir
 
 block_size = _base_.block_size
