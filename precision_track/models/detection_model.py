@@ -210,21 +210,25 @@ class DetectionModel(BaseModel):
                 *args,
                 **kwargs,
             )
-            if val_step or return_preds:
-                losses["detections"] = head_feats
+            losses["detections"] = head_feats
             if self.with_feature_extraction:
-                loss_feat, feats = self.feature_extraction_head.loss(
-                    detection_head_features=head_feats,
-                    priors_features=feats,
-                    batch_data_samples=data_samples,
-                    train_cfg=self.train_cfg,
-                    return_features=True,
-                    *args,
-                    **kwargs,
-                )
-                if val_step:
-                    losses["extracted_features"] = feats
-                losses.update(loss_feat)
+                # TODO refactor this hack
+                # loss_feat, feats = self.feature_extraction_head.loss(
+                #     detection_head_features=head_feats,
+                #     priors_features=feats,
+                #     batch_data_samples=data_samples,
+                #     train_cfg=self.train_cfg,
+                #     return_features=True,
+                #     *args,
+                #     **kwargs,
+                # )
+                feats = self.feature_extraction_head.forward(feats)
+                head_feats = head_feats[:5] + (feats,) + head_feats[6:]
+                losses["detections"] = head_feats
+
+                # if val_step:
+                #     losses["extracted_features"] = feats
+                # losses.update(loss_feat)
 
         return losses
 

@@ -305,7 +305,6 @@ class OnlineRandomSequenceDataset(BaseDataset):
         data_sample.seq_id = random_seq_idx
         data_sample.gt_instance_labels = inst_gt_instance_labels
         data_sample.gt_instances = inst_gt_instances
-        # data_sample.img_shape = img_shape
 
         # self.save_sequence(random_seq_idx, inputs, gt_instances)  # TODO externalize this hack
 

@@ -8,17 +8,30 @@ from numba import njit
 def calculate_bbox_velocities(curr, prev, dt, conf_thr: float = 0.0):
     curr_boxes = curr.bboxes
     curr_ids = curr.instances_id
+
     prev_boxes = prev.bboxes
     prev_ids = prev.instances_id
+    still_tracked = torch.isin(prev_ids, curr_ids, assume_unique=True)
+    prev_ids = prev_ids[still_tracked]
+    prev_boxes = prev_boxes[still_tracked]
 
     device = curr_boxes.device
     dtype = curr_boxes.dtype
     Nc = curr_boxes.shape[0]
 
+    if prev_ids.numel() == 0:
+        return torch.zeros((Nc, 2), device=device, dtype=dtype)
+
     sort_idx = torch.argsort(prev_ids)
     prev_ids_sorted = prev_ids[sort_idx]
     pos = torch.searchsorted(prev_ids_sorted, curr_ids)
-    valid = (pos < prev_ids_sorted.numel()) & (prev_ids_sorted[pos] == curr_ids)
+
+    n = prev_ids_sorted.numel()
+    in_range = pos < n
+    eq = torch.zeros(Nc, dtype=torch.bool, device=device)
+    if in_range.any():
+        eq[in_range] = prev_ids_sorted[pos[in_range]] == curr_ids[in_range]
+    valid = in_range & eq
 
     prev_idx_for_curr = torch.full((Nc,), -1, dtype=torch.long, device=device)
     prev_idx_for_curr[valid] = sort_idx[pos[valid]]
@@ -44,18 +57,30 @@ def calculate_pose_velocities(curr, prev, dt, vis_thr: float = 0.5):
     curr_kpts = curr.keypoints
     curr_vis = curr.keypoint_scores
     curr_ids = curr.instances_id
+
     prev_kpts = prev.keypoints
     prev_ids = prev.instances_id
+    still_tracked = torch.isin(prev_ids, curr_ids, assume_unique=True)
+    prev_ids = prev_ids[still_tracked]
+    prev_kpts = prev_kpts[still_tracked]
 
     Nc, K, _ = curr_kpts.shape
     device = curr_kpts.device
     dtype = curr_kpts.dtype
 
+    if prev_ids.numel() == 0:
+        return torch.zeros((Nc, K, 2), device=device, dtype=dtype)
+
     sort_idx = torch.argsort(prev_ids)
     prev_ids_sorted = prev_ids[sort_idx]
 
     pos = torch.searchsorted(prev_ids_sorted, curr_ids)
-    valid = (pos < prev_ids_sorted.numel()) & (prev_ids_sorted[pos] == curr_ids)
+    n = prev_ids_sorted.numel()
+    in_range = pos < n
+    eq = torch.zeros(Nc, dtype=torch.bool, device=device)
+    if in_range.any():
+        eq[in_range] = prev_ids_sorted[pos[in_range]] == curr_ids[in_range]
+    valid = in_range & eq
 
     prev_idx_for_curr = torch.full((Nc,), -1, device=device, dtype=torch.long)
     prev_idx_for_curr[valid] = sort_idx[pos[valid]]

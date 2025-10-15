@@ -12,8 +12,6 @@ from precision_track.utils import PoseDataSample, postprocess_one_stage_detectio
 from precision_track.models.postprocessing.steps import PostProcessingSteps
 from precision_track.tracking import OnlineGroundTruth
 
-from time import perf_counter  # TODO TEMP
-
 
 @LOOPS.register_module()
 class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
@@ -52,7 +50,6 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         Args:
             data_batch (Sequence[dict]): Batch of data from dataloader.
         """
-        t0 = perf_counter()  # TODO TEMP
         self.runner.call_hook("before_train_iter", batch_idx=idx, data_batch=data_batch)
 
         # Enable gradient accumulation mode and avoid unnecessary gradient
@@ -96,7 +93,8 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
                 seq_train_ds.append(ds)
                 splitted_seq_data_samples[i][train_idx] = ds
 
-            train_frames.append(torch.cat(seq_train_frames).view(num_train_frames, C, H, W))
+            if num_train_frames > 0:  # TODO temp Hack
+                train_frames.append(torch.cat(seq_train_frames).view(num_train_frames, C, H, W))
             det_train_data_samples.append(seq_train_ds)
 
             seq_no_grad_frames = []
@@ -110,7 +108,8 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
             no_grad_frames.append(torch.cat(seq_no_grad_frames).view(T - num_train_frames, C, H, W))
             no_grad_data_samples.append(seq_no_grad_ds)
 
-        train_frames = torch.cat(train_frames).view(num_train_frames * B, C, H, W)
+        if num_train_frames > 0:  # TODO temp Hack
+            train_frames = torch.cat(train_frames).view(num_train_frames * B, C, H, W)
         no_grad_frames = torch.cat(no_grad_frames).view((T - num_train_frames) * B, C, H, W)
 
         if num_train_frames > 0:
@@ -118,11 +117,9 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
             flatten_ds = list(itertools.chain.from_iterable(det_train_data_samples))
             with self.runner.optim_wrapper.optim_context(self.runner.detector):
                 data = self.runner.detector.data_preprocessor(dict(inputs=train_frames, data_samples=flatten_ds), True)
-                # TODO return pas feature maps tout suite (FPV Hack)
-                # out = self.runner.detector.loss(**data, return_preds=True)
-                out = self.runner.detector.loss(**data, return_preds=False)
+                out = self.runner.detector.loss(**data, return_preds=True)
 
-            det_train_outputs = out.pop("detections", None)
+            det_train_outputs = list(out.pop("detections", None))
             det_losses, det_log_vars = self.runner.detector.parse_losses(out)
             det_log_vars.pop("loss", None)
         else:
@@ -136,9 +133,6 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
                 dict(inputs=no_grad_frames, data_samples=[PoseDataSample() for _ in range(no_grad_frames.shape[0])]), False
             )
             det_pred_outputs = self.runner.detector.test_step(data)
-
-        t1 = perf_counter()  # TODO TEMP
-        print(f"it took: {t1-t0} seconds to generate the predictions")  # TODO TEMP
 
         scores = []
         objectness = []
@@ -178,9 +172,6 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         kpts = torch.cat(kpts).view(B, T, P, -1, 2)[:, go_back_frame_idxs, :, :, :].detach()
         kpt_vis = torch.cat(kpt_vis).view(B, T, P, -1)[:, go_back_frame_idxs, :, :].detach()
 
-        t2 = perf_counter()  # TODO TEMP
-        print(f"it took: {t2-t1} seconds to format the sequence")  # TODO TEMP
-
         inputs = defaultdict(list)
         input_dims = defaultdict(tuple)
         for i, ds in enumerate(splitted_seq_data_samples):
@@ -217,11 +208,6 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
             in_dims = input_dims[in_]
             inputs[in_] = torch.cat(inputs[in_]).view(-1, *in_dims)
 
-        # TODO forward MART
-        # NOTE Les feature_maps sont cohérente avec les gts! Vérifié le 03/10/2025
-        t3 = perf_counter()  # TODO TEMP
-        print(f"it took: {t3-t2} seconds to postprocess the sequence")  # TODO TEMP
-        print(f"it took: {t3-t0} seconds to process the sequence")  # TODO TEMP
         with self.runner.optim_wrapper.optim_context(self.runner.model):
             outputs = self.runner.model.loss(**inputs, data_samples=splitted_seq_data_samples, cls_num_list=self._cls_num_list)
         losses, log_vars = self.runner.model.parse_losses(outputs)

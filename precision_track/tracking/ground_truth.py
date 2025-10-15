@@ -308,7 +308,7 @@ class OnlineGroundTruth:
     def _update_ratio(self, num_gts: int, num_matched_gts: int):
         actual_ratio = self.matched_gts_ratio
         self.matched_gts_ratio = 0.8 * self.matched_gts_ratio + 0.2 * (num_matched_gts / num_gts)
-        if self.matched_gts_ratio < actual_ratio:
+        if self.matched_gts_ratio < actual_ratio * 0.95:
             self.falling_streak += 1
         if self.falling_streak > self.falling_thr:
             print_log(
@@ -316,6 +316,7 @@ class OnlineGroundTruth:
                 logger="current",
                 level=logging.WARNING,
             )
+            self.falling_streak = 0
 
     def __call__(self, data_sample, previous_gt_instances):
         gts = data_sample["gt_instances"]

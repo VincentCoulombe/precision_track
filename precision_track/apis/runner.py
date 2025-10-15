@@ -594,39 +594,39 @@ class SequenceRunner(PrecisionTrackRunner):
         self.call_hook("after_run")
         return model
 
-    def build_optim_wrapper(self, optim_wrapper_cfg: Dict) -> OptimWrapper:
-        detector_ow = build_optim_wrapper(self.detector, copy.deepcopy(optim_wrapper_cfg))
-        model_ow = build_optim_wrapper(self.model, copy.deepcopy(optim_wrapper_cfg))
+    # def build_optim_wrapper(self, optim_wrapper_cfg: Dict) -> OptimWrapper:
+    #     detector_ow = build_optim_wrapper(self.detector, copy.deepcopy(optim_wrapper_cfg))
+    #     model_ow = build_optim_wrapper(self.model, copy.deepcopy(optim_wrapper_cfg))
 
-        det_opt = detector_ow.optimizer
-        base_opt = model_ow.optimizer
+    #     det_opt = detector_ow.optimizer
+    #     base_opt = model_ow.optimizer
 
-        # 2) Cloner l’optimizer du modèle (pas la config)
-        merged_opt = copy.deepcopy(base_opt)
+    #     # 2) Cloner l’optimizer du modèle (pas la config)
+    #     merged_opt = copy.deepcopy(base_opt)
 
-        det_lr_scale = 0.5  # TODO From CFG
+    #     det_lr_scale = 0.5  # TODO From CFG instead...
 
-        base_params = {id(p) for g in base_opt.param_groups for p in g["params"]}
-        det_params = {id(p) for g in det_opt.param_groups for p in g["params"]}
-        inter = base_params & det_params
-        assert not inter, f"Parameters are present in both the detector's and the model's optimizers (n={len(inter)})"
+    #     base_params = {id(p) for g in base_opt.param_groups for p in g["params"]}
+    #     det_params = {id(p) for g in det_opt.param_groups for p in g["params"]}
+    #     inter = base_params & det_params
+    #     assert not inter, f"Parameters are present in both the detector's and the model's optimizers (n={len(inter)})"
 
-        for g in det_opt.param_groups:
-            cfg = {k: v for k, v in g.items() if k != "params"}
-            if "lr" in cfg:
-                cfg["lr"] = cfg["lr"] * det_lr_scale
-            merged_opt.add_param_group({"params": g["params"], **cfg})
+    #     for g in det_opt.param_groups:
+    #         cfg = {k: v for k, v in g.items() if k != "params"}
+    #         if "lr" in cfg:
+    #             cfg["lr"] = cfg["lr"] * det_lr_scale
+    #         merged_opt.add_param_group({"params": g["params"], **cfg})
 
-        for p, st in det_opt.state.items():
-            merged_opt.state[p] = st
+    #     for p, st in det_opt.state.items():
+    #         merged_opt.state[p] = st
 
-        return OPTIM_WRAPPERS.build(
-            dict(
-                type=optim_wrapper_cfg.get("type", "OptimWrapper"),
-                dtype=optim_wrapper_cfg.get("dtype"),
-                loss_scale=optim_wrapper_cfg.get("loss_scale"),
-                optimizer=merged_opt,
-                accumulative_counts=optim_wrapper_cfg.get("accumulative_counts", 1),
-                clip_grad=optim_wrapper_cfg.get("clip_grad", None),
-            )
-        )
+    #     return OPTIM_WRAPPERS.build(
+    #         dict(
+    #             type=optim_wrapper_cfg.get("type", "OptimWrapper"),
+    #             dtype=optim_wrapper_cfg.get("dtype"),
+    #             loss_scale=optim_wrapper_cfg.get("loss_scale"),
+    #             optimizer=merged_opt,
+    #             accumulative_counts=optim_wrapper_cfg.get("accumulative_counts", 1),
+    #             clip_grad=optim_wrapper_cfg.get("clip_grad", None),
+    #         )
+    #     )

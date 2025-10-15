@@ -4,7 +4,18 @@ import os
 from mmengine.config import Config
 from precision_track.apis import PrecisionTrackRunner, SequenceRunner
 
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = ""
+# import torch
+
+# if hasattr(torch, "set_default_device"):  # PyTorch ≥2.0
+#     torch.set_default_device("cpu")
+# torch.backends.cudnn.enabled = False  # ensure no CuDNN paths
+# import torch, os
+
+# torch.use_deterministic_algorithms(True)
+# torch.set_num_threads(int(os.getenv("OMP_NUM_THREADS", "1")))
+
 
 if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:
     import torch._dynamo
