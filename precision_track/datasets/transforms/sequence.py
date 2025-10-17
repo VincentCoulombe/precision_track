@@ -26,6 +26,21 @@ class SequenceRandomFlip(RandomFlip, BaseSequenceTransform):
         super().__init__(prob, direction)
         self.cur_dir = None
 
+    def _choose_direction(self) -> str:
+        direction_list = [self.direction, None]
+
+        if isinstance(self.prob, list):
+            non_prob: float = 1 - sum(self.prob)
+            prob_list = self.prob + [non_prob]
+        elif isinstance(self.prob, float):
+            non_prob = 1.0 - self.prob
+            single_ratio = self.prob / (len(direction_list) - 1)
+            prob_list = [single_ratio] * (len(direction_list) - 1) + [non_prob]
+
+        cur_dir = np.random.choice(direction_list, p=prob_list)
+
+        return cur_dir
+
     def set_stochastic_params(self) -> None:
         self.cur_dir = self._choose_direction()
 
@@ -65,11 +80,9 @@ class SequenceRandomCrop(RandomCrop, BaseSequenceTransform):
         self.offset_h = -1
         self.offset_w = -1
 
-    @cache_randomness
     def _get_crop_size(self) -> int:
         return self.crop_range.integers(self.crop_size[0] * 100, self.crop_size[1] * 100 + 1) / 100
 
-    @cache_randomness
     def _get_reltiave_offsets(self, margin: Tuple[int, int]) -> Tuple[int, int]:
         margin_h, margin_w = margin
         self.offset_h = np.random.randint(0, margin_h + 1)

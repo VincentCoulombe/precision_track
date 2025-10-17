@@ -31,7 +31,7 @@ num_epochs = 300
 num_epochs_pipeline1 = 280
 warmup_epochs = 5
 
-val_interval = 10000
+val_interval = num_epochs
 
 training_anns_path = data_root + "annotations/train.json"
 training_imgs_path = data_root + "images/"
@@ -239,7 +239,9 @@ action_recognition_weight_decay = 0.01
 action_recognition_dropout = 0
 action_recognition_num_iter = 100000
 action_recognition_warmup_iter = int(0.1 * action_recognition_num_iter)
-action_recognition_val_interval = action_recognition_num_iter // 100
+# action_recognition_val_interval = action_recognition_num_iter // 100
+action_recognition_val_interval = 1
+
 
 action_recognition_data_root = "../../datasets/MICE/sequential/"
 

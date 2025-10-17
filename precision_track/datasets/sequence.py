@@ -20,8 +20,8 @@ from collections import defaultdict
 
 from precision_track.models.backends import DetectionBackend
 from precision_track.registry import DATASETS, OUTPUTS
+from precision_track.outputs import BaseOutput
 from precision_track.outputs.display import display_class_balance
-from precision_track.apis import Result
 from precision_track.utils import (
     PoseDataSample,
     VideoReader,
@@ -108,6 +108,8 @@ class OnlineRandomSequenceDataset(BaseDataset):
         self.action_counter = defaultdict(int)
         self.action_to_label_map = dict()
 
+        self.idx_map = list()
+
         super().__init__(
             ann_file=None,
             data_prefix=data_prefix,
@@ -176,16 +178,15 @@ class OnlineRandomSequenceDataset(BaseDataset):
         )
 
     def get_data_info(self, idx: int) -> dict:
-        data_info = super().get_data_info(idx)
+        data_info = self.data_list[idx]
+        if idx >= 0:
+            data_info["sample_idx"] = idx
+        else:
+            data_info["sample_idx"] = len(self) + idx
 
-        # Add metainfo items that are required in the pipeline and the model
         metainfo_keys = ["dataset_name", "upper_body_ids", "lower_body_ids", "flip_pairs", "dataset_keypoint_weights", "flip_indices", "skeleton_links"]
-
         for key in metainfo_keys:
-            assert key not in data_info, f'"{key}" is a reserved key for `metainfo`, but already ' "exists in the `data_info`."
-
             data_info[key] = deepcopy(self._metainfo[key])
-
         return data_info
 
     def set_sequence_transforms(self):
@@ -193,25 +194,48 @@ class OnlineRandomSequenceDataset(BaseDataset):
             if hasattr(transform, "set_stochastic_params"):
                 transform.set_stochastic_params()
 
-    def prepare_data(self, _):
+    def get_sequence(self, idx):
+        padded_block_size = 2 * self.block_size  # Ensuring no empty timesteps at the end of the block
+        if self.test_mode:
+            sequence_idx, block_idx = self.idx_map[idx]
+            sequence = self.get_data_info(sequence_idx)
+        else:
+            sequence_idx = np.random.randint(low=0, high=len(self.data_list))
+            sequence = self.get_data_info(sequence_idx)
+            ground_truth = sequence["bboxes_output"]
+            if len(ground_truth) < padded_block_size:
+                block_idx = 0
+            else:
+                block_idx = np.random.randint(low=0, high=len(ground_truth) - padded_block_size)
+            self.set_sequence_transforms()
+
+        sequence_dir = sequence["sequence_dir"]
+        images = get_seq_from_img_folder(block_idx, self.block_size, sequence_dir)
+
+        return sequence_idx, sequence, block_idx, images
+
+    def prepare_data(self, idx):
         # TODO ajouter rdm timestep (uniforme dans [1, 4])
         # TODO ajouter sequence miner
         # TODO ajouter rdm occlusion (transform)
         # TODO loader ground truth pour le block_size+1 frame
 
-        random_seq = self.get_data_info(np.random.randint(low=0, high=len(self.data_list)))
-        sequence_dir = random_seq["sequence_dir"]
-        ground_truth = random_seq["bboxes_output"]
-        if len(ground_truth) == self.block_size:
-            random_seq_idx = 0
-        else:
-            random_seq_idx = np.random.randint(low=0, high=len(ground_truth) - self.block_size)
+        # random_seq = self.get_data_info(np.random.randint(low=0, high=len(self.data_list)))  # TODO, en test PAS Random
+        # sequence_dir = random_seq["sequence_dir"]
+        # ground_truth = random_seq["bboxes_output"]
+        # padded_block_size = 2 * self.block_size  # Ensuring no empty timesteps at the end of the block
+        # if len(ground_truth) < padded_block_size:
+        #     random_seq_idx = 0
+        # else:
+        #     random_seq_idx = np.random.randint(low=0, high=len(ground_truth) - padded_block_size)
 
-        seq = get_seq_from_img_folder(random_seq_idx, self.block_size, sequence_dir)
+        # seq = get_seq_from_img_folder(random_seq_idx, self.block_size, sequence_dir)
 
-        self.set_sequence_transforms()
+        # self.set_sequence_transforms()
 
-        running_idx = random_seq_idx
+        # running_idx = random_seq_idx
+        sequence_idx, sequence, block_idx, images = self.get_sequence(idx)
+
         inputs = []
         metainfo = dict()
         img_shape = None
@@ -219,81 +243,80 @@ class OnlineRandomSequenceDataset(BaseDataset):
         gt_instance_labels = defaultdict(list)
         gt_instances = defaultdict(list)
 
-        bboxes_output = random_seq.pop("bboxes_output")
+        bboxes_output = sequence.get("bboxes_output")
 
-        kpts_output = random_seq.pop("kpts_output")
-        kpts_out_valid = kpts_output.valid() and kpts_output.results
+        kpts_output = sequence.get("kpts_output")
+        kpts_out_valid = isinstance(kpts_output, BaseOutput) and kpts_output.valid() and kpts_output.results
 
-        actions_output = random_seq.pop("actions_output")
-        actions_out_valid = actions_output.valid() and actions_output.results
+        actions_output = sequence.get("actions_output")
+        actions_out_valid = isinstance(actions_output, BaseOutput) and actions_output.valid() and actions_output.results
 
-        for image_path in seq:
-            bboxes = np.array(bboxes_output[running_idx])
+        for running_idx, image_path in enumerate(images):
+            bboxes = np.array(bboxes_output[block_idx + running_idx])
             N = bboxes.shape[0]
-            random_seq["category_id"] = bboxes[:, 1].astype(int)
-            random_seq["instance_id"] = bboxes[:, 2].astype(int)
-            random_seq["bbox"] = reformat(bboxes[:, 3:7], "xywh", "xyxy")
-            random_seq["bbox_score"] = bboxes[:, 7]
+            sequence["category_id"] = bboxes[:, 1].astype(int)
+            sequence["instance_id"] = bboxes[:, 2].astype(int)
+            sequence["bbox"] = bboxes[:, 3:7]
+            sequence["bbox"] = reformat(sequence["bbox"], "xywh", "xyxy")
+            sequence["bbox_score"] = bboxes[:, 7]
 
             if kpts_out_valid:
-                kpts = np.array(kpts_output[running_idx])
+                kpts = np.array(kpts_output[block_idx + running_idx])
                 assert np.all(
-                    kpts[:, 1].astype(int) == random_seq["category_id"]
-                ), f"Incoherance found between the keypoints ground truth's class ids and the bounding boxes ground truth's class ids on frame: {running_idx}."
+                    kpts[:, 1].astype(int) == sequence["category_id"]
+                ), f"Incoherance found between the keypoints ground truth's class ids and the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
                 assert np.all(
-                    kpts[:, 2].astype(int) == random_seq["instance_id"]
-                ), f"Incoherance found between the keypoints ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {running_idx}."
+                    kpts[:, 2].astype(int) == sequence["instance_id"]
+                ), f"Incoherance found between the keypoints ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
                 kpts = kpts[:, 3:]
                 num_kpts = kpts.shape[1] // 3
                 kpts = kpts.reshape(-1, num_kpts, 3)
-                random_seq["keypoints_visible"] = kpts[..., -1]
-                random_seq["keypoints"] = kpts[..., :2]
+                sequence["keypoints_visible"] = kpts[..., -1]
+                sequence["keypoints"] = kpts[..., :2]
             else:
                 num_kpts = 0
-                random_seq["keypoints"] = np.zeros((N, num_kpts, 2))
-                random_seq["keypoints_visible"] = np.zeros((N, num_kpts, 1))
-            random_seq["num_keypoints"] = np.array([num_kpts])
+                sequence["keypoints"] = np.zeros((N, num_kpts, 2))
+                sequence["keypoints_visible"] = np.zeros((N, num_kpts, 1))
+            sequence["num_keypoints"] = np.array([num_kpts])
 
             if actions_out_valid:
-                actions = np.array(actions_output[running_idx])
+                actions = np.array(actions_output[block_idx + running_idx])
                 assert np.all(
-                    actions[:, 1].astype(int) == random_seq["category_id"]
-                ), f"Incoherance found between the actions ground truth's class ids and the bounding boxes ground truth's class ids on frame: {running_idx}."
+                    actions[:, 1].astype(int) == sequence["category_id"]
+                ), f"Incoherance found between the actions ground truth's class ids and the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
                 assert np.all(
-                    actions[:, 2].astype(int) == random_seq["instance_id"]
-                ), f"Incoherance found between the actions ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {running_idx}."
-                random_seq["action_label"] = actions[:, 3]
-                random_seq["action"] = np.array([self.action_to_label_map[a] for a in actions[:, 3]])
+                    actions[:, 2].astype(int) == sequence["instance_id"]
+                ), f"Incoherance found between the actions ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                sequence["action_label"] = actions[:, 3]
+                sequence["action"] = np.array([self.action_to_label_map[a] for a in actions[:, 3]])
             else:
-                random_seq["action_label"] = np.zeros((N, 1)) - 1
-                random_seq["action"] = np.zeros((N, 1)) - 1
+                sequence["action_label"] = np.zeros((N, 1)) - 1
+                sequence["action"] = np.zeros((N, 1)) - 1
 
-            random_seq["img_path"] = image_path
+            sequence["img_path"] = image_path
 
-            transformed_random_seq = self.pipeline(random_seq)
-            metainfo["input_size"] = transformed_random_seq["input_size"]
-            metainfo["input_scale"] = transformed_random_seq["input_scale"]
-            metainfo["input_center"] = transformed_random_seq["input_center"]
-            metainfo["img_shape"] = transformed_random_seq["img_shape"]
+            transformed_sequence = self.pipeline(sequence)
+            metainfo["input_size"] = transformed_sequence["input_size"]
+            metainfo["input_scale"] = transformed_sequence["input_scale"]
+            metainfo["input_center"] = transformed_sequence["input_center"]
+            metainfo["img_shape"] = transformed_sequence["img_shape"]
             if img_shape is None:
-                img_shape = transformed_random_seq["img_shape"]
+                img_shape = transformed_sequence["img_shape"]
 
-            inputs.append(transformed_random_seq.pop("img"))
+            inputs.append(transformed_sequence.pop("img"))
 
-            gt_instance_labels["action_labels"].append(random_seq["action_label"].reshape(-1, 1))
-            gt_instances["actions"].append(random_seq["action"].reshape(-1, 1))
-            gt_instances["bboxes"].append(random_seq["bbox"])
-            x1, y1, x2, y2 = random_seq["bbox"].T
+            gt_instance_labels["action_labels"].append(sequence["action_label"].reshape(-1, 1))
+            gt_instances["actions"].append(sequence["action"].reshape(-1, 1))
+            gt_instances["bboxes"].append(sequence["bbox"])
+            x1, y1, x2, y2 = sequence["bbox"].T
             assert np.all(x2 > x1) and np.all(y2 > y1)
             gt_instances["areas"].append(np.clip((x2 - x1) * (y2 - y1) * 0.53, a_min=1.0, a_max=None))
-            gt_instances["scores"].append(random_seq["bbox_score"])
-            gt_instances["keypoints"].append(random_seq["keypoints"])
-            gt_instances["keypoints_visible"].append(random_seq["keypoints_visible"])
-            gt_instances["instances_id"].append(random_seq["instance_id"])
-            gt_instances["labels"].append(random_seq["category_id"])
-            gt_instances["frame_id"].append(np.full((random_seq["action"].shape[0],), running_idx))
-
-            running_idx += 1
+            gt_instances["scores"].append(sequence["bbox_score"])
+            gt_instances["keypoints"].append(sequence["keypoints"])
+            gt_instances["keypoints_visible"].append(sequence["keypoints_visible"])
+            gt_instances["instances_id"].append(sequence["instance_id"])
+            gt_instances["labels"].append(sequence["category_id"])
+            gt_instances["frame_id"].append(np.full((sequence["action"].shape[0],), running_idx))
 
         inst_gt_instance_labels = InstanceData(action_labels=np.concatenate(gt_instance_labels.pop("action_labels")))
         inst_gt_instances = InstanceData()
@@ -302,11 +325,11 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
         data_sample = PoseDataSample(metainfo=metainfo)
         data_sample.action_label_counter = self.action_label_counter
-        data_sample.seq_id = random_seq_idx
+        data_sample.seq_id = sequence_idx
         data_sample.gt_instance_labels = inst_gt_instance_labels
         data_sample.gt_instances = inst_gt_instances
 
-        # self.save_sequence(random_seq_idx, inputs, gt_instances)  # TODO externalize this hack
+        # self.save_sequence(f"{sequence_idx}-{block_idx}", inputs, gt_instances)  # TODO Externalize this sanity check hack
 
         return dict(inputs=image_to_tensor(inputs), data_samples=data_sample)
 
@@ -446,8 +469,12 @@ class OnlineRandomSequenceDataset(BaseDataset):
                 assert len(ref_len) == len(data["kpts_output"]), "Ground truths from the same sequence must have the same length."
             assert len(ref_len) <= len(
                 os.listdir(seq_path)
-            ), f"{len(ref_len) } are labelled, but only {len(os.listdir(seq_path))} frames are saved at the {seq_path} directory."
-            self._length += len(ref_len) // self.block_size
+            ), f"{len(ref_len)} frames are labelled, but only {len(os.listdir(seq_path))} frames are saved at the {seq_path} directory."
+
+            block_idxs = np.arange(0, len(ref_len), self.block_size)[:-1].tolist()
+            self._length += len(block_idxs)
+            self.idx_map.extend([(sequence_idx, block_idx) for block_idx in block_idxs])
+
             data_list.append(data)
         if self.action_counter:
             self.logger.info("Your labelled action's proportions: ")

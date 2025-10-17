@@ -307,7 +307,7 @@ class OnlineGroundTruth:
 
     def _update_ratio(self, num_gts: int, num_matched_gts: int):
         actual_ratio = self.matched_gts_ratio
-        self.matched_gts_ratio = 0.8 * self.matched_gts_ratio + 0.2 * (num_matched_gts / num_gts)
+        self.matched_gts_ratio = 0.8 * self.matched_gts_ratio + 0.2 * (num_matched_gts / num_gts)  # TODO remove
         if self.matched_gts_ratio < actual_ratio * 0.95:
             self.falling_streak += 1
         if self.falling_streak > self.falling_thr:

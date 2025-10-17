@@ -430,8 +430,8 @@ class LDAMWithDRW(nn.Module):
         self.label_smoothing = float(label_smoothing)
         self.ignore_index = int(ignore_index)
 
-        self.register_buffer("_cached_m_list", torch.tensor([]), persistent=False)
-        self.register_buffer("_cached_cb_weight", torch.tensor([]), persistent=False)
+        self._cached_m_list = torch.tensor([])
+        self._cached_cb_weight = torch.tensor([])
         self._cached_counts_key = None
 
     @torch.no_grad()

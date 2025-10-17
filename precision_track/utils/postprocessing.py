@@ -1,6 +1,7 @@
-from typing import Optional, List
+from typing import Optional, List, Union, Any
 from addict import Dict
 import torch
+import numpy as np
 
 from precision_track.utils import PoseDataSample, xyxy_cxcywh
 
@@ -78,3 +79,36 @@ def postprocess_one_stage_detections(
         formatted_pred_instances["pred_instances"] = pred_instances
         formatted_outputs.append(formatted_pred_instances)
     return formatted_outputs
+
+
+def postprocess_fpv_action_recognition(
+    preds: Union[torch.Tensor, tuple],
+    data_samples: Union[List[PoseDataSample], PoseDataSample],
+    actions_map: np.ndarray,
+    post_processor: Optional[Any] = None,
+):
+    if isinstance(data_samples, List):
+        assert len(data_samples) == 1, "Action Recognition does not support batches."
+        data_sample = data_samples[0]
+    else:
+        data_sample = data_samples
+    if isinstance(preds, tuple):
+        data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
+        preds = preds[0]
+
+    current_timestep_probs = preds.detach().cpu().numpy().astype(np.float32)
+
+    actions = actions_map[np.argmax(current_timestep_probs, axis=1).reshape(-1)]
+    action_scores = np.max(current_timestep_probs, axis=1).reshape(-1)
+
+    valid_context = data_sample["pred_track_instances"]["valid_action_recognition_context"]
+    actions[~valid_context] = "Analyzing..."
+    action_scores[~valid_context] = 1
+
+    data_sample["pred_track_instances"]["actions"] = actions
+    data_sample["pred_track_instances"]["action_scores"] = action_scores
+
+    if post_processor is not None:
+        data_sample = post_processor(data_sample)
+
+    return data_sample

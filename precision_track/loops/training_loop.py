@@ -14,7 +14,7 @@ from precision_track.tracking import OnlineGroundTruth
 
 
 @LOOPS.register_module()
-class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
+class OnlineTrainLoop(EpochBasedTrainLoop):
     def __init__(
         self,
         runner,
@@ -26,9 +26,7 @@ class TrackingEpochBasedTrainLoop(EpochBasedTrainLoop):
         dynamic_intervals: Optional[List[Tuple[int, int]]] = None,
     ) -> None:
 
-        assert hasattr(runner, "one_stage")
         assert hasattr(runner, "detector")
-        assert hasattr(runner, "det_optim_wrapper")
 
         self.post_processor = PostProcessingSteps(post_processor)
         self.tracker = OnlineGroundTruth()
