@@ -13,7 +13,7 @@ from precision_track import PipelinedTracker, Tracker
 from precision_track.registry import MODELS
 from precision_track.utils import VideoReader, cuda_available
 
-ROOT = "./tests/"
+ROOT = "../tests/"
 
 
 @pytest.fixture

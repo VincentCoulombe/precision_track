@@ -9,7 +9,7 @@ hyperparams = "./tests/configs/hyperparameters.json"
 input_size = (640, 640)
 pad_value = 114
 
-metainfo = "./configs/metadata/mice.py"
+metainfo = "../configs/metadata/mice.py"
 
 low_thr = 0.1
 high_thr = 0.5

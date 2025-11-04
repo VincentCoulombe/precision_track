@@ -344,7 +344,7 @@ class TestPreprocessor(OnlinePreprocessor):
         scale = None
 
         out = {}
-        self._ring_write(self.block_features, idxs, features)
+        self._ring_write(self.block_features, idxs, features, update_index=True)
 
         if self._with_kpts:
             kpts = pred_track_instances["keypoints"]
@@ -401,14 +401,15 @@ class TestPreprocessor(OnlinePreprocessor):
         idx_time = (start.unsqueeze(1) + t) % self._block_size
         return block[rows.unsqueeze(1), idx_time, :]
 
-    def _ring_write(self, block: torch.Tensor, rows: torch.Tensor, data: torch.Tensor):
+    def _ring_write(self, block: torch.Tensor, rows: torch.Tensor, data: torch.Tensor, update_index: Optional[bool] = False):
         """Maintain an index pointing to where to write next for a particular pos."""
         assert rows.dtype == torch.long
         assert rows.device == block.device, "rows/block device mismatch"
         pos = self._head.index_select(0, rows)
         assert data.shape[0] == rows.shape[0], "batch mismatch"
         block[rows, pos, ...] = data
-        self._head.index_copy_(0, rows, (pos + 1) % self._block_size)
+        if update_index:
+            self._head.index_copy_(0, rows, (pos + 1) % self._block_size)
         return block
 
     def _register_ids(self, idxs: torch.Tensor, new_ids: List[str]):
