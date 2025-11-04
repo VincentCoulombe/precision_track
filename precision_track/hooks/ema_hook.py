@@ -61,6 +61,33 @@ class ExpMomentumEMA(ExponentialMovingAverage):
 
 
 @HOOKS.register_module()
+class AnalyzerEMAHook(ExpMomentumEMA):
+    def __init__(self, ema_type: str = "ExponentialMovingAverage", strict_load: bool = False, begin_iter: int = 0, begin_epoch: int = 0, **kwargs):
+        self.strict_load = strict_load
+        self.ema_cfg = dict(type=ema_type, **kwargs)
+        assert not (begin_iter != 0 and begin_epoch != 0), "`begin_iter` and `begin_epoch` should not be both set."
+        assert begin_iter >= 0, "`begin_iter` must larger than or equal to 0, " f"but got begin_iter: {begin_iter}"
+        assert begin_epoch >= 0, "`begin_epoch` must larger than or equal to 0, " f"but got begin_epoch: {begin_epoch}"
+        self.begin_iter = begin_iter
+        self.begin_epoch = begin_epoch
+        self.enabled_by_epoch = self.begin_epoch > 0
+
+    def before_run(self, runner) -> None:
+        """Create an ema copy of the model.
+
+        Args:
+            runner (Runner): The runner of the training process.
+        """
+        model = runner.model
+        if is_model_wrapper(model):
+            model = model.analyzer.model.module
+        else:
+            model = model.analyzer.model
+        self.src_model = model
+        self.ema_model = MODELS.build(self.ema_cfg, default_args=dict(model=self.src_model))
+
+
+@HOOKS.register_module()
 class DetectorEMAHook(Hook):
     priority = "NORMAL"
 

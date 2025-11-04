@@ -11,6 +11,7 @@ from precision_track.registry import LOOPS
 from precision_track.utils import PoseDataSample, postprocess_one_stage_detections, unflatten_predictions
 from precision_track.models.postprocessing.steps import PostProcessingSteps
 from precision_track.tracking import OnlineGroundTruth
+from precision_track.apis import AssociationStep
 
 
 @LOOPS.register_module()
@@ -21,6 +22,7 @@ class OnlineTrainLoop(EpochBasedTrainLoop):
         dataloader: Union[DataLoader, Dict],
         post_processor: Config,
         max_epochs: int,
+        metafile: str,
         val_begin: int = 1,
         val_interval: int = 1,
         dynamic_intervals: Optional[List[Tuple[int, int]]] = None,
@@ -29,7 +31,16 @@ class OnlineTrainLoop(EpochBasedTrainLoop):
         assert hasattr(runner, "detector")
 
         self.post_processor = PostProcessingSteps(post_processor)
-        self.tracker = OnlineGroundTruth()
+        self.tracker = AssociationStep(
+            tracking_algorithm=dict(
+                type="OnlineGroundTruth",
+            ),
+            metafile=metafile,
+            motion_algorithm=dict(
+                type="DynamicKalmanFilterPytorch",
+            ),
+            memory_length=2,
+        )
 
         super().__init__(
             runner,
@@ -128,7 +139,7 @@ class OnlineTrainLoop(EpochBasedTrainLoop):
         self.runner.detector.eval()
         with torch.inference_mode():
             data = self.runner.detector.data_preprocessor(
-                dict(inputs=no_grad_frames, data_samples=[PoseDataSample() for _ in range(no_grad_frames.shape[0])]), False
+                dict(inputs=no_grad_frames, data_samples=list(itertools.chain.from_iterable(no_grad_data_samples))), False
             )
             det_pred_outputs = self.runner.detector.test_step(data)
 
@@ -188,26 +199,51 @@ class OnlineTrainLoop(EpochBasedTrainLoop):
                 )
             seq_data_sample = PoseDataSample()
             seq_anns = []
-            previous_anns = None
-            for post_processed_frame in post_processed_seq:
-                frame_anns = self.tracker(post_processed_frame, previous_anns)
-                seq_inputs = self.runner.model.data_preprocessor(dict(inputs=feature_maps, instances=frame_anns))
-                frame_anns = seq_inputs.pop("instances")
-                block_ids = seq_inputs.pop("block_ids")
+            for post_processed_frame, ds in zip(post_processed_seq, splitted_seq_data_samples[i]):
+                post_processed_frame["img_id"] = ds.frame_id
+                post_processed_frame["ori_shape"] = ds.img_shape
+                frame_anns = self.tracker(post_processed_frame)
+
+                nb_gts = len(post_processed_frame["gt_instances"])
+                if ds.frame_id == 29 and nb_gts == 0:
+                    stop = True
+
+                seq_inputs = self.runner.model.data_preprocessor(
+                    dict(inputs=feature_maps, data_samples=frame_anns),
+                    return_buffers=ds.frame_id == 29,  # TODO hack, rework preprocessor....
+                )
+                data_samples = seq_inputs.pop("data_samples")
+                seq_inputs.pop("block_ids")
+                frame_anns = data_samples["gt_instances"]
                 seq_anns.append(frame_anns)
-                previous_anns = frame_anns
             for seq_input in seq_inputs:
                 inputs[seq_input].append(seq_inputs[seq_input])
                 input_dims[seq_input] = tuple(seq_inputs[seq_input].shape[1:])
             seq_data_sample.gt_instances = InstanceData.cat(seq_anns)
-            seq_data_sample.block_ids = block_ids
             splitted_seq_data_samples[i] = seq_data_sample
         for in_ in inputs:
             in_dims = input_dims[in_]
             inputs[in_] = torch.cat(inputs[in_]).view(-1, *in_dims)
 
         with self.runner.optim_wrapper.optim_context(self.runner.model):
-            outputs = self.runner.model.loss(**inputs, data_samples=splitted_seq_data_samples, cls_num_list=self._cls_num_list)
+
+            # sanity_check = defaultdict(int)
+            # block_actions = inputs["actions"].tolist()
+            # for ac in block_actions:
+            #     for a in ac:
+            #         sanity_check[a[0]] += 1
+            # from precision_track.outputs.display import display_class_balance
+
+            # display_class_balance(sanity_check)
+            batch_actions, counts = torch.unique(inputs["actions"], return_counts=True)
+            batch_cls_num_list = []
+            for cls_idx in range(len(self._cls_num_list)):
+                batch_cls_idx = torch.where(cls_idx == batch_actions)[0]
+                if batch_cls_idx.numel() > 0:
+                    batch_cls_num_list.append(counts[batch_cls_idx].item())
+                else:
+                    batch_cls_num_list.append(0)
+            outputs = self.runner.model.loss(**inputs, data_samples=splitted_seq_data_samples, cls_num_list=batch_cls_num_list)
         losses, log_vars = self.runner.model.parse_losses(outputs)
 
         if isinstance(det_losses, torch.Tensor):
@@ -223,6 +259,7 @@ class OnlineTrainLoop(EpochBasedTrainLoop):
     def _load_data_sample(data_samples, idx):
         out = PoseDataSample(metainfo=data_samples.metainfo)
         mask = data_samples.gt_instances.frame_id == idx
+        out.frame_id = idx.item()
         out.gt_instance_labels = data_samples.gt_instances[mask]
         out.ori_shape = None
         out.img_id = None

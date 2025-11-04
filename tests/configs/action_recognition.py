@@ -13,6 +13,16 @@ assigner = dict(
 
 metainfo = _base_.metainfo
 
+new_data_preprocessor = dict(
+    type="TestPreprocessor",
+    embd_size=128,  # TODO à dynamiser
+    metainfo=metainfo,
+    _delete_=True,
+    block_size=block_size,
+    with_kpts=True,
+    with_vels=True,
+)
+
 action_recognition_input_names = ["features", "poses", "dynamics"]
 action_recognition_output_names = ["class_logits", "action_embeddings"]
 analyzer = dict(

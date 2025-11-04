@@ -422,7 +422,7 @@ class SequenceRunner(PrecisionTrackRunner):
                 for scheduler in schedulers:
                     state_dict = scheduler.state_dict()
                     checkpoint["param_schedulers"][name].append(state_dict)
-        else:
+        elif isinstance(param_schedulers, list):
             checkpoint["param_schedulers"] = []
             for scheduler in param_schedulers:  # type: ignore
                 state_dict = scheduler.state_dict()  # type: ignore

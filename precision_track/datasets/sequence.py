@@ -19,7 +19,8 @@ from tqdm import tqdm
 from collections import defaultdict
 
 from precision_track.models.backends import DetectionBackend
-from precision_track.registry import DATASETS, OUTPUTS
+from precision_track.models.optimization.coaches import BaseCoach
+from precision_track.registry import DATASETS, OUTPUTS, COACHES
 from precision_track.outputs import BaseOutput
 from precision_track.outputs.display import display_class_balance
 from precision_track.utils import (
@@ -90,6 +91,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
         test_mode: bool = False,
         block_size: Optional[int] = 2,
         img_ext: Optional[str] = ".jpg",
+        coach: Optional[dict] = None,
         *args,
         **kwargs,
     ):
@@ -109,6 +111,9 @@ class OnlineRandomSequenceDataset(BaseDataset):
         self.action_to_label_map = dict()
 
         self.idx_map = list()
+        self._seq_lengths = dict()
+
+        self.coach = COACHES.build(coach) if coach is not None else coach
 
         super().__init__(
             ann_file=None,
@@ -177,17 +182,28 @@ class OnlineRandomSequenceDataset(BaseDataset):
             }
         )
 
-    def get_data_info(self, idx: int) -> dict:
+    def get_data_info(self, idx: int, block_idx: int, **kwargs) -> dict:
         data_info = self.data_list[idx]
+        out = dict(sequence_dir=data_info["sequence_dir"])
+
         if idx >= 0:
-            data_info["sample_idx"] = idx
+            out["sample_idx"] = idx
         else:
-            data_info["sample_idx"] = len(self) + idx
+            out["sample_idx"] = len(self) + idx
+
+        for output_k in ["bboxes_output", "kpts_output", "actions_output"]:
+            output = data_info.get(output_k)
+            if isinstance(output, BaseOutput) and output.valid() and output.results:
+                out[output_k] = deepcopy(np.array(output[block_idx : block_idx + self.block_size]))
 
         metainfo_keys = ["dataset_name", "upper_body_ids", "lower_body_ids", "flip_pairs", "dataset_keypoint_weights", "flip_indices", "skeleton_links"]
         for key in metainfo_keys:
-            data_info[key] = deepcopy(self._metainfo[key])
-        return data_info
+            out[key] = deepcopy(self._metainfo[key])
+
+        for key in kwargs:
+            assert key not in out, f"kwargs cannot override the sequence's {key} key."
+            out[key] = kwargs[key]
+        return out
 
     def set_sequence_transforms(self):
         for transform in self.pipeline.transforms:
@@ -195,18 +211,21 @@ class OnlineRandomSequenceDataset(BaseDataset):
                 transform.set_stochastic_params()
 
     def get_sequence(self, idx):
-        padded_block_size = 2 * self.block_size  # Ensuring no empty timesteps at the end of the block
         if self.test_mode:
             sequence_idx, block_idx = self.idx_map[idx]
-            sequence = self.get_data_info(sequence_idx)
+            sequence = self.get_data_info(sequence_idx, block_idx)
         else:
-            sequence_idx = np.random.randint(low=0, high=len(self.data_list))
-            sequence = self.get_data_info(sequence_idx)
-            ground_truth = sequence["bboxes_output"]
-            if len(ground_truth) < padded_block_size:
-                block_idx = 0
+            if isinstance(self.coach, BaseCoach):
+                sequence_idx, block_idx, kwargs = self.coach.get_idx()
             else:
-                block_idx = np.random.randint(low=0, high=len(ground_truth) - padded_block_size)
+                kwargs = dict()
+                sequence_idx = np.random.randint(low=0, high=len(self.data_list))
+                seq_length = self._seq_lengths[sequence_idx]
+                if seq_length < self.block_size:
+                    block_idx = 0
+                else:
+                    block_idx = np.random.randint(low=0, high=seq_length - self.block_size)
+            sequence = self.get_data_info(sequence_idx, block_idx, **kwargs)
             self.set_sequence_transforms()
 
         sequence_dir = sequence["sequence_dir"]
@@ -216,24 +235,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
     def prepare_data(self, idx):
         # TODO ajouter rdm timestep (uniforme dans [1, 4])
-        # TODO ajouter sequence miner
+        # TODO ajouter sequence coach
         # TODO ajouter rdm occlusion (transform)
         # TODO loader ground truth pour le block_size+1 frame
 
-        # random_seq = self.get_data_info(np.random.randint(low=0, high=len(self.data_list)))  # TODO, en test PAS Random
-        # sequence_dir = random_seq["sequence_dir"]
-        # ground_truth = random_seq["bboxes_output"]
-        # padded_block_size = 2 * self.block_size  # Ensuring no empty timesteps at the end of the block
-        # if len(ground_truth) < padded_block_size:
-        #     random_seq_idx = 0
-        # else:
-        #     random_seq_idx = np.random.randint(low=0, high=len(ground_truth) - padded_block_size)
-
-        # seq = get_seq_from_img_folder(random_seq_idx, self.block_size, sequence_dir)
-
-        # self.set_sequence_transforms()
-
-        # running_idx = random_seq_idx
         sequence_idx, sequence, block_idx, images = self.get_sequence(idx)
 
         inputs = []
@@ -244,24 +249,25 @@ class OnlineRandomSequenceDataset(BaseDataset):
         gt_instances = defaultdict(list)
 
         bboxes_output = sequence.get("bboxes_output")
-
         kpts_output = sequence.get("kpts_output")
-        kpts_out_valid = isinstance(kpts_output, BaseOutput) and kpts_output.valid() and kpts_output.results
-
+        kpts_out_valid = isinstance(kpts_output, np.ndarray)
         actions_output = sequence.get("actions_output")
-        actions_out_valid = isinstance(actions_output, BaseOutput) and actions_output.valid() and actions_output.results
+        actions_out_valid = isinstance(actions_output, np.ndarray)
+
+        data_samples = []
 
         for running_idx, image_path in enumerate(images):
-            bboxes = np.array(bboxes_output[block_idx + running_idx])
-            N = bboxes.shape[0]
-            sequence["category_id"] = bboxes[:, 1].astype(int)
-            sequence["instance_id"] = bboxes[:, 2].astype(int)
-            sequence["bbox"] = bboxes[:, 3:7]
+            running_idx_mask = bboxes_output[:, 0] == block_idx + running_idx
+            N = running_idx_mask.sum()
+            assert N > 0, f"{bboxes_output[:, 0]} \n -------------------- \n block_idx={block_idx}, running_idx={running_idx}"
+            sequence["category_id"] = bboxes_output[running_idx_mask, 1].astype(int)
+            sequence["instance_id"] = bboxes_output[running_idx_mask, 2].astype(int)
+            sequence["bbox"] = bboxes_output[running_idx_mask, 3:7]
             sequence["bbox"] = reformat(sequence["bbox"], "xywh", "xyxy")
-            sequence["bbox_score"] = bboxes[:, 7]
+            sequence["bbox_score"] = bboxes_output[running_idx_mask, 7]
 
             if kpts_out_valid:
-                kpts = np.array(kpts_output[block_idx + running_idx])
+                kpts = kpts_output[running_idx_mask, ...]
                 assert np.all(
                     kpts[:, 1].astype(int) == sequence["category_id"]
                 ), f"Incoherance found between the keypoints ground truth's class ids and the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
@@ -280,7 +286,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
             sequence["num_keypoints"] = np.array([num_kpts])
 
             if actions_out_valid:
-                actions = np.array(actions_output[block_idx + running_idx])
+                actions = actions_output[running_idx_mask, ...]
                 assert np.all(
                     actions[:, 1].astype(int) == sequence["category_id"]
                 ), f"Incoherance found between the actions ground truth's class ids and the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
@@ -295,6 +301,9 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
             sequence["img_path"] = image_path
 
+            if isinstance(self.coach, BaseCoach):
+                sequence = self.coach.select_idx_labels(sequence)
+
             transformed_sequence = self.pipeline(sequence)
             metainfo["input_size"] = transformed_sequence["input_size"]
             metainfo["input_scale"] = transformed_sequence["input_scale"]
@@ -305,35 +314,38 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
             inputs.append(transformed_sequence.pop("img"))
 
-            gt_instance_labels["action_labels"].append(sequence["action_label"].reshape(-1, 1))
-            gt_instances["actions"].append(sequence["action"].reshape(-1, 1))
-            gt_instances["bboxes"].append(sequence["bbox"])
-            x1, y1, x2, y2 = sequence["bbox"].T
+            gt_instance_labels = InstanceData(action_labels=transformed_sequence["action_label"].reshape(-1, 1))
+
+            gt_instances = InstanceData()
+            gt_instances.set_data({"actions": torch.from_numpy(transformed_sequence["action"].reshape(-1, 1))})
+            gt_instances.set_data({"bboxes": torch.from_numpy(transformed_sequence["bbox"])})
+
+            x1, y1, x2, y2 = transformed_sequence["bbox"].T
             assert np.all(x2 > x1) and np.all(y2 > y1)
-            gt_instances["areas"].append(np.clip((x2 - x1) * (y2 - y1) * 0.53, a_min=1.0, a_max=None))
-            gt_instances["scores"].append(sequence["bbox_score"])
-            gt_instances["keypoints"].append(sequence["keypoints"])
-            gt_instances["keypoints_visible"].append(sequence["keypoints_visible"])
-            gt_instances["instances_id"].append(sequence["instance_id"])
-            gt_instances["labels"].append(sequence["category_id"])
-            gt_instances["frame_id"].append(np.full((sequence["action"].shape[0],), running_idx))
+            gt_instances.set_data({"areas": torch.from_numpy(np.clip((x2 - x1) * (y2 - y1) * 0.53, a_min=1.0, a_max=None))})
 
-        inst_gt_instance_labels = InstanceData(action_labels=np.concatenate(gt_instance_labels.pop("action_labels")))
-        inst_gt_instances = InstanceData()
-        for k, v in gt_instances.items():
-            inst_gt_instances.set_data({k: torch.tensor(np.concatenate(v))})
+            gt_instances.set_data({"scores": torch.from_numpy(transformed_sequence["bbox_score"])})
+            gt_instances.set_data({"keypoints": torch.from_numpy(transformed_sequence["keypoints"])})
+            gt_instances.set_data({"keypoints_visible": torch.from_numpy(transformed_sequence["keypoints_visible"])})
 
-        data_sample = PoseDataSample(metainfo=metainfo)
-        data_sample.action_label_counter = self.action_label_counter
-        data_sample.seq_id = sequence_idx
-        data_sample.gt_instance_labels = inst_gt_instance_labels
-        data_sample.gt_instances = inst_gt_instances
+            gt_instances.set_data({"instances_id": torch.from_numpy(transformed_sequence["instance_id"])})
+            gt_instances.set_data({"labels": torch.from_numpy(transformed_sequence["category_id"])})
+            gt_instances.set_data({"frame_id": torch.full((transformed_sequence["action"].shape[0],), running_idx)})
 
-        # self.save_sequence(f"{sequence_idx}-{block_idx}", inputs, gt_instances)  # TODO Externalize this sanity check hack
+            data_sample = PoseDataSample(metainfo=metainfo)
+            data_sample.action_label_counter = self.action_label_counter
+            data_sample.seq_id = f"{sequence_idx}-{block_idx}"
+            data_sample.img_id = running_idx
+            data_sample.ori_shape = transformed_sequence["ori_shape"]
+            data_sample.gt_instance_labels = gt_instance_labels
+            data_sample.gt_instances = gt_instances
+            data_samples.append(data_sample)
 
-        return dict(inputs=image_to_tensor(inputs), data_samples=data_sample)
+        # self.save_sequence(f"{sequence_idx}-{block_idx}", inputs, data_samples)  # TODO Externalize this sanity check hack
 
-    def save_sequence(self, seq_idx: int, images: list, gt_instances: dict):
+        return dict(inputs=image_to_tensor(inputs), data_samples=data_samples)
+
+    def save_sequence(self, seq_idx: int, images: list, data_samples):
         save_dir = os.path.abspath(os.path.join(self.data_root, "augmented_sequences", str(seq_idx)))
         os.makedirs(save_dir, exist_ok=True)
 
@@ -346,6 +358,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
             o.path = os.path.join(save_dir, f"{k}{o.EXTENSION}")
 
         for i, image in enumerate(images):
+            gt_instances = data_samples[i].gt_instances.to_dict()
             os.makedirs(os.path.join(save_dir, "frames"), exist_ok=True)
             cv2.imwrite(os.path.join(save_dir, "frames", f"{i}.png"), image)
             N = gt_instances["frame_id"][i].shape[0]
@@ -415,7 +428,6 @@ class OnlineRandomSequenceDataset(BaseDataset):
             assert isinstance(self.data_prefix[key], list), f"{key} is expected to be a list or a directory."
 
     def load_data_list(self) -> List[dict]:
-        # TODO Éventuellement, setter les miners offline en lisant les ground truths.
         self.logger.info("Loading sequences...")
         prefix_map = []
         self.action_to_label_map = {ac: i for i, ac in enumerate(self.metainfo.get("actions", []))}
@@ -472,8 +484,13 @@ class OnlineRandomSequenceDataset(BaseDataset):
             ), f"{len(ref_len)} frames are labelled, but only {len(os.listdir(seq_path))} frames are saved at the {seq_path} directory."
 
             block_idxs = np.arange(0, len(ref_len), self.block_size)[:-1].tolist()
+            self._seq_lengths[sequence_idx] = block_idxs[-1]
             self._length += len(block_idxs)
             self.idx_map.extend([(sequence_idx, block_idx) for block_idx in block_idxs])
+            data["sequence_idx"] = sequence_idx
+
+            if isinstance(self.coach, BaseCoach):
+                self.coach.load_info(data)
 
             data_list.append(data)
         if self.action_counter:

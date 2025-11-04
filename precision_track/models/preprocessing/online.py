@@ -1,8 +1,10 @@
-from typing import Optional, Union
-from collections import OrderedDict
+import heapq
+from typing import Optional, Dict, Union, List
+from collections import OrderedDict, defaultdict
 import numpy as np
 import torch
 from mmengine.model import BaseDataPreprocessor
+from mmengine.structures import InstanceData
 
 from precision_track.registry import MODELS
 from precision_track.utils import get_device, kpts_to_poses, parse_pose_metainfo
@@ -39,8 +41,7 @@ class FPVOnlinePreprocessor(OnlinePreprocessor):
         self.kpts_conf_thr = kpts_conf_thr
 
         self.skeleton_links = parse_pose_metainfo(dict(from_file=metainfo)).get("skeleton_links")
-        self.skeleton_sources = torch.tensor([s for s, _ in self.skeleton_links], device=self._device)
-        self.skeleton_targets = torch.tensor([t for _, t in self.skeleton_links], device=self._device)
+        self._init_graph()
 
         self.block_size = block_size
 
@@ -59,53 +60,65 @@ class FPVOnlinePreprocessor(OnlinePreprocessor):
             self.null_values += [-100]
             self.dtypes += [torch.long]
 
-    def forward(self, data: dict, training: bool = False) -> Union[dict, list]:
-        instances = data["instances"]
+    def _init_graph(self):
+        self.skeleton_sources = torch.tensor([s for s, _ in self.skeleton_links], device=self._device)
+        self.skeleton_targets = torch.tensor([t for _, t in self.skeleton_links], device=self._device)
 
-        instances.valid_action_recognition_context = torch.zeros_like(instances.instances_id, dtype=bool)
+    def forward(self, data: dict, return_buffers: bool = False) -> Union[dict, list]:
+        data_samples = data["data_samples"]
+        pred_track_instances = data_samples.get("pred_track_instances", None)
+        frame_id = int(data_samples.get("img_id", -1))
 
-        features = instances.features
-        vels = instances.velocities.view(features.shape[0], -1)
+        assert isinstance(pred_track_instances, dict), f"pred_track_instances must be a dict, not {pred_track_instances}."
+        assert frame_id >= 0, f"frame_id must be > 0, not: {frame_id}."
 
+        ids = pred_track_instances["instances_id"]
+        labels = pred_track_instances["labels"]
+
+        features = pred_track_instances["features"]
+        if self._device == features.device:
+            self._device = features.device
+            self._init_graph()
+
+        pred_track_instances["valid_action_recognition_context"] = torch.zeros_like(ids, dtype=bool, device=self._device)
+        vels = pred_track_instances["velocities"].view(features.shape[0], 2).to(self._device).to(features.dtype)
         poses, scale = kpts_to_poses(
-            instances.keypoints,
-            instances.keypoint_scores,
+            pred_track_instances["keypoints"].to(self._device),
+            pred_track_instances["keypoint_scores"].to(self._device),
             self.skeleton_sources,
             self.skeleton_targets,
             self.kpts_conf_thr,
             normalize=True,
         )
         vels /= scale
-        poses = poses.view(features.shape[0], -1)
-
-        frame_id = instances.frame_id[0]
+        poses = poses.view(features.shape[0], self.skeleton_sources.shape[0] * 2)
 
         new_data = [poses, features, vels]
         new_shapes = [poses.shape[1], features.shape[1], vels.shape[1]]
         buffers = [[], [], []]
 
         if self._with_kpt_vels:
-            kpt_vels = instances.keypoint_velocities.view(features.shape[0], -1) / scale
+            kpt_vels = pred_track_instances["keypoint_velocities"].view(features.shape[0], self.skeleton_sources.shape[0]) / scale
             new_data.append(kpt_vels)
             new_shapes.append(kpt_vels.shape[1])
             buffers.append([])
 
         if self._with_actions:
-            actions = instances.actions.view(features.shape[0], 1)
+            actions = pred_track_instances["actions"].view(features.shape[0], 1)
             new_data.append(actions)
             new_shapes.append(1)
             buffers.append([])
 
         active_ids = set()
-        corrections = hasattr(instances, "corrected_instances_id") or dict()
+        corrections = pred_track_instances.get("corrected_instances_id", dict())
 
-        for i, inst_id in enumerate(instances.instances_id):
+        for i, inst_id in enumerate(ids):
             inst_id = int(inst_id)
             active_ids.add(inst_id)
             context_ok = torch.zeros(len(buffers), dtype=bool)
 
             was_corrected = False
-            cls_corr = corrections.get(instances.labels[i], list())
+            cls_corr = corrections.get(labels[i], list())
             for corr_a, corr_b in cls_corr:
                 if inst_id == corr_a or inst_id == corr_b:
                     was_corrected = True
@@ -135,7 +148,7 @@ class FPVOnlinePreprocessor(OnlinePreprocessor):
                 buf.append(tube_dict[inst_id]["tube"].to_tensor())
 
             if torch.all(context_ok):
-                instances.valid_action_recognition_context[i] = True
+                pred_track_instances["valid_action_recognition_context"][i] = True
 
         all_ids = set(self.action_tubes[0].keys())
         inactive_ids = all_ids - active_ids
@@ -154,11 +167,16 @@ class FPVOnlinePreprocessor(OnlinePreprocessor):
             for tube in self.action_tubes:
                 tube.pop(inst_id, None)
 
+        if not return_buffers:
+            return dict(
+                data_samples=data_samples,
+                block_ids=all_ids,
+            )
         out = dict(
             poses=torch.stack(buffers[0], dim=0),
             features=torch.stack(buffers[1], dim=0),
             dynamics=torch.stack(buffers[2], dim=0),
-            instances=instances,
+            data_samples=data_samples,
             block_ids=all_ids,
         )
         if self._with_kpt_vels:
@@ -169,3 +187,264 @@ class FPVOnlinePreprocessor(OnlinePreprocessor):
             out["actions"] = torch.stack(buffers[3], dim=0)
 
         return out
+
+
+class IdIndexMap:
+    def __init__(self, max_size: int):
+        self.id2idx: Dict[str, int] = {}
+        self.free: List[int] = []
+        self.next_idx: int = 0
+        self.max_size = max_size
+
+    def has(self, id_: str) -> bool:
+        return id_ in self.id2idx
+
+    def get(self, id_: str) -> Optional[int]:
+        return self.id2idx.get(id_, None)
+
+    def acquire(self, id_: str) -> int:
+        """Map id_ to a stable index, reusing freed slots when possible."""
+        if id_ in self.id2idx:
+            return self.id2idx[id_]
+        if self.free:
+            idx = heapq.heappop(self.free)
+        else:
+            if self.next_idx >= self.max_size:
+                raise RuntimeError("IdIndexMap at capacity")
+            idx = self.next_idx
+            self.next_idx += 1
+        self.id2idx[id_] = idx
+        return idx
+
+    def release(self, id_: str) -> None:
+        """Delete id_ and free its index for reuse."""
+        idx = self.id2idx.pop(id_, None)
+        if idx is not None:
+            heapq.heappush(self.free, idx)
+
+    def active_indices(self) -> List[int]:
+        """Unordered active indices; use for indexing or mask building."""
+        return list(self.id2idx.values())
+
+    def available_count(self) -> int:
+        """How many indices can be reused without growing."""
+        return len(self.free)
+
+    def size(self) -> int:
+        """Number of active ids."""
+        return len(self.id2idx)
+
+    def capacity(self) -> int:
+        """Highest issued length if you need a fixed-size mask/tensor."""
+        return self.next_idx
+
+
+@MODELS.register_module()
+class TestPreprocessor(OnlinePreprocessor):
+    def __init__(
+        self,
+        metainfo: str,
+        embd_size: int,
+        block_size: int,
+        max_size: Optional[int] = 100,
+        kpts_conf_thr: Optional[float] = 0.5,
+        device: Optional[str] = None,
+        with_vels: Optional[bool] = False,
+        with_kpts: Optional[bool] = False,
+        with_kpt_vels: Optional[bool] = False,
+        with_actions: Optional[bool] = False,
+        **kwargs,
+    ):
+        super().__init__()
+        assert 0 <= kpts_conf_thr < 1
+        assert block_size > 0
+        assert max_size > 0
+        assert embd_size > 0
+
+        self._device = device or get_device()
+        self.kpts_conf_thr = kpts_conf_thr
+
+        self.skeleton_links = parse_pose_metainfo(dict(from_file=metainfo)).get("skeleton_links")
+        self._init_graph()
+
+        self._block_size = int(block_size)
+        self._max_size = int(max_size)
+        self._embd_size = int(embd_size)
+
+        self._with_vels = with_vels
+        self._with_kpts = with_kpts
+        self._with_kpt_vels = with_kpt_vels
+        self._with_actions = with_actions
+
+        self.block_features = torch.zeros((self._max_size, self._block_size, self._embd_size), dtype=torch.float32, device=self._device).contiguous()
+
+        self.block_vels = None
+        if with_vels:
+            self.block_vels = torch.zeros((self._max_size, self._block_size, 2), dtype=torch.float32, device=self._device).contiguous()
+
+        self.block_poses = None
+        if with_kpts:
+            self.block_poses = torch.zeros(
+                (self._max_size, self._block_size, len(self.skeleton_links), 2), dtype=torch.float32, device=self._device
+            ).contiguous()
+
+        self.block_pose_vels = None
+        if with_kpt_vels:
+            self.block_pose_vels = torch.zeros(
+                (self._max_size, self._block_size, len(self.skeleton_links), 2), dtype=torch.float32, device=self._device
+            ).contiguous()
+
+        self.block_actions = None
+        if with_actions:
+            self.block_actions = torch.zeros((self._max_size, self._block_size, 1), dtype=torch.float32, device=self._device).contiguous()
+
+        self.ids2idx = IdIndexMap(max_size=self._max_size)
+        self.time_no_see = defaultdict(int)
+        self._head = torch.zeros(self._max_size, dtype=torch.long, device=self._device)
+
+    def _init_graph(self):
+        self.skeleton_sources = torch.as_tensor([s for s, _ in self.skeleton_links], device=self._device)
+        self.skeleton_targets = torch.as_tensor([t for _, t in self.skeleton_links], device=self._device)
+
+    def forward(self, data: dict, training: bool = False) -> Union[dict, list]:
+        data_samples = data["data_samples"]
+        if isinstance(data_samples, list):
+            data_samples = data_samples[0]
+        pred_track_instances = data_samples.get("pred_track_instances", None)
+        frame_id = int(data_samples.get("img_id", -1))
+
+        assert isinstance(pred_track_instances, dict), f"pred_track_instances must be a dict, not {pred_track_instances}."
+        assert frame_id >= 0, f"frame_id must be > 0, not: {frame_id}."
+
+        ids = pred_track_instances["instances_id"]
+        if isinstance(ids, np.ndarray):
+            ids = torch.from_numpy(ids)
+        ids = ids.to(self._device)
+
+        labels = pred_track_instances["labels"]
+        if isinstance(labels, np.ndarray):
+            labels = torch.from_numpy(labels)
+        ids = ids.to(self._device)
+
+        unique_ids = [f"{label.item()}-{id_.item()}" for label, id_ in zip(labels, ids)]
+        idxs = torch.zeros_like(ids, dtype=torch.long, device=self._device)
+        self._register_ids(idxs, unique_ids)
+
+        features = pred_track_instances["features"]
+        if isinstance(features, np.ndarray):
+            features = torch.from_numpy(features)
+        assert self._device != features.device, f"Expected tensors to be on {self._device}, got {features.device} instead."
+
+        vels = pred_track_instances["velocities"]
+        if isinstance(vels, np.ndarray):
+            vels = torch.from_numpy(vels).to(self._device)
+        vels = vels.view(features.shape[0], 2).to(self._device).to(features.dtype)
+
+        pred_track_instances["valid_action_recognition_context"] = torch.zeros_like(ids, dtype=bool, device=self._device)
+        scale = None
+
+        out = {}
+        self._ring_write(self.block_features, idxs, features)
+
+        if self._with_kpts:
+            kpts = pred_track_instances["keypoints"]
+            if isinstance(kpts, np.ndarray):
+                kpts = torch.from_numpy(kpts)
+            kpts = kpts.to(self._device)
+
+            kpt_vis = pred_track_instances["keypoint_scores"]
+            if isinstance(kpt_vis, np.ndarray):
+                kpt_vis = torch.from_numpy(kpt_vis)
+            kpt_vis = kpt_vis.to(self._device)
+
+            poses, scale = kpts_to_poses(
+                kpts,
+                kpt_vis,
+                self.skeleton_sources,
+                self.skeleton_targets,
+                self.kpts_conf_thr,
+                normalize=True,
+            )
+            poses = poses.to(self.block_poses.dtype)
+            self._ring_write(self.block_poses, idxs, poses)
+
+        if self._with_vels:
+            if scale is not None:
+                vels = vels / scale
+            vels = vels.to(self.block_vels.dtype)
+            self._ring_write(self.block_vels, idxs, vels)
+
+        if self._with_actions:
+            actions = pred_track_instances["actions"]
+            if isinstance(actions, np.ndarray):
+                actions = torch.from_numpy(actions)
+            actions = actions.to(self._device).to(self.block_actions.dtype)
+            self._ring_write(self.block_actions, idxs, actions)
+
+        act_rows = idxs.unique(sorted=False)
+        out["features"] = self.materialize(self.block_features, act_rows)
+        if self._with_kpts:
+            out["poses"] = self.materialize(self.block_poses, act_rows)
+        if self._with_vels:
+            out["dynamics"] = self.materialize(self.block_vels, act_rows)
+        if self._with_actions:
+            out["actions"] = self.materialize(self.block_actions, act_rows)
+
+        self._delete_ids()
+
+        return out
+
+    def materialize(self, block, rows):
+        """Re-arange the block chronologically, no matter where the index is pointing at."""
+        start = self._head.index_select(0, rows)
+        t = torch.arange(self._block_size, device=block.device)
+        idx_time = (start.unsqueeze(1) + t) % self._block_size
+        return block[rows.unsqueeze(1), idx_time, :]
+
+    def _ring_write(self, block: torch.Tensor, rows: torch.Tensor, data: torch.Tensor):
+        """Maintain an index pointing to where to write next for a particular pos."""
+        assert rows.dtype == torch.long
+        assert rows.device == block.device, "rows/block device mismatch"
+        pos = self._head.index_select(0, rows)
+        assert data.shape[0] == rows.shape[0], "batch mismatch"
+        block[rows, pos, ...] = data
+        self._head.index_copy_(0, rows, (pos + 1) % self._block_size)
+        return block
+
+    def _register_ids(self, idxs: torch.Tensor, new_ids: List[str]):
+        assert idxs.shape[0] == len(new_ids)
+
+        seen_ids = set()
+        for i, new_id in enumerate(new_ids):
+            seen_ids.add(new_id)
+            idx = self.ids2idx.get(new_id)
+            if idx is None:
+                idx = self.ids2idx.acquire(new_id)
+            idxs[i] = idx
+
+        for k in self.time_no_see:
+            self.time_no_see[k] += 1
+
+        for k in seen_ids:
+            self.time_no_see[k] = 0
+
+    def _delete_ids(self):
+        expired = [k for k, t in self.time_no_see.items() if t >= self._block_size]
+        if not expired:
+            return
+
+        for id_ in expired:
+            idx = self.ids2idx.get(id_)
+            if idx is not None:
+                self.block_features[idx].zero_()
+                if self._with_vels:
+                    self.block_vels[idx].zero_()
+                if self._with_kpts:
+                    self.block_poses[idx].zero_()
+                if self._with_kpt_vels:
+                    self.block_pose_vels[idx].zero_()
+                if self._with_actions:
+                    self.block_actions[idx].zero_()
+                self._head[idx].zero_()
+            self.ids2idx.release(id_)
+            self.time_no_see.pop(id_, None)

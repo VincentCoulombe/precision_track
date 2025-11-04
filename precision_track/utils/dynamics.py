@@ -5,19 +5,14 @@ import torch
 from numba import njit
 
 
-def calculate_bbox_velocities(curr, prev, dt, conf_thr: float = 0.0):
-    curr_boxes = curr.bboxes
-    curr_ids = curr.instances_id
-
-    prev_boxes = prev.bboxes
-    prev_ids = prev.instances_id
+def calculate_bbox_velocities(curr_bboxes, curr_ids, curr_scores, prev_bboxes, prev_ids, dt, conf_thr: float = 0.0):
     still_tracked = torch.isin(prev_ids, curr_ids, assume_unique=True)
     prev_ids = prev_ids[still_tracked]
-    prev_boxes = prev_boxes[still_tracked]
+    prev_bboxes = prev_bboxes[still_tracked]
 
-    device = curr_boxes.device
-    dtype = curr_boxes.dtype
-    Nc = curr_boxes.shape[0]
+    device = curr_bboxes.device
+    dtype = curr_bboxes.dtype
+    Nc = curr_bboxes.shape[0]
 
     if prev_ids.numel() == 0:
         return torch.zeros((Nc, 2), device=device, dtype=dtype)
@@ -37,29 +32,23 @@ def calculate_bbox_velocities(curr, prev, dt, conf_thr: float = 0.0):
     prev_idx_for_curr[valid] = sort_idx[pos[valid]]
     has_prev = prev_idx_for_curr >= 0
 
-    aligned_prev_boxes = torch.zeros_like(curr_boxes)
+    aligned_prev_bboxes = torch.zeros_like(curr_bboxes)
     if has_prev.any():
-        aligned_prev_boxes[has_prev] = prev_boxes[prev_idx_for_curr[has_prev]]
+        aligned_prev_bboxes[has_prev] = prev_bboxes[prev_idx_for_curr[has_prev]]
 
-    conf_mask = curr.scores > conf_thr
+    conf_mask = curr_scores > conf_thr
 
     use_mask = has_prev & conf_mask
 
     velocities = torch.zeros((Nc, 2), device=device, dtype=dtype)
     if use_mask.any():
-        delta_c = curr_boxes[use_mask, :2] - aligned_prev_boxes[use_mask, :2]
-        velocities[use_mask] = delta_c / dt
+        delta_c = curr_bboxes[use_mask, :2] - aligned_prev_bboxes[use_mask, :2]
+        velocities[use_mask] = delta_c / dt[:, None]
 
     return velocities
 
 
-def calculate_pose_velocities(curr, prev, dt, vis_thr: float = 0.5):
-    curr_kpts = curr.keypoints
-    curr_vis = curr.keypoint_scores
-    curr_ids = curr.instances_id
-
-    prev_kpts = prev.keypoints
-    prev_ids = prev.instances_id
+def calculate_pose_velocities(curr_kpts, curr_vis, curr_ids, prev_kpts, prev_ids, dt, vis_thr: float = 0.5):
     still_tracked = torch.isin(prev_ids, curr_ids, assume_unique=True)
     prev_ids = prev_ids[still_tracked]
     prev_kpts = prev_kpts[still_tracked]
@@ -96,7 +85,7 @@ def calculate_pose_velocities(curr, prev, dt, vis_thr: float = 0.5):
 
     velocities = torch.zeros((Nc, K, 2), device=device, dtype=dtype)
     delta = curr_kpts - aligned_prev_kpts
-    velocities[use_mask.expand_as(delta)] = (delta / dt)[use_mask.expand_as(delta)]
+    velocities[use_mask.expand_as(delta)] = (delta / dt[:, None, None])[use_mask.expand_as(delta)]
 
     return velocities
 

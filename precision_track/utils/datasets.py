@@ -8,10 +8,12 @@
 
 
 import os.path as osp
-
+from typing import Any, Mapping, Sequence
 import numpy as np
 import torch
 from mmengine import Config
+
+from mmengine.registry import FUNCTIONS
 
 
 def parse_pose_metainfo(metainfo: dict):
@@ -136,3 +138,17 @@ def find_path_in_dir(path: str, dir_: list):
 def noisify(tensor: torch.Tensor, intensity=0.01):
     noise = torch.randn(tensor.size(), dtype=tensor.dtype, device=tensor.device) * intensity
     return tensor + (tensor * noise)
+
+
+@FUNCTIONS.register_module()
+def pseudo_collate_sequences(data_batch: Sequence) -> Any:
+    data_item = data_batch[0]
+    data_item_type = type(data_item)
+    if isinstance(data_item, (str, bytes)):
+        return data_batch
+    elif isinstance(data_item, tuple) and hasattr(data_item, "_fields"):
+        return data_item_type(*(pseudo_collate_sequences(samples) for samples in zip(*data_batch)))
+    elif isinstance(data_item, Mapping):
+        return data_item_type({key: pseudo_collate_sequences([d[key] for d in data_batch]) for key in data_item})
+    else:
+        return data_batch

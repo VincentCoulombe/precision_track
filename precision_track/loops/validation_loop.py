@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Sequence, Union
 
 import numpy as np
 import torch
+from addict import Dict
 from mmengine import Config
 from mmengine.evaluator import Evaluator
 from mmengine.registry import LOOPS
@@ -287,15 +288,12 @@ class OnlineValLoop(ValLoop):
             seq_data_samples = []
             prev = None
             for post_processed_frame in post_processed_seq:
-                pred_track_instances = self.tracker(post_processed_frame, prev)
-                seq_inputs = self.runner.model.data_preprocessor(dict(inputs=[], instances=pred_track_instances))
-                # TODO avoir les tracking gts aussi (dasn gt_instances)!
-                pred_track_instances = seq_inputs.pop("instances")
+                data_samples = self.tracker(post_processed_frame, prev)
+                seq_inputs = self.runner.model.data_preprocessor(dict(inputs=[], data_samples=data_samples))
+                data_samples = seq_inputs.pop("data_samples")
+                prev = data_samples
                 seq_inputs.pop("block_ids", None)
-                ds = dict()
-                ds["pred_track_instances"] = pred_track_instances.cpu().to_dict()
-                seq_data_samples.append(ds)
-                prev = pred_track_instances
+                seq_data_samples.append(Dict(data_samples))
             for seq_input in seq_inputs:
                 inputs[seq_input].append(seq_inputs[seq_input])
                 input_dims[seq_input] = tuple(seq_inputs[seq_input].shape[1:])

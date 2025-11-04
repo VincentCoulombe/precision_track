@@ -44,7 +44,8 @@ class Tracker(BaseModel):
 
         detector["verbose"] = self.verbose
         self.detector = DetectionBackend(**detector)
-        self._detection_mode = "predict" if detector.runtime.get("freeze", False) else "loss"
+        is_frozen = detector.runtime.get("freeze", False) or detector.runtime.get("type") != "PytorchRuntime"
+        self._detection_mode = "predict" if is_frozen else "loss"
 
         assigner["verbose"] = self.verbose
         self.association_step = AssociationStep(**assigner)
@@ -60,8 +61,10 @@ class Tracker(BaseModel):
         self.result = Result(outputs=outputs)
 
         self.analyzer = analyzer
+        self._analyzing = False
         if self.analyzer is not None:
             self.analyzer = MODELS.build(analyzer)
+            self._analyzing = True
 
     def forward(self, mode: Optional[str] = "predict", *args, **kwargs) -> Any:
         if mode == "predict":
@@ -72,28 +75,34 @@ class Tracker(BaseModel):
             raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss and predict mode.")
 
     def train(self, mode: bool = True):
-
         train_detector = self._detection_mode == "loss" and mode
         self.detector.train(train_detector)
         if isinstance(self.association_step.tracking_algorithm, nn.Module):
             self.association_step.tracking_algorithm.train(mode)
+        if isinstance(self.analyzer, nn.Module) and self._analyzing:
+            self.analyzer.train(mode)
         return self
 
     def eval(self):
         return self.train(False)
 
     def loss(self, inputs: List[torch.Tensor], data_samples: List[PoseDataSample]) -> dict:
-        inputs, data_samples = self._flatten_sequences(inputs, data_samples)
         losses = dict()
-        outputs = self.detector(inputs=inputs, data_samples=data_samples, mode="tensor" if self._detection_mode != "loss" else self._detection_mode)
-        if isinstance(outputs, dict):
-            losses.update(outputs.get("losses", dict()))
-            outputs = outputs["outputs"]
-        self._load_predictions(outputs, data_samples)
-        outputs = self.association_step.tracking_algorithm.loss(data_samples=data_samples)
-        losses.update(outputs.get("losses", dict()))
-        outputs = self.analyzer.loss(data_samples=data_samples)
-        losses.update(outputs.get("losses", dict()))
+        analyzer_inputs = list()
+        for seq_inputs, seq_data_samples in zip(inputs, data_samples):
+            seq_outputs = self.detector(inputs=seq_inputs, data_samples=seq_data_samples, mode=self._detection_mode)
+            self._maybe_update_losses(losses, seq_outputs)
+            self._load_predictions(seq_outputs, seq_data_samples)
+            for seq_data_sample in seq_data_samples:
+                output = self.association_step.associate(data_sample=seq_data_sample)
+                self._maybe_update_losses(losses, output)
+                if self._analyzing:
+                    output = self.analyzer.data_preprocessor(dict(data_samples=output))
+                    analyzer_inputs.append(output)
+        if self._analyzing:
+            # TODO concat analyzer_inputs dans le analyzer...
+            outputs = self.analyzer.loss(inputs=analyzer_inputs, data_samples=data_samples)
+            self._maybe_update_losses(losses, outputs)
         return losses
 
     def val_step(self, data_samples: Union[dict, tuple, list], *args, **kwargs) -> list:
@@ -158,23 +167,20 @@ class Tracker(BaseModel):
         return self.result
 
     @staticmethod
-    def _flatten_sequences(inputs: List[torch.Tensor], data_samples: List[PoseDataSample]) -> Tuple:
-        sequence_length = inputs[0].shape[0]
-        assert len(data_samples) == sequence_length
-        flatten_inputs = []
-        flatten_ds = []
-        for batch_idx in range(len(inputs)):
-            assert sequence_length == inputs[batch_idx].shape[0]
-            for sequence_idx in range(sequence_length):
-                flatten_inputs.append(inputs[batch_idx][sequence_idx])
-                flatten_ds.append(data_samples[sequence_idx][batch_idx])
-        return flatten_inputs, flatten_ds
+    def _maybe_update_losses(losses, outputs):
+        if isinstance(outputs, dict):
+            for k, v in outputs.items():
+                if "loss" in k and isinstance(v, torch.Tensor) and v.requires_grad == True:
+                    if k in losses:
+                        losses[k] = losses[k] + v
+                    else:
+                        losses[k] = v
 
     @staticmethod
     def _load_predictions(outputs: List[dict], data_samples: List[PoseDataSample]) -> Tuple:
         assert len(outputs) == len(data_samples)
         for output, data_sample in zip(outputs, data_samples):
-            assert output["img_id"] == data_sample.img_id
+            assert output["img_id"] == data_sample.img_id and output["seq_id"] == data_sample.seq_id
             data_sample.pred_instances = output["pred_instances"]
 
 

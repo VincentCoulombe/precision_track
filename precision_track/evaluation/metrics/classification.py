@@ -189,7 +189,6 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         self,
         metainfo: str,
         confusion_matrix_save_dir: str = None,
-        label_index_mode: str = "last",
         collect_device: str = "cpu",
         prefix: Optional[str] = None,
     ) -> None:
@@ -200,42 +199,23 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         super().__init__(collect_device=collect_device, prefix=prefix)
         self.label_to_action = defaultdict(str)
         for i, acc in enumerate(self.metainfo.get("actions", [])):
-            self.label_to_action[i] = acc
+            self.label_to_action[str(i)] = acc
         self.best_f1 = 0
-        assert label_index_mode in self.label_index_modes, f"{label_index_mode} must be one of: {self.label_index_modes}."
-        self.label_index_mode = label_index_mode
-
-    def _fetch_gt_action(self, idx: int, probs: torch.Tensor, gt_data_samples: List[PoseDataSample]):
-        if self.label_index_mode == "last":
-            return (
-                gt_data_samples[idx].gt_instance_labels.action_labels[-1].to(probs.device).long(),
-                gt_data_samples[idx].gt_instances.actions[-1].item(),
-            )
-        elif self.label_index_mode == "spacial":
-            assert len(gt_data_samples) == 1, "spacial index mode requires batch size = 1."
-            gt_data_sample = gt_data_samples[0]
-            return (
-                gt_data_sample.gt_instance_labels.action_labels[idx].to(probs.device).long(),
-                gt_data_sample.gt_instances.actions[idx].item(),
-            )
 
     def process(self, data_batch: Any, data_samples: Any) -> None:
         """Process one batch of data samples and predictions."""
         if isinstance(data_samples, list):
             data_samples = data_samples[0]
-        for i, probs in enumerate(data_samples):
-            gt, action = self._fetch_gt_action(i, probs, data_batch["data_samples"])
-            pred = torch.argmax(probs).item()
-            ce = F.cross_entropy(input=probs.view(1, -1), target=gt.view(-1)).item()
-            gt_label = gt.item()
-            self.label_to_action[str(gt_label)] = action
-            self.results.append((action, gt_label, pred, ce))
 
-    def compute_metrics(self, results: list) -> dict:
+        preds = torch.argmax(data_samples, dim=1)
+        gts = data_batch["data_samples"].gt_instances.actions
+        for pred, gt in zip(preds, gts):
+            self.results.append((gt.item(), pred.item()))
+
+    def compute_metrics(self, _: list) -> dict:
         """Compute macro F1, balanced accuracy, per-class accuracy, CE, and confusion matrix."""
-        y_true = [r[1] for r in results]
-        y_pred = [r[2] for r in results]
-        ce_vals = [r[3] for r in results]
+        y_true = [r[0] for r in self.results]
+        y_pred = [r[1] for r in self.results]
 
         metrics = dict()
 
@@ -243,7 +223,6 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         f1 = report["macro avg"]["f1-score"]
 
         metrics["Macro F1"] = f1
-        metrics["Cross Entropy"] = sum(ce_vals) / len(ce_vals)
         for k in report:
             if k in self.label_to_action:
                 action = self.label_to_action[k]
@@ -252,15 +231,15 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
 
         if f1 > self.best_f1:
             self.best_f1 = f1
-        if os.path.isdir(self.confusion_matrix_save_dir):
-            labels = sorted(list(set(y_true + y_pred)))
-            cm = confusion_matrix(y_true, y_pred, labels=labels)
-            label_names = [str(self.label_to_action.get(i, f"Class_{i}")) for i in labels]
-            df_cm = pd.DataFrame(cm, index=label_names, columns=label_names)
-            save_path = os.path.join(self.confusion_matrix_save_dir, f"confusion_matrix_f1_{f1:.3f}.csv")
-            df_cm.to_csv(save_path)
+            if os.path.isdir(self.confusion_matrix_save_dir):
+                labels = sorted(list(set(y_true + y_pred)))
+                cm = confusion_matrix(y_true, y_pred, labels=labels)
+                label_names = [str(self.label_to_action.get(i, f"Class_{i}")) for i in labels]
+                df_cm = pd.DataFrame(cm, index=label_names, columns=label_names)
+                save_path = os.path.join(self.confusion_matrix_save_dir, f"confusion_matrix_f1_{f1:.3f}.csv")
+                df_cm.to_csv(save_path)
 
-            metrics["Confusion Matrix"] = f"Saved to {save_path}"
+                metrics["Confusion Matrix"] = f"Saved to {save_path}"
 
         return metrics
 

@@ -70,6 +70,7 @@ def postprocess_one_stage_detections(
         formatted_pred_instances = {
             "ori_shape": getattr(data_sample, "ori_shape", None),
             "img_id": getattr(data_sample, "img_id", None),
+            "seq_id": getattr(data_sample, "seq_id", None),
             "img_path": getattr(data_sample, "img_path", None),
             "id": getattr(data_sample, "id", None),
             "category_id": getattr(data_sample, "category_id", 1),
@@ -101,7 +102,7 @@ def postprocess_fpv_action_recognition(
     actions = actions_map[np.argmax(current_timestep_probs, axis=1).reshape(-1)]
     action_scores = np.max(current_timestep_probs, axis=1).reshape(-1)
 
-    valid_context = data_sample["pred_track_instances"]["valid_action_recognition_context"]
+    valid_context = data_sample["pred_track_instances"]["valid_action_recognition_context"].detach().cpu().numpy()
     actions[~valid_context] = "Analyzing..."
     action_scores[~valid_context] = 1
 
