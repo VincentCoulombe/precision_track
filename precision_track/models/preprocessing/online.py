@@ -302,6 +302,8 @@ class TestPreprocessor(OnlinePreprocessor):
         self.time_no_see = defaultdict(int)
         self._head = torch.zeros(self._max_size, dtype=torch.long, device=self._device)
 
+        self.roll = False
+
     def _init_graph(self):
         self.skeleton_sources = torch.as_tensor([s for s, _ in self.skeleton_links], device=self._device)
         self.skeleton_targets = torch.as_tensor([t for _, t in self.skeleton_links], device=self._device)
@@ -315,6 +317,7 @@ class TestPreprocessor(OnlinePreprocessor):
 
         assert isinstance(pred_track_instances, dict), f"pred_track_instances must be a dict, not {pred_track_instances}."
         assert frame_id >= 0, f"frame_id must be > 0, not: {frame_id}."
+        self.roll = frame_id >= self._block_size
 
         ids = pred_track_instances["instances_id"]
         if isinstance(ids, np.ndarray):
@@ -327,8 +330,8 @@ class TestPreprocessor(OnlinePreprocessor):
         ids = ids.to(self._device)
 
         unique_ids = [f"{label.item()}-{id_.item()}" for label, id_ in zip(labels, ids)]
-        idxs = torch.zeros_like(ids, dtype=torch.long, device=self._device)
-        self._register_ids(idxs, unique_ids)
+        running_idxs = torch.zeros_like(ids, dtype=torch.long, device=self._device)
+        hidden_idxs = self._register_ids(running_idxs, unique_ids)
 
         features = pred_track_instances["features"]
         if isinstance(features, np.ndarray):
@@ -344,7 +347,8 @@ class TestPreprocessor(OnlinePreprocessor):
         scale = None
 
         out = {}
-        self._ring_write(self.block_features, idxs, features, update_index=True)
+        self._ring_write(self.block_features, running_idxs, features)
+        self._ring_write(self.block_features, hidden_idxs)
 
         if self._with_kpts:
             kpts = pred_track_instances["keypoints"]
@@ -366,51 +370,67 @@ class TestPreprocessor(OnlinePreprocessor):
                 normalize=True,
             )
             poses = poses.to(self.block_poses.dtype)
-            self._ring_write(self.block_poses, idxs, poses)
+            self._ring_write(self.block_poses, running_idxs, poses)
+            self._ring_write(self.block_poses, hidden_idxs)
 
         if self._with_vels:
             if scale is not None:
                 vels = vels / scale
             vels = vels.to(self.block_vels.dtype)
-            self._ring_write(self.block_vels, idxs, vels)
+            self._ring_write(self.block_vels, running_idxs, vels)
+            self._ring_write(self.block_vels, hidden_idxs)
 
         if self._with_actions:
             actions = pred_track_instances["actions"]
             if isinstance(actions, np.ndarray):
                 actions = torch.from_numpy(actions)
             actions = actions.to(self._device).to(self.block_actions.dtype)
-            self._ring_write(self.block_actions, idxs, actions)
+            self._ring_write(self.block_actions, running_idxs, actions)
+            self._ring_write(self.block_actions, hidden_idxs)
 
-        act_rows = idxs.unique(sorted=False)
-        out["features"] = self.materialize(self.block_features, act_rows)
+        out["features"] = self.materialize(self.block_features, running_idxs, self.roll)
         if self._with_kpts:
-            out["poses"] = self.materialize(self.block_poses, act_rows)
+            out["poses"] = self.materialize(self.block_poses, running_idxs, self.roll)
         if self._with_vels:
-            out["dynamics"] = self.materialize(self.block_vels, act_rows)
+            out["dynamics"] = self.materialize(self.block_vels, running_idxs, self.roll)
         if self._with_actions:
-            out["actions"] = self.materialize(self.block_actions, act_rows)
+            out["actions"] = self.materialize(self.block_actions, running_idxs, self.roll)
 
+        self._update_head(running_idxs)
+        self._update_head(hidden_idxs)
         self._delete_ids()
 
         return out
 
-    def materialize(self, block, rows):
-        """Re-arange the block chronologically, no matter where the index is pointing at."""
+    def materialize(self, block: torch.Tensor, rows: torch.Tensor, roll: Optional[bool] = False):
+        """Re-arange the block chronologically, starting from the registered rolling position."""
         start = self._head.index_select(0, rows)
         t = torch.arange(self._block_size, device=block.device)
-        idx_time = (start.unsqueeze(1) + t) % self._block_size
+        if roll:
+            idx_time = (start.unsqueeze(1) + 1 + t) % self._block_size
+        else:
+            idx_time = t
         return block[rows.unsqueeze(1), idx_time, :]
 
-    def _ring_write(self, block: torch.Tensor, rows: torch.Tensor, data: torch.Tensor, update_index: Optional[bool] = False):
-        """Maintain an index pointing to where to write next for a particular pos."""
-        assert rows.dtype == torch.long
-        assert rows.device == block.device, "rows/block device mismatch"
+    def _ring_write(self, block: torch.Tensor, rows: torch.Tensor, data: Optional[torch.Tensor] = None):
+        """Insert new data at the correct rolling position."""
+        assert self._head.device == block.device
         pos = self._head.index_select(0, rows)
-        assert data.shape[0] == rows.shape[0], "batch mismatch"
-        block[rows, pos, ...] = data
-        if update_index:
-            self._head.index_copy_(0, rows, (pos + 1) % self._block_size)
+        if data is not None:
+            assert rows.dtype == torch.long
+            assert rows.device == block.device, "rows/block device mismatch"
+            assert data.shape[0] == rows.shape[0], "batch mismatch"
+            block[rows, pos, ...] = data
+        else:
+            block[rows, pos, ...].zero_()
         return block
+
+    def _update_head(self, rows: torch.Tensor):
+        """Update the rolling position relative to its curent position and the block size."""
+        assert rows.dtype == torch.long
+        assert self._head.device == rows.device
+        pos = self._head.index_select(0, rows)
+        self._head.index_copy_(0, rows, (pos + 1) % self._block_size)
 
     def _register_ids(self, idxs: torch.Tensor, new_ids: List[str]):
         assert idxs.shape[0] == len(new_ids)
@@ -429,6 +449,14 @@ class TestPreprocessor(OnlinePreprocessor):
         for k in seen_ids:
             self.time_no_see[k] = 0
 
+        all_ids = set(self.ids2idx.id2idx.keys())
+        hidden_ids = all_ids - seen_ids
+        hidden_idxs = torch.zeros(len(hidden_ids), dtype=idxs.dtype, device=idxs.device)
+        for i, hidden_id in enumerate(hidden_ids):
+            idx = self.ids2idx.get(hidden_id)
+            hidden_idxs[i] = idx
+        return hidden_idxs
+
     def _delete_ids(self):
         expired = [k for k, t in self.time_no_see.items() if t >= self._block_size]
         if not expired:
@@ -437,6 +465,7 @@ class TestPreprocessor(OnlinePreprocessor):
         for id_ in expired:
             idx = self.ids2idx.get(id_)
             if idx is not None:
+                # TODO The blocks should be already zeroed out.... redundant!
                 self.block_features[idx].zero_()
                 if self._with_vels:
                     self.block_vels[idx].zero_()
