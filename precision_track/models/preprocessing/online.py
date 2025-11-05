@@ -302,7 +302,8 @@ class TestPreprocessor(OnlinePreprocessor):
         self.time_no_see = defaultdict(int)
         self._head = torch.zeros(self._max_size, dtype=torch.long, device=self._device)
 
-        self.roll = False
+        self.roll = torch.zeros_like(self._head, dtype=bool)
+        self.consecutive_hits = torch.zeros_like(self._head)
 
     def _init_graph(self):
         self.skeleton_sources = torch.as_tensor([s for s, _ in self.skeleton_links], device=self._device)
@@ -317,7 +318,6 @@ class TestPreprocessor(OnlinePreprocessor):
 
         assert isinstance(pred_track_instances, dict), f"pred_track_instances must be a dict, not {pred_track_instances}."
         assert frame_id >= 0, f"frame_id must be > 0, not: {frame_id}."
-        self.roll = frame_id >= self._block_size
 
         ids = pred_track_instances["instances_id"]
         if isinstance(ids, np.ndarray):
@@ -333,6 +333,8 @@ class TestPreprocessor(OnlinePreprocessor):
         running_idxs = torch.zeros_like(ids, dtype=torch.long, device=self._device)
         hidden_idxs = self._register_ids(running_idxs, unique_ids)
 
+        self.roll = self.consecutive_hits[running_idxs] > self._block_size
+
         features = pred_track_instances["features"]
         if isinstance(features, np.ndarray):
             features = torch.from_numpy(features)
@@ -343,7 +345,7 @@ class TestPreprocessor(OnlinePreprocessor):
             vels = torch.from_numpy(vels).to(self._device)
         vels = vels.view(features.shape[0], 2).to(self._device).to(features.dtype)
 
-        pred_track_instances["valid_action_recognition_context"] = torch.zeros_like(ids, dtype=bool, device=self._device)
+        pred_track_instances["valid_action_recognition_context"] = self.roll
         scale = None
 
         out = {}
@@ -388,13 +390,13 @@ class TestPreprocessor(OnlinePreprocessor):
             self._ring_write(self.block_actions, running_idxs, actions)
             self._ring_write(self.block_actions, hidden_idxs)
 
-        out["features"] = self.materialize(self.block_features, running_idxs, self.roll)
+        out["features"] = self.materialize(self.block_features, running_idxs)
         if self._with_kpts:
-            out["poses"] = self.materialize(self.block_poses, running_idxs, self.roll)
+            out["poses"] = self.materialize(self.block_poses, running_idxs)
         if self._with_vels:
-            out["dynamics"] = self.materialize(self.block_vels, running_idxs, self.roll)
+            out["dynamics"] = self.materialize(self.block_vels, running_idxs)
         if self._with_actions:
-            out["actions"] = self.materialize(self.block_actions, running_idxs, self.roll)
+            out["actions"] = self.materialize(self.block_actions, running_idxs)
 
         self._update_head(running_idxs)
         self._update_head(hidden_idxs)
@@ -402,14 +404,24 @@ class TestPreprocessor(OnlinePreprocessor):
 
         return out
 
-    def materialize(self, block: torch.Tensor, rows: torch.Tensor, roll: Optional[bool] = False):
-        """Re-arange the block chronologically, starting from the registered rolling position."""
-        start = self._head.index_select(0, rows)
-        t = torch.arange(self._block_size, device=block.device)
-        if roll:
-            idx_time = (start.unsqueeze(1) + 1 + t) % self._block_size
-        else:
-            idx_time = t
+    # def materialize(self, block: torch.Tensor, rows: torch.Tensor):
+    #     """Re-arange the block chronologically, starting from the registered rolling position."""
+    #     start = self._head.index_select(0, rows)
+    #     t = torch.arange(self._block_size, device=block.device)
+    #     idx_time = torch.stack(t for _ in range(len(rows)))
+    #     idx_time[self.roll] = (start.unsqueeze(1) + 1 + t) % self._block_size
+    #     return block[rows.unsqueeze(1), idx_time, :]
+
+    def materialize(self, block: torch.Tensor, rows: torch.Tensor):
+        """Re-arrange the block chronologically, starting from the registered rolling position."""
+        nb_insts = rows.size(0)
+        idx_time = torch.arange(self._block_size, device=block.device).unsqueeze(0).expand(nb_insts, -1)
+
+        if self.roll.any():
+            start = self._head.index_select(0, rows)
+            rolled_idx = (start.unsqueeze(1) + idx_time + 1) % self._block_size
+            idx_time = torch.where(self.roll.unsqueeze(1), rolled_idx, idx_time)
+
         return block[rows.unsqueeze(1), idx_time, :]
 
     def _ring_write(self, block: torch.Tensor, rows: torch.Tensor, data: Optional[torch.Tensor] = None):
@@ -422,7 +434,7 @@ class TestPreprocessor(OnlinePreprocessor):
             assert data.shape[0] == rows.shape[0], "batch mismatch"
             block[rows, pos, ...] = data
         else:
-            block[rows, pos, ...].zero_()
+            block[rows, pos, ...] = 0.0
         return block
 
     def _update_head(self, rows: torch.Tensor):
@@ -442,6 +454,7 @@ class TestPreprocessor(OnlinePreprocessor):
             if idx is None:
                 idx = self.ids2idx.acquire(new_id)
             idxs[i] = idx
+            self.consecutive_hits[idx] += 1
 
         for k in self.time_no_see:
             self.time_no_see[k] += 1
@@ -455,6 +468,7 @@ class TestPreprocessor(OnlinePreprocessor):
         for i, hidden_id in enumerate(hidden_ids):
             idx = self.ids2idx.get(hidden_id)
             hidden_idxs[i] = idx
+            self.consecutive_hits[idx] += 1
         return hidden_idxs
 
     def _delete_ids(self):
@@ -465,16 +479,7 @@ class TestPreprocessor(OnlinePreprocessor):
         for id_ in expired:
             idx = self.ids2idx.get(id_)
             if idx is not None:
-                # TODO The blocks should be already zeroed out.... redundant!
-                self.block_features[idx].zero_()
-                if self._with_vels:
-                    self.block_vels[idx].zero_()
-                if self._with_kpts:
-                    self.block_poses[idx].zero_()
-                if self._with_kpt_vels:
-                    self.block_pose_vels[idx].zero_()
-                if self._with_actions:
-                    self.block_actions[idx].zero_()
-                self._head[idx].zero_()
+                self._head[idx] = 0
+                self.consecutive_hits[idx] = 0
             self.ids2idx.release(id_)
             self.time_no_see.pop(id_, None)
