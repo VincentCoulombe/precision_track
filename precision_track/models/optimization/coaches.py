@@ -74,7 +74,7 @@ class ActionRecognitionCoach(BaseCoach):
 
             if key in last_frame_by_key and key in open_blocks and frame_id != last_frame_by_key[key] + 1:
                 prev_action, start, end = open_blocks[key]
-                self.action_to_blocks[prev_action].append((seq, start, end, key))
+                self._end_action_block(prev_action, seq, start, end, key)
                 del open_blocks[key]
 
             if key not in open_blocks:
@@ -82,7 +82,7 @@ class ActionRecognitionCoach(BaseCoach):
             else:
                 prev_action, start, end = open_blocks[key]
                 if action != prev_action:
-                    self.action_to_blocks[prev_action].append((seq, start, end, key))
+                    self._end_action_block(prev_action, seq, start, end, key)
                     open_blocks[key] = [action, frame_id, frame_id]
                 else:
                     open_blocks[key][2] = frame_id
@@ -90,9 +90,15 @@ class ActionRecognitionCoach(BaseCoach):
             last_frame_by_key[key] = frame_id
 
         for key, (prev_action, start, end) in open_blocks.items():
-            self.action_to_blocks[prev_action].append((seq, start, end, key))
+            self._end_action_block(prev_action, seq, start, end, key)
 
         self.actions = [a for a, blocks in self.action_to_blocks.items() if blocks]
+
+    def _end_action_block(self, action, seq, start, end, key):
+        # First, handle the first self.block_size frame's edge case
+        safe_start = max(start, self.block_size)
+        if end > safe_start:
+            self.action_to_blocks[action].append((seq, safe_start, end, key))
 
     def get_idx(self) -> int:
         """Return a valid start index for a window of length block_size that ENDS with the chosen action."""

@@ -105,7 +105,12 @@ class MART(BaseModel):
         else:
             raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss, predict and tensor mode.")
 
-    def loss(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, data_samples: List[PoseDataSample], *args, **kwargs) -> dict:
+    def loss(self, inputs: List[dict], data_samples: List[PoseDataSample], *args, **kwargs) -> dict:
+        batched_inputs = self._build_batch(inputs=inputs)
+        features = batched_inputs["features"]
+        dynamics = batched_inputs["dynamics"]
+        poses = batched_inputs["poses"]
+
         features = self.dropout(features)
         dynamics = self.dropout(dynamics)
         poses = self.dropout(poses)
@@ -114,12 +119,36 @@ class MART(BaseModel):
         N, T, _ = decoder_embs.shape
         losses = dict()
 
-        action_labels = kwargs.get("actions")
+        action_labels = batched_inputs.get("actions")
         if action_labels is not None:
-            action_labels = action_labels.reshape(N * T)
+            action_labels = action_labels.reshape(N * T).long()
             losses["classification_loss"] = self.loss_actions(class_logits.reshape(N * T, self.n_class), action_labels, *args, **kwargs)
 
         return losses
+
+    @staticmethod
+    def _build_batch(inputs: List[dict]) -> dict:
+        out = dict()
+        features = []
+        poses = []
+        dynamics = []
+        actions = []
+        for seq_input in inputs:
+            for k, v in seq_input.items():
+                if isinstance(v, torch.Tensor):
+                    if k == "features":
+                        features.append(v)
+                    if k == "poses":
+                        poses.append(v)
+                    if k == "dynamics":
+                        dynamics.append(v)
+                    if k == "actions":
+                        actions.append(v)
+
+        for k, list_of_tensor in zip(["features", "poses", "dynamics", "actions"], [features, poses, dynamics, actions]):
+            if list_of_tensor:
+                out[k] = torch.concat(list_of_tensor, dim=0)
+        return out
 
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
         class_logits, action_embeddings = self._forward(*inputs, data_samples, return_embs=True)

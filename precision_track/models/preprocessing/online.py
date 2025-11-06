@@ -285,13 +285,13 @@ class TestPreprocessor(OnlinePreprocessor):
         self.block_poses = None
         if with_kpts:
             self.block_poses = torch.zeros(
-                (self._max_size, self._block_size, len(self.skeleton_links), 2), dtype=torch.float32, device=self._device
+                (self._max_size, self._block_size, len(self.skeleton_links) * 2), dtype=torch.float32, device=self._device
             ).contiguous()
 
         self.block_pose_vels = None
         if with_kpt_vels:
             self.block_pose_vels = torch.zeros(
-                (self._max_size, self._block_size, len(self.skeleton_links), 2), dtype=torch.float32, device=self._device
+                (self._max_size, self._block_size, len(self.skeleton_links) * 2), dtype=torch.float32, device=self._device
             ).contiguous()
 
         self.block_actions = None
@@ -371,7 +371,7 @@ class TestPreprocessor(OnlinePreprocessor):
                 self.kpts_conf_thr,
                 normalize=True,
             )
-            poses = poses.to(self.block_poses.dtype)
+            poses = poses.to(self.block_poses.dtype).view(features.shape[0], len(self.skeleton_links) * 2)
             self._ring_write(self.block_poses, running_idxs, poses)
             self._ring_write(self.block_poses, hidden_idxs)
 
@@ -403,14 +403,6 @@ class TestPreprocessor(OnlinePreprocessor):
         self._delete_ids()
 
         return out
-
-    # def materialize(self, block: torch.Tensor, rows: torch.Tensor):
-    #     """Re-arange the block chronologically, starting from the registered rolling position."""
-    #     start = self._head.index_select(0, rows)
-    #     t = torch.arange(self._block_size, device=block.device)
-    #     idx_time = torch.stack(t for _ in range(len(rows)))
-    #     idx_time[self.roll] = (start.unsqueeze(1) + 1 + t) % self._block_size
-    #     return block[rows.unsqueeze(1), idx_time, :]
 
     def materialize(self, block: torch.Tensor, rows: torch.Tensor):
         """Re-arrange the block chronologically, starting from the registered rolling position."""

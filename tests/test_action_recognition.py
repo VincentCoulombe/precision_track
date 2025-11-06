@@ -13,7 +13,7 @@ from precision_track import PipelinedTracker, Tracker
 from precision_track.registry import MODELS
 from precision_track.utils import VideoReader, cuda_available
 
-ROOT = "../tests/"
+ROOT = "./tests/"
 
 
 @pytest.fixture
@@ -123,22 +123,44 @@ def config():
 )
 def test_preprocessing(predict_inputs, loss_sequence_input, config):
     ar_preprocessing = MODELS.build(Config.fromfile(config)["analyzer"]["data_preprocessor"])
-    ar_preprocessing.block_size = 4
+    ar_preprocessing.block_size = 3
 
     new_ar_pre_cfg = Config.fromfile(config)["new_data_preprocessor"]
-    new_ar_pre_cfg.block_size = 4
+    new_ar_pre_cfg.block_size = 3
     new_ar_preprocessing = MODELS.build(new_ar_pre_cfg)
 
     map_location = "cuda" if cuda_available() else "cpu"
 
-    for predict_input in predict_inputs:
-        loaded_ds = torch.load(predict_input, weights_only=False, map_location=torch.device(map_location))
-        predict_output = ar_preprocessing.predict(loaded_ds)
-        new_output = new_ar_preprocessing(loaded_ds)
+    from time import perf_counter
+
+    old_delays = []
+    new_delays = []
+
+    for _ in range(1000):
+        for predict_input in predict_inputs:
+            loaded_ds = torch.load(predict_input, weights_only=False, map_location=torch.device(map_location))
+            t0 = perf_counter()
+            predict_output = ar_preprocessing.predict(loaded_ds)
+            t1 = perf_counter()
+            new_output = new_ar_preprocessing(loaded_ds)
+            t2 = perf_counter()
+            old_delays.append(t1 - t0)
+            new_delays.append(t2 - t1)
+
+    old_delay = np.mean(np.array(old_delays)[1:])
+    new_delay = np.mean(np.array(new_delays)[1:])
+
+    print(f"new ar preprocessor is {((old_delay/new_delay)-1)*100:.2f}% faster.")
 
     assert torch.allclose(new_output["features"][-1].to(torch.float16), predict_output["features"][-1].to(torch.float16))
     assert torch.allclose(new_output["poses"][-1].to(torch.float16), predict_output["poses"][-1].to(torch.float16))
     assert torch.allclose(new_output["dynamics"][-1].to(torch.float16), predict_output["dynamics"][-1].to(torch.float16))
+
+    ar_preprocessing = MODELS.build(Config.fromfile(config)["analyzer"]["data_preprocessor"])
+    ar_preprocessing.block_size = 4
+    for predict_input in predict_inputs:
+        loaded_ds = torch.load(predict_input, weights_only=False, map_location=torch.device(map_location))
+        predict_output = ar_preprocessing.predict(loaded_ds)
 
     loss_sequence_input = torch.load(loss_sequence_input, weights_only=False, map_location=torch.device(map_location))
     loss_output = ar_preprocessing.loss(loss_sequence_input)
@@ -163,4 +185,4 @@ def test_preprocessing(predict_inputs, loss_sequence_input, config):
 
 
 if __name__ == "__main__":
-    pytest.main(["-x", os.path.realpath(__file__)])
+    pytest.main(["-x", os.path.realpath(__file__), "-s"])

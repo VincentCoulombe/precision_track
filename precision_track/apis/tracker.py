@@ -88,7 +88,7 @@ class Tracker(BaseModel):
 
     def loss(self, inputs: List[torch.Tensor], data_samples: List[PoseDataSample]) -> dict:
         losses = dict()
-        analyzer_inputs = list()
+        batched_outputs = []
         for seq_inputs, seq_data_samples in zip(inputs, data_samples):
             seq_outputs = self.detector(inputs=seq_inputs, data_samples=seq_data_samples, mode=self._detection_mode)
             self._maybe_update_losses(losses, seq_outputs)
@@ -98,10 +98,11 @@ class Tracker(BaseModel):
                 self._maybe_update_losses(losses, output)
                 if self._analyzing:
                     output = self.analyzer.data_preprocessor(dict(data_samples=output))
-                    analyzer_inputs.append(output)
+            if self._analyzing:
+                batched_outputs.append(output)
         if self._analyzing:
-            # TODO concat analyzer_inputs dans le analyzer...
-            outputs = self.analyzer.loss(inputs=analyzer_inputs, data_samples=data_samples)
+            # TODO les dynamics du frame 0 des blocks sont toujours == 0, À corriger.
+            outputs = self.analyzer.loss(inputs=batched_outputs, data_samples=data_samples)
             self._maybe_update_losses(losses, outputs)
         return losses
 

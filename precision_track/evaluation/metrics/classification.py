@@ -207,6 +207,7 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         if isinstance(data_samples, list):
             data_samples = data_samples[0]
 
+        # TODO process juste si valid_context!
         preds = torch.argmax(data_samples, dim=1)
         gts = data_batch["data_samples"].gt_instances.actions
         for pred, gt in zip(preds, gts):
