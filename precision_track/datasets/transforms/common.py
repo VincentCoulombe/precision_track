@@ -810,6 +810,9 @@ class FilterAnnotations(BaseTransform):
         """
         assert "keypoints" in results
         kpts = results["keypoints"]
+        num_kpts = results.get("num_keypoints", 0)
+        if isinstance(num_kpts, list):
+            num_kpts = int(num_kpts[0])
         if kpts.shape[0] == 0:
             return results
 

@@ -407,7 +407,8 @@ class TestPreprocessor(OnlinePreprocessor):
         self._update_head(hidden_idxs)
         self._delete_ids()
 
-        return out
+        data_samples.pred_track_instances.update(out)
+        return data_samples
 
     def materialize(self, block: torch.Tensor, rows: torch.Tensor):
         """Re-arrange the block chronologically, starting from the registered rolling position."""

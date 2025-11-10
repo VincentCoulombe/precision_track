@@ -96,11 +96,16 @@ class Tracker(BaseModel):
         for seq_inputs, seq_data_samples in zip(inputs, data_samples):
             seq_outputs = self.detector(inputs=seq_inputs, data_samples=seq_data_samples, mode=self._detection_mode)
             self._maybe_update_losses(losses, seq_outputs)
-            output = self._process_sequence(seq_outputs, seq_data_samples, losses=losses)
+            output = self._process_sequence(
+                seq_outputs,
+                seq_data_samples,
+                losses=losses,
+                remove_gt_instances=True,
+                remove_pred_instances=True,
+            )
             if self._analyzing:
                 batched_outputs.append(output)
         if self._analyzing:
-            # TODO les dynamics du frame 0 des blocks sont toujours == 0, À corriger.
             outputs = self.analyzer.loss(inputs=batched_outputs, data_samples=data_samples)
             self._maybe_update_losses(losses, outputs)
         return losses
@@ -114,7 +119,12 @@ class Tracker(BaseModel):
         data_samples = data_samples["data_samples"]
         for seq_inputs, seq_data_samples in zip(inputs, data_samples):
             outputs = self.detector(inputs=seq_inputs, data_samples=seq_data_samples, mode="predict")
-            output = self._process_sequence(outputs, seq_data_samples, losses=None)
+            output = self._process_sequence(
+                outputs,
+                seq_data_samples,
+                losses=None,
+                remove_gt_instances=True,
+            )
             if self._analyzing:
                 batched_outputs.append(output)
         if self._analyzing:
@@ -175,7 +185,15 @@ class Tracker(BaseModel):
         self.result.save()
         return self.result
 
-    def _process_sequence(self, detections, data_samples, losses=None):
+    def _process_sequence(
+        self,
+        detections,
+        data_samples,
+        losses=None,
+        remove_gt_instances=False,
+        remove_pred_instances=False,
+        remove_pred_track_instances=False,
+    ):
         self._init_association_step()
         self._load_predictions(detections, data_samples)
         for seq_data_sample in data_samples:
@@ -183,9 +201,19 @@ class Tracker(BaseModel):
             if isinstance(losses, dict):
                 self._maybe_update_losses(losses, output)
             if self._analyzing:
-                output_dict = self.analyzer.data_preprocessor(dict(data_samples=output))
-                output.pred_track_instances.update(output_dict)
+                output = self.analyzer.data_preprocessor(dict(data_samples=output))
+            if remove_gt_instances and hasattr(output, "gt_instances"):
+                del output.gt_instances
+                del output.gt_instance_labels
+            if remove_pred_instances:
+                del output.pred_instances
+            if remove_pred_track_instances:
+                del output.pred_track_instances
         return output
+
+    @staticmethod
+    def _slim_down_output(output: dict):
+        pass  # TODO enlàve TOUTE ce qui ne sert pas dans le analyzer!
 
     @staticmethod
     def _maybe_update_losses(losses, outputs):

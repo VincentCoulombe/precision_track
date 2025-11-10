@@ -4,7 +4,11 @@ import numpy as np
 import os
 from collections import defaultdict
 from typing import Dict, List, Tuple, Optional
+from mmengine.logging import print_log
+from logging import WARNING
+
 from precision_track.registry import COACHES
+from precision_track.utils import parse_pose_metainfo
 
 
 class BaseCoach(metaclass=abc.ABCMeta):
@@ -43,13 +47,18 @@ class BaseCoach(metaclass=abc.ABCMeta):
 
 @COACHES.register_module()
 class ActionRecognitionCoach(BaseCoach):
-    def __init__(self, block_size: int, *args, **kwargs):
+    def __init__(self, metainfo: str, block_size: int, ignore_idx: Optional[int] = -100, verbose: Optional[bool] = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.block_size = int(block_size)
         self.action_to_blocks = defaultdict(list)  # [[seq, start, end, (class_id, inst_id)]]
-        self.actions = []
+        metafile = parse_pose_metainfo(dict(from_file=metainfo))
+        assert "actions" in metafile, f"Your {metainfo} meta-info file must contains a list of actions if you want to use the ActionRecognitionCoach."
+        self.actions = metafile["actions"]
+        self.np_actions = np.array(self.actions)
         self.sequences_map = dict()
         self._rng = random.Random()
+        self._ignore_idx = ignore_idx
+        self.verbose = verbose
 
     def set_seed(self, seed: Optional[int]):
         if seed is not None:
@@ -92,7 +101,9 @@ class ActionRecognitionCoach(BaseCoach):
         for key, (prev_action, start, end) in open_blocks.items():
             self._end_action_block(prev_action, seq, start, end, key)
 
-        self.actions = [a for a, blocks in self.action_to_blocks.items() if blocks]
+        actions = [a for a, blocks in self.action_to_blocks.items() if blocks]
+        for action in actions:
+            assert action in self.actions, f"The {action} action (from the labels) is not registered in the meta-info file's action list: {self.actions}."
 
     def _end_action_block(self, action, seq, start, end, key):
         # First, handle the first self.block_size frame's edge case
@@ -117,7 +128,7 @@ class ActionRecognitionCoach(BaseCoach):
         seq_start_idx = seq_end_idx - self.block_size + 1
         assert seq_start_idx >= 0
 
-        return self.sequences_map[seq], seq_start_idx, dict(subject_id=subject_id)
+        return self.sequences_map[seq], seq_start_idx, dict(subject_id=subject_id, selected_action=action)
 
     def select_idx_labels(self, labels):
         cat, id_ = labels["subject_id"]
@@ -128,8 +139,23 @@ class ActionRecognitionCoach(BaseCoach):
         labels["bbox"] = labels["bbox"][id_mask]
         labels["bbox_score"] = labels["bbox_score"][id_mask]
 
-        labels["action_label"] = labels["action_label"][id_mask]
-        labels["action"] = labels["action"][id_mask]
+        nb_instances = labels["bbox"].shape[0]
+        if nb_instances > 1 and self.verbose:
+            seq_dir = labels["sequence_dir"]
+            abs_frame_id = labels["absolute_frame_id"]
+            print_log(
+                f"Images's '{seq_dir}' labels contains de following duplication: frame id: {abs_frame_id}, class id: {cat}, instance id: {id_}.",
+                logger="current",
+                level=WARNING,
+            )
+
+        if id_mask.any():
+            action_label = labels["selected_action"]
+            labels["action_label"] = np.repeat(np.array([action_label]), nb_instances, axis=0)
+            labels["action"] = np.repeat(np.where(self.np_actions == action_label)[0], nb_instances, axis=0)
+        else:
+            labels["action_label"] = np.array([])
+            labels["action"] = np.array([])
 
         if "keypoints" in labels:
             labels["keypoints"] = labels["keypoints"][id_mask]

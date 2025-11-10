@@ -182,7 +182,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
             }
         )
 
-    def get_data_info(self, idx: int, block_idx: int, **kwargs) -> dict:
+    def get_data_info(self, idx: int, block_idx: int, subject_id: Optional[tuple] = None, **kwargs) -> dict:
         data_info = self.data_list[idx]
         out = dict(sequence_dir=data_info["sequence_dir"])
 
@@ -194,12 +194,20 @@ class OnlineRandomSequenceDataset(BaseDataset):
         for output_k in ["bboxes_output", "kpts_output", "actions_output"]:
             output = data_info.get(output_k)
             if isinstance(output, BaseOutput) and output.valid() and output.results:
-                out[output_k] = deepcopy(np.array(output[block_idx : block_idx + self.block_size]))
+                block_output = np.array(output[block_idx : block_idx + self.block_size])
+                if isinstance(subject_id, tuple) and len(subject_id) == 2:
+                    # Skim down the memory footprint by only preserving the relevant id's output
+                    cat = int(subject_id[0])
+                    id_ = int(subject_id[1])
+                    id_mask = (block_output[:, 1, ...].astype(int) == cat) & (block_output[:, 2, ...].astype(int) == id_)
+                    block_output = block_output[id_mask]
+                out[output_k] = deepcopy(block_output)
 
         metainfo_keys = ["dataset_name", "upper_body_ids", "lower_body_ids", "flip_pairs", "dataset_keypoint_weights", "flip_indices", "skeleton_links"]
         for key in metainfo_keys:
             out[key] = deepcopy(self._metainfo[key])
-
+        for key, v in zip(["idx", "block_idx", "subject_id"], [idx, block_idx, subject_id]):
+            out[key] = v
         for key in kwargs:
             assert key not in out, f"kwargs cannot override the sequence's {key} key."
             out[key] = kwargs[key]
@@ -257,9 +265,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
         data_samples = []
 
         for running_idx, image_path in enumerate(images):
-            running_idx_mask = bboxes_output[:, 0] == block_idx + running_idx
+            abs_idx = block_idx + running_idx
+            sequence["absolute_frame_id"] = abs_idx
+            running_idx_mask = bboxes_output[:, 0] == abs_idx
             N = running_idx_mask.sum()
-            assert N > 0, f"{bboxes_output[:, 0]} \n -------------------- \n block_idx={block_idx}, running_idx={running_idx}"
             sequence["category_id"] = bboxes_output[running_idx_mask, 1].astype(int)
             sequence["instance_id"] = bboxes_output[running_idx_mask, 2].astype(int)
             sequence["bbox"] = bboxes_output[running_idx_mask, 3:7]
@@ -504,8 +513,39 @@ class OnlineRandomSequenceDataset(BaseDataset):
         return data_list
 
 
-class OfflineRandomSequenceDataset(OnlineRandomSequenceDataset, metaclass=ABCMeta):
+class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
     MANDATORY_PREFIX_KEYS = ["sequences", "bboxes_gt_paths", "keypoints_gt_paths"]
+    METAINFO = dict()
+    METAINFO_KEYS = [
+        "dataset_name",
+        "upper_body_ids",
+        "lower_body_ids",
+        "flip_pairs",
+        "dataset_keypoint_weights",
+        "flip_indices",
+        "skeleton_links",
+        "num_keypoints",
+    ]
+    LABEL_KEYS = [
+        "sequence_name",
+        "img_id",
+        "img_path",
+        "nb_instances",
+        "bbox",
+        "bbox_score",
+        "category_id",
+        "keypoints",
+        "keypoints_visible",
+        "id",
+    ]
+    DEFAULT_KEYS = (
+        METAINFO_KEYS
+        + LABEL_KEYS
+        + [
+            "gt_instance_labels",
+            "gt_instances",
+        ]
+    )
 
     def __init__(
         self,
@@ -513,6 +553,7 @@ class OfflineRandomSequenceDataset(OnlineRandomSequenceDataset, metaclass=ABCMet
         detector: Config,
         bboxes_gt_format: Optional[str] = "CsvBoundingBoxes",
         keypoints_gt_format: Optional[str] = "CsvKeypoints",
+        actions_gt_format: Optional[str] = None,
         data_root: Optional[str] = ".",
         data_prefix: dict = dict(
             sequences=["."],
@@ -528,6 +569,7 @@ class OfflineRandomSequenceDataset(OnlineRandomSequenceDataset, metaclass=ABCMet
         **kwargs,
     ):
         self.detector = DetectionBackend(**detector)
+        self.actions_gt_format = actions_gt_format
         self.action_to_label_map = dict()
         self.input_scale = inference_resolution
         self.input_center = None
@@ -535,20 +577,117 @@ class OfflineRandomSequenceDataset(OnlineRandomSequenceDataset, metaclass=ABCMet
         if isinstance(self.input_scale, (Tuple, list, np.ndarray)):
             self.input_scale = np.array(self.input_scale)
             self.input_center = self.input_scale // 2
+
+        self.logger = MMLogger.get_current_instance()
+        self.METAINFO.update(from_file=from_file)
+        assert block_size > 0
+        self.block_size = block_size
+
+        self.bboxes_gt_format = bboxes_gt_format
+        self.keypoints_gt_format = keypoints_gt_format
+
+        self._length = 0
+
         super().__init__(
-            from_file=from_file,
-            bboxes_gt_format=bboxes_gt_format,
-            keypoints_gt_format=keypoints_gt_format,
-            data_root=data_root,
+            ann_file=None,
             data_prefix=data_prefix,
+            data_root=data_root,
             pipeline=pipeline,
             test_mode=test_mode,
-            block_size=block_size,
+            serialize_data=False,
+        )
+
+    @classmethod
+    def _load_metainfo(cls, metainfo: dict = None) -> dict:
+        """Collect meta information from the dictionary of meta.
+
+        Args:
+            metainfo (dict): Raw data of pose meta information.
+
+        Returns:
+            dict: Parsed meta information.
+        """
+
+        if metainfo is None:
+            metainfo = deepcopy(cls.METAINFO)
+
+        if not isinstance(metainfo, dict):
+            raise TypeError(f"metainfo should be a dict, but got {type(metainfo)}")
+
+        # parse pose metainfo if it has been assigned
+        if metainfo:
+            metainfo = parse_pose_metainfo(metainfo)
+        return metainfo
+
+    def load_metadata(self, data_info: int) -> dict:
+        for key in self.METAINFO_KEYS:
+            if key not in data_info:
+                data_info[key] = deepcopy(self._metainfo[key])
+        return data_info
+
+    def _init_data_prefix_key(self, key):
+        if isinstance(self.data_prefix[key], str):
+            directory = os.path.join(self.data_root, self.data_prefix[key])
+            assert os.path.isdir(directory), f"{key} is expected to be a list or a directory."
+            new_prefix = []
+            for file in os.listdir(directory):
+                new_prefix.append(os.path.join(directory, file))
+            self.data_prefix[key] = new_prefix
+        else:
+            assert isinstance(self.data_prefix[key], list), f"{key} is expected to be a list or a directory."
+
+    def _join_prefix(self):
+        missing_keys = [k for k in self.MANDATORY_PREFIX_KEYS if k not in self.data_prefix]
+        assert not missing_keys, f"Missing mandatory keys: {missing_keys}"
+
+        for key in self.MANDATORY_PREFIX_KEYS:
+            self._init_data_prefix_key(key)
+
+        prefix_keys = self.MANDATORY_PREFIX_KEYS + ["actions_gt_paths"]
+        if "actions_gt_paths" in self.data_prefix:
+            self._init_data_prefix_key("actions_gt_paths")
+        else:
+            self.data_prefix["actions_gt_paths"] = [None for _ in self.data_prefix[self.MANDATORY_PREFIX_KEYS[0]]]
+
+        lengths = [len(self.data_prefix[key]) for key in prefix_keys]
+        assert len(set(lengths)) == 1, "Ensure that you have the same number of gt paths than of image directories."
+
+        sequences, keypoints_outputs, bboxes_outputs, actions_outputs = [], [], [], []
+        for seq, bboxes_path, kpts_path, actions_path in zip(*[self.data_prefix[k] for k in prefix_keys]):
+            full_dir = os.path.join(self.data_root, seq)
+            sequences.append(full_dir)
+
+            bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "path": os.path.join(self.data_root, bboxes_path)})
+            bboxes_output.read()
+            bboxes_outputs.append(bboxes_output)
+
+            kpts_output = OUTPUTS.build({"type": self.keypoints_gt_format, "path": os.path.join(self.data_root, kpts_path)})
+            kpts_output.read()
+            keypoints_outputs.append(kpts_output)
+
+            if self.actions_gt_format is not None and actions_path is not None:
+                actions_output = OUTPUTS.build({"type": self.actions_gt_format, "path": os.path.join(self.data_root, actions_path)})
+                actions_output.read()
+            else:
+                actions_output = None
+            actions_outputs.append(actions_output)
+
+        self.data_prefix.update(
+            {
+                "sequences": sequences,
+                "bboxes_outputs": bboxes_outputs,
+                "keypoints_outputs": keypoints_outputs,
+                "actions_outputs": actions_outputs,
+            }
         )
 
     @abstractmethod
     def prepare_data(self, *args, **kwargs):
         pass
+
+    @force_full_init
+    def __len__(self) -> int:
+        return self._length
 
     def load_data_list(self) -> List[dict]:
         self.logger.info("Loading sequences...")
@@ -751,6 +890,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         negative_action: Optional[str] = "Other",
         weighted_selection: Optional[bool] = False,
         inference_resolution: Optional[tuple] = None,
+        ignore_idx: Optional[int] = -100,
         *args,
         **kwargs,
     ):
@@ -788,6 +928,8 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         assert self.n_kpts > 0, f"The metainfo's {self.METAINFO} 'keypoint_info' contains no keypoints."
         self.n_velocities = n_velocities
 
+        self._ignore_idx = int(ignore_idx)
+
     def prepare_data(self, _):
         random_action = np.random.choice(a=self.labels, p=self.p)
 
@@ -821,6 +963,8 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
 
                 actions[block_idx] = data_sample.gt_instance_labels.action_labels[id_idx]
                 positives[block_idx] = data_sample.gt_instance_labels.action_labels[id_idx] != self.negative_label
+            else:
+                actions[block_idx] = self._ignore_idx
 
         assert id_idx.numel() > 0, f"Bad synchronization for id {id_} of frame {idx} of sequence {seq}."
         action = data_sample.gt_instance_labels.action_labels[id_idx]
