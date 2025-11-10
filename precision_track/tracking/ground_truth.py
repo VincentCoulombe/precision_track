@@ -359,10 +359,20 @@ class OnlineGroundTruth(BaseAssignationAlgorithm):
 
         det_features = pred_instances["features"]
         gt_instances = data_sample.gt_instances.to(self.feature_device).to(torch.float32)
+
+        if hasattr(gt_instances, "keypoints"):
+            self.gt_kpts = True
+            track_kpts = gt_instances.keypoints
+
+        if hasattr(gt_instances, "actions"):
+            self.gt_actions = True
+            track_actions = gt_instances.actions
+
         frame_gt_classes = gt_instances.labels
         frame_gt_instances = gt_instances.instances_id
         frame_gt_bboxes = gt_instances.bboxes
-        if not frame_gt_bboxes.size or not gt_instances:
+
+        if frame_gt_instances.numel() == 0:
             pred_instances = Dict({k: torch.empty((0), device=self.feature_device) for k in pred_instances})
             pred_instances["bboxes"] = torch.empty((0, 4), device=self.feature_device)
             pred_instances["keypoints"] = torch.empty((0, 0, 3), device=self.feature_device)
@@ -375,16 +385,9 @@ class OnlineGroundTruth(BaseAssignationAlgorithm):
                 pred_idx=torch.empty((0), dtype=torch.bool, device=self.feature_device),
                 predicted_bboxes=pred_instances["bboxes"],
             )
+            assert "keypoints" in data_sample.pred_track_instances
             return
         self.kf.multi_predict(tracks, confirmed_ids)
-
-        if hasattr(gt_instances, "keypoints"):
-            self.gt_kpts = True
-            track_kpts = gt_instances.keypoints
-
-        if hasattr(gt_instances, "actions"):
-            self.gt_actions = True
-            track_actions = gt_instances.actions
 
         # Remove duplicate labels (in case of labelling errors)
         unique_gt, counts = torch.unique(frame_gt_instances, return_counts=True)

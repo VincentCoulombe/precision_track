@@ -2,7 +2,7 @@ _base_ = "./_base_.py"
 
 # Common
 metainfo = "../configs/metadata/mice.py"
-wandb_logging = False
+wandb_logging = True
 # /Common
 
 # 1) Detection
@@ -232,8 +232,7 @@ else:
     action_recognition_output_names = None
 
 #   3.1) Training
-# action_recognition_batch_size = 128
-action_recognition_batch_size = 1
+action_recognition_batch_size = 128
 action_recognition_base_lr = 3e-5
 action_recognition_weight_decay = 0.01
 action_recognition_dropout = 0

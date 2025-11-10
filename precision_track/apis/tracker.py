@@ -48,7 +48,8 @@ class Tracker(BaseModel):
         self._detection_mode = "predict" if is_frozen else "loss"
 
         assigner["verbose"] = self.verbose
-        self.association_step = AssociationStep(**assigner)
+        self._assigner = assigner
+        self._init_association_step()
 
         if validator is not None:
             validator = TRACKING.build(validator)
@@ -65,6 +66,9 @@ class Tracker(BaseModel):
         if self.analyzer is not None:
             self.analyzer = MODELS.build(analyzer)
             self._analyzing = True
+
+    def _init_association_step(self):
+        self.association_step = AssociationStep(**self._assigner)
 
     def forward(self, mode: Optional[str] = "predict", *args, **kwargs) -> Any:
         if mode == "predict":
@@ -92,12 +96,7 @@ class Tracker(BaseModel):
         for seq_inputs, seq_data_samples in zip(inputs, data_samples):
             seq_outputs = self.detector(inputs=seq_inputs, data_samples=seq_data_samples, mode=self._detection_mode)
             self._maybe_update_losses(losses, seq_outputs)
-            self._load_predictions(seq_outputs, seq_data_samples)
-            for seq_data_sample in seq_data_samples:
-                output = self.association_step.associate(data_sample=seq_data_sample)
-                self._maybe_update_losses(losses, output)
-                if self._analyzing:
-                    output = self.analyzer.data_preprocessor(dict(data_samples=output))
+            output = self._process_sequence(seq_outputs, seq_data_samples, losses=losses)
             if self._analyzing:
                 batched_outputs.append(output)
         if self._analyzing:
@@ -110,10 +109,19 @@ class Tracker(BaseModel):
         return self.test_step(data_samples=data_samples, *args, **kwargs)
 
     def test_step(self, data_samples: Union[dict, tuple, list], *args, **kwargs) -> list:
-        inputs, data_samples = self._flatten_sequences(**data_samples)
-        outputs = self.detector.test_step(dict(inputs=inputs, data_samples=data_samples, *args, **kwargs))
-        self._load_predictions(outputs, data_samples)
-        return self.association_step.tracking_algorithm.test_step(data_samples=data_samples, *args, **kwargs)
+        batched_outputs = []
+        inputs = data_samples["inputs"]
+        data_samples = data_samples["data_samples"]
+        for seq_inputs, seq_data_samples in zip(inputs, data_samples):
+            outputs = self.detector(inputs=seq_inputs, data_samples=seq_data_samples, mode="predict")
+            output = self._process_sequence(outputs, seq_data_samples, losses=None)
+            if self._analyzing:
+                batched_outputs.append(output)
+        if self._analyzing:
+            action_preds, action_embds = self.analyzer.test_step(batched_outputs)
+            output.pred_track_instances.update(dict(action_preds=action_preds, action_embds=action_embds))
+            return [output]
+        return batched_outputs
 
     def predict(self, video: VideoReader) -> Result:
         assert isinstance(video, VideoReader)
@@ -166,6 +174,18 @@ class Tracker(BaseModel):
             )
         self.result.save()
         return self.result
+
+    def _process_sequence(self, detections, data_samples, losses=None):
+        self._init_association_step()
+        self._load_predictions(detections, data_samples)
+        for seq_data_sample in data_samples:
+            output = self.association_step.associate(data_sample=seq_data_sample)
+            if isinstance(losses, dict):
+                self._maybe_update_losses(losses, output)
+            if self._analyzing:
+                output_dict = self.analyzer.data_preprocessor(dict(data_samples=output))
+                output.pred_track_instances.update(output_dict)
+        return output
 
     @staticmethod
     def _maybe_update_losses(losses, outputs):

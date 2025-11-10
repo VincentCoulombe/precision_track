@@ -413,6 +413,7 @@ class LDAMWithDRW(nn.Module):
 
     def __init__(
         self,
+        metainfo: str,
         max_m: float = 0.5,
         s: float = 30.0,
         use_drw: bool = True,
@@ -422,6 +423,8 @@ class LDAMWithDRW(nn.Module):
         ignore_index: int = -100,
     ):
         super().__init__()
+        metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        self.n_class = len(metainfo.get("actions", []))
         self.max_m = float(max_m)
         self.s = float(s)
         self.use_drw = bool(use_drw)
@@ -457,7 +460,6 @@ class LDAMWithDRW(nn.Module):
         self,
         logits: torch.Tensor,
         target: torch.Tensor,
-        cls_num_list: Optional[Sequence[int]] = None,
         epoch: Optional[int] = None,
         *args,
         **kwargs,
@@ -469,6 +471,12 @@ class LDAMWithDRW(nn.Module):
 
         B, C = logits.shape
         device, dtype = logits.device, logits.dtype
+
+        cls_num_list = torch.zeros(self.n_class, dtype=torch.long)
+        cls_idx, cls_counts = torch.unique(target, return_counts=True)
+        acknowledged = cls_idx != self.ignore_index
+        cls_num_list[cls_idx[acknowledged].long().detach().cpu()] = cls_counts[acknowledged].long().detach().cpu()
+        cls_num_list = cls_num_list.tolist()
 
         if not cls_num_list:
             return F.cross_entropy(

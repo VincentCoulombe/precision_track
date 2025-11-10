@@ -1,5 +1,5 @@
 import heapq
-from typing import Optional, Dict, Union, List
+from typing import Optional, Dict, Union, List, Union
 from collections import OrderedDict, defaultdict
 import numpy as np
 import torch
@@ -253,6 +253,7 @@ class TestPreprocessor(OnlinePreprocessor):
         with_kpts: Optional[bool] = False,
         with_kpt_vels: Optional[bool] = False,
         with_actions: Optional[bool] = False,
+        ignore_index: Optional[int] = -100,
         **kwargs,
     ):
         super().__init__()
@@ -270,6 +271,7 @@ class TestPreprocessor(OnlinePreprocessor):
         self._block_size = int(block_size)
         self._max_size = int(max_size)
         self._embd_size = int(embd_size)
+        self._ignore_index = int(ignore_index)
 
         self._with_vels = with_vels
         self._with_kpts = with_kpts
@@ -296,7 +298,7 @@ class TestPreprocessor(OnlinePreprocessor):
 
         self.block_actions = None
         if with_actions:
-            self.block_actions = torch.zeros((self._max_size, self._block_size, 1), dtype=torch.float32, device=self._device).contiguous()
+            self.block_actions = torch.zeros((self._max_size, self._block_size, 1), dtype=torch.long, device=self._device).contiguous()
 
         self.ids2idx = IdIndexMap(max_size=self._max_size)
         self.time_no_see = defaultdict(int)
@@ -346,7 +348,7 @@ class TestPreprocessor(OnlinePreprocessor):
         vels = vels.view(features.shape[0], 2).to(self._device).to(features.dtype)
 
         pred_track_instances["valid_action_recognition_context"] = self.roll
-        scale = None
+        scale = 1.0
 
         out = {}
         self._ring_write(self.block_features, running_idxs, features)
@@ -363,14 +365,17 @@ class TestPreprocessor(OnlinePreprocessor):
                 kpt_vis = torch.from_numpy(kpt_vis)
             kpt_vis = kpt_vis.to(self._device)
 
-            poses, scale = kpts_to_poses(
-                kpts,
-                kpt_vis,
-                self.skeleton_sources,
-                self.skeleton_targets,
-                self.kpts_conf_thr,
-                normalize=True,
-            )
+            if kpts.numel() > 0:
+                poses, scale = kpts_to_poses(
+                    kpts,
+                    kpt_vis,
+                    self.skeleton_sources,
+                    self.skeleton_targets,
+                    self.kpts_conf_thr,
+                    normalize=True,
+                )
+            else:
+                poses = kpts
             poses = poses.to(self.block_poses.dtype).view(features.shape[0], len(self.skeleton_links) * 2)
             self._ring_write(self.block_poses, running_idxs, poses)
             self._ring_write(self.block_poses, hidden_idxs)
@@ -378,7 +383,7 @@ class TestPreprocessor(OnlinePreprocessor):
         if self._with_vels:
             if scale is not None:
                 vels = vels / scale
-            vels = vels.to(self.block_vels.dtype)
+            vels = vels.to(self.block_vels.dtype).view(features.shape[0], 2)
             self._ring_write(self.block_vels, running_idxs, vels)
             self._ring_write(self.block_vels, hidden_idxs)
 
@@ -386,9 +391,9 @@ class TestPreprocessor(OnlinePreprocessor):
             actions = pred_track_instances["actions"]
             if isinstance(actions, np.ndarray):
                 actions = torch.from_numpy(actions)
-            actions = actions.to(self._device).to(self.block_actions.dtype)
+            actions = actions.to(self._device).to(self.block_actions.dtype).view(features.shape[0], 1)
             self._ring_write(self.block_actions, running_idxs, actions)
-            self._ring_write(self.block_actions, hidden_idxs)
+            self._ring_write(self.block_actions, hidden_idxs, default_data_value=self._ignore_index)
 
         out["features"] = self.materialize(self.block_features, running_idxs)
         if self._with_kpts:
@@ -416,7 +421,7 @@ class TestPreprocessor(OnlinePreprocessor):
 
         return block[rows.unsqueeze(1), idx_time, :]
 
-    def _ring_write(self, block: torch.Tensor, rows: torch.Tensor, data: Optional[torch.Tensor] = None):
+    def _ring_write(self, block: torch.Tensor, rows: torch.Tensor, data: Optional[torch.Tensor] = None, default_data_value: Union[float, int] = 0.0):
         """Insert new data at the correct rolling position."""
         assert self._head.device == block.device
         pos = self._head.index_select(0, rows)
@@ -426,7 +431,7 @@ class TestPreprocessor(OnlinePreprocessor):
             assert data.shape[0] == rows.shape[0], "batch mismatch"
             block[rows, pos, ...] = data
         else:
-            block[rows, pos, ...] = 0.0
+            block[rows, pos, ...] = default_data_value
         return block
 
     def _update_head(self, rows: torch.Tensor):

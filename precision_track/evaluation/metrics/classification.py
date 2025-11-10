@@ -189,6 +189,7 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         self,
         metainfo: str,
         confusion_matrix_save_dir: str = None,
+        ignore_index: int = -100,
         collect_device: str = "cpu",
         prefix: Optional[str] = None,
     ) -> None:
@@ -201,17 +202,19 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         for i, acc in enumerate(self.metainfo.get("actions", [])):
             self.label_to_action[str(i)] = acc
         self.best_f1 = 0
+        self._ignore_index = int(ignore_index)
 
     def process(self, data_batch: Any, data_samples: Any) -> None:
         """Process one batch of data samples and predictions."""
         if isinstance(data_samples, list):
             data_samples = data_samples[0]
 
-        # TODO process juste si valid_context!
-        preds = torch.argmax(data_samples, dim=1)
-        gts = data_batch["data_samples"].gt_instances.actions
-        for pred, gt in zip(preds, gts):
-            self.results.append((gt.item(), pred.item()))
+        last_timesteps_action_preds = torch.argmax(data_samples["pred_track_instances"]["action_preds"], dim=1)
+        last_timesteps_action_labels = data_samples["pred_track_instances"]["actions"][:, -1, :]
+        for pred, gt in zip(last_timesteps_action_preds, last_timesteps_action_labels):
+            gt = gt.item()
+            if gt != self._ignore_index:
+                self.results.append((gt, pred.item()))
 
     def compute_metrics(self, _: list) -> dict:
         """Compute macro F1, balanced accuracy, per-class accuracy, CE, and confusion matrix."""

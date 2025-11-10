@@ -123,18 +123,17 @@ class MART(BaseModel):
         if action_labels is not None:
             action_labels = action_labels.reshape(N * T).long()
             losses["classification_loss"] = self.loss_actions(class_logits.reshape(N * T, self.n_class), action_labels, *args, **kwargs)
-
         return losses
 
     @staticmethod
-    def _build_batch(inputs: List[dict]) -> dict:
+    def _build_batch(inputs: List[PoseDataSample]) -> dict:
         out = dict()
         features = []
         poses = []
         dynamics = []
         actions = []
         for seq_input in inputs:
-            for k, v in seq_input.items():
+            for k, v in seq_input.pred_track_instances.items():
                 if isinstance(v, torch.Tensor):
                     if k == "features":
                         features.append(v)
@@ -150,12 +149,26 @@ class MART(BaseModel):
                 out[k] = torch.concat(list_of_tensor, dim=0)
         return out
 
+    def val_step(self, data: Union[tuple, dict, list]) -> list:
+        return self.test_step(data)
+
+    def test_step(self, data: Union[dict, tuple, list]) -> list:
+        batched_inputs = self._build_batch(inputs=data)
+        return self.predict(inputs=batched_inputs, data_samples=data)
+
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
-        class_logits, action_embeddings = self._forward(*inputs, data_samples, return_embs=True)
+        class_logits, action_embeddings = self._forward(**inputs, data_samples=data_samples, return_embs=True)
         return F.softmax(class_logits[:, -1, :], dim=-1), action_embeddings[:, -1, :]
 
     def _forward(
-        self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, data_samples: Optional[List[PoseDataSample]] = None, return_embs: bool = False
+        self,
+        features: Tensor,
+        poses: torch.Tensor,
+        dynamics: torch.Tensor,
+        data_samples: Optional[List[PoseDataSample]] = None,
+        return_embs: bool = False,
+        *args,
+        **kwargs,
     ) -> Union[Tensor, Tuple[Tensor]]:
 
         pose_embs = self.pose_encoder(poses.reshape(-1, self.block_size, self.n_pose * 2))
