@@ -194,14 +194,14 @@ class OnlineRandomSequenceDataset(BaseDataset):
         for output_k in ["bboxes_output", "kpts_output", "actions_output"]:
             output = data_info.get(output_k)
             if isinstance(output, BaseOutput) and output.valid() and output.results:
-                block_output = np.array(output[block_idx : block_idx + self.block_size])
+                block_output = deepcopy(np.array(output[block_idx : block_idx + self.block_size]))
                 if isinstance(subject_id, tuple) and len(subject_id) == 2:
                     # Skim down the memory footprint by only preserving the relevant id's output
                     cat = int(subject_id[0])
                     id_ = int(subject_id[1])
                     id_mask = (block_output[:, 1, ...].astype(int) == cat) & (block_output[:, 2, ...].astype(int) == id_)
                     block_output = block_output[id_mask]
-                out[output_k] = deepcopy(block_output)
+                out[output_k] = block_output
 
         metainfo_keys = ["dataset_name", "upper_body_ids", "lower_body_ids", "flip_pairs", "dataset_keypoint_weights", "flip_indices", "skeleton_links"]
         for key in metainfo_keys:
