@@ -9,6 +9,7 @@ weight_decay = _base_.action_recognition_weight_decay
 num_iter = _base_.action_recognition_num_iter
 warmup_iter = _base_.action_recognition_warmup_iter
 val_interval = _base_.action_recognition_val_interval
+# val_interval = 1
 
 work_dir = _base_.training_work_dir
 
@@ -34,6 +35,18 @@ val_sequences = _base_.action_recognition_val_sequences
 val_bboxes_gt_paths = _base_.action_recognition_val_bboxes_gt_paths
 val_keypoints_gt_paths = _base_.action_recognition_val_keypoints_gt_paths
 val_actions_gt_paths = _base_.action_recognition_val_actions_gt_paths
+
+# data_root = "../../datasets/MICE/sequential_nano/"
+
+# val_sequences = ["videos/14-20-02.avi"]
+# val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
+# val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
+# val_actions_gt_paths = ["actions/14-20-02.csv"]
+
+# train_sequences = val_sequences
+# train_bboxes_gt_paths = val_bboxes_gt_paths
+# train_keypoints_gt_paths = val_keypoints_gt_paths
+# train_actions_gt_paths = val_actions_gt_paths
 # /Settings
 
 # Model
@@ -135,6 +148,7 @@ load_anns = [
 
 train_dataloader = dict(
     batch_size=batch_size,
+    # num_workers=0,
     num_workers=8,
     persistent_workers=True,
     pin_memory=True,
@@ -164,6 +178,7 @@ train_dataloader = dict(
 
 val_dataloader = dict(
     batch_size=1,
+    # num_workers=0,
     num_workers=2,
     persistent_workers=True,
     pin_memory=True,

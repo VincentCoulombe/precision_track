@@ -239,6 +239,7 @@ transformation_functions = {
     "cxcyah_cxcywh": cxcyah_cxcywh,
     "cxcyah_cxcywh_1d": cxcyah_cxcywh_1d,
     "xywh_cxcywh": xywh_cxcywh,
+    "xywh_cxcywh_torch": xywh_cxcywh,
     "xywh_xyxy": xywh_xyxy,
     "xywh_xyxy_torch": xywh_xyxy_torch,
     "corner_xyxy_1d": corner_xyxy,

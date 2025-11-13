@@ -106,10 +106,15 @@ class MART(BaseModel):
             raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss, predict and tensor mode.")
 
     def loss(self, inputs: List[dict], data_samples: List[PoseDataSample], *args, **kwargs) -> dict:
-        batched_inputs = self._build_batch(inputs=inputs)
-        features = batched_inputs["features"]
-        dynamics = batched_inputs["dynamics"]
-        poses = batched_inputs["poses"]
+        # this is a quick hack to temporaly accomodate the old preprocessor
+        features = inputs
+        poses = data_samples
+        dynamics = args[0]
+        action_labels = args[1]
+        # batched_inputs = self._build_batch(inputs=inputs)
+        # features = batched_inputs["features"]
+        # dynamics = batched_inputs["dynamics"]
+        # poses = batched_inputs["poses"]
 
         features = self.dropout(features)
         dynamics = self.dropout(dynamics)
@@ -119,10 +124,11 @@ class MART(BaseModel):
         N, T, _ = decoder_embs.shape
         losses = dict()
 
-        action_labels = batched_inputs.get("actions")
+        # action_labels = batched_inputs.get("actions")
         if action_labels is not None:
             action_labels = action_labels.reshape(N * T).long()
-            losses["classification_loss"] = self.loss_actions(class_logits.reshape(N * T, self.n_class), action_labels, *args, **kwargs)
+            # losses["classification_loss"] = self.loss_actions(class_logits.reshape(N * T, self.n_class), action_labels, *args, **kwargs)
+            losses["classification_loss"] = F.cross_entropy(class_logits.reshape(N * T, self.n_class), action_labels)
         return losses
 
     @staticmethod
@@ -149,15 +155,16 @@ class MART(BaseModel):
                 out[k] = torch.concat(list_of_tensor, dim=0)
         return out
 
-    def val_step(self, data: Union[tuple, dict, list]) -> list:
-        return self.test_step(data)
+    # def val_step(self, data: Union[tuple, dict, list]) -> list:
+    #     return self.test_step(data)
 
-    def test_step(self, data: Union[dict, tuple, list]) -> list:
-        batched_inputs = self._build_batch(inputs=data)
-        return self.predict(inputs=batched_inputs, data_samples=data)
+    # def test_step(self, data: Union[dict, tuple, list]) -> list:
+    #     batched_inputs = self._build_batch(inputs=data)
+    #     return self.predict(inputs=batched_inputs, data_samples=data)
 
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
-        class_logits, action_embeddings = self._forward(**inputs, data_samples=data_samples, return_embs=True)
+        # class_logits, action_embeddings = self._forward(**inputs, data_samples=data_samples, return_embs=True)
+        class_logits, action_embeddings = self._forward(*inputs, data_samples=data_samples, return_embs=True)
         return F.softmax(class_logits[:, -1, :], dim=-1), action_embeddings[:, -1, :]
 
     def _forward(

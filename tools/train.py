@@ -51,4 +51,4 @@ if __name__ == "__main__":
     # main(parse_args())
     from addict import Dict
 
-    main(Dict({"config": "../configs/tasks/training_online.py", "launcher": "none"}))
+    main(Dict({"config": "../configs/tasks/training_action_recognition.py", "launcher": "none"}))

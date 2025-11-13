@@ -1,21 +1,24 @@
 _base_ = ["./training_detection.py"]
 
 # Settings
-auto_scale_lr = dict(base_batch_size=128, enable=True)
+# auto_scale_lr = dict(base_batch_size=128, enable=True)
+auto_scale_lr = dict(base_batch_size=128, enable=False)
+
 
 ## TODO Settings to refactor... ##
 resume = False
-# load_from = "../checkpoints/tracking_mice/"
-load_from = None
-training_cfg = dict(mode="two-stage", train_frames=0)
+load_from = "../checkpoints/yolox-pose_s_old_mice/mart_fixed.pth"
+# load_from = None
 
 num_epochs = 1000
 warmup_epochs = 5
-batch_size = 16
+batch_size = 8
 
 #### TODO End here ###
 
-base_lr = _base_.action_recognition_base_lr
+# base_lr = _base_.action_recognition_base_lr
+base_lr = 1e-5
+
 weight_decay = _base_.action_recognition_weight_decay
 # val_interval = _base_.action_recognition_val_interval
 val_interval = 5
@@ -69,10 +72,10 @@ val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
 val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
 val_actions_gt_paths = ["actions/val/14-20-02.csv"]
 
-# train_sequences = ["images/val/14-20-02/"]
-# train_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
-# train_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
-# train_actions_gt_paths = ["actions/val/14-20-02.csv"]
+train_sequences = ["images/val/14-20-02/"]
+train_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
+train_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
+train_actions_gt_paths = ["actions/val/14-20-02.csv"]
 
 # val_sequences = train_sequences
 # val_bboxes_gt_paths = train_bboxes_gt_paths
@@ -178,21 +181,21 @@ val_cfg = dict(
 
 # Optimization
 param_scheduler = [
-    dict(
-        type="QuadraticWarmupLR",
-        by_epoch=True,
-        begin=0,
-        end=warmup_epochs,
-    ),
-    dict(
-        type="CosineAnnealingLR",
-        eta_min=base_lr / 100,
-        begin=warmup_epochs,
-        T_max=9 * (num_epochs // 10),
-        end=9 * (num_epochs // 10),
-        by_epoch=True,
-    ),
-    dict(type="ConstantLR", by_epoch=True, factor=1, begin=9 * (num_epochs // 10), end=num_epochs),
+    # dict(
+    #     type="QuadraticWarmupLR",
+    #     by_epoch=True,
+    #     begin=0,
+    #     end=warmup_epochs,
+    # ),
+    # dict(
+    #     type="CosineAnnealingLR",
+    #     eta_min=base_lr / 100,
+    #     begin=warmup_epochs,
+    #     T_max=9 * (num_epochs // 10),
+    #     end=9 * (num_epochs // 10),
+    #     by_epoch=True,
+    # ),
+    # dict(type="ConstantLR", by_epoch=True, factor=1, begin=9 * (num_epochs // 10), end=num_epochs),
 ]
 
 

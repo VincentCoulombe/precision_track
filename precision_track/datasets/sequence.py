@@ -891,6 +891,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         weighted_selection: Optional[bool] = False,
         inference_resolution: Optional[tuple] = None,
         ignore_idx: Optional[int] = -100,
+        regenerate_idx: Optional[int] = None,
         *args,
         **kwargs,
     ):
@@ -929,8 +930,17 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         self.n_velocities = n_velocities
 
         self._ignore_idx = int(ignore_idx)
+        if regenerate_idx is not None:
+            regenerate_idx = int(regenerate_idx)
+        self._regenerate_idx = regenerate_idx
 
-    def prepare_data(self, _):
+    def prepare_data(self, idx):
+        if self._regenerate_idx is not None and idx % self._length == self._regenerate_idx:
+            # TODO Apprendre comment les workers marche? Comment safely reloader pour tout les process sans que ça prenne une éternité?
+            # TODO Solution problable, passer par un HOOK...
+            self.logger.info(f"Regenerating the dataset...")
+            self.load_data_list()
+
         random_action = np.random.choice(a=self.labels, p=self.p)
 
         nb_action_labels = len(self.action_to_sequence_map[random_action])
@@ -949,6 +959,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         inputs_ds.pred_track_instances = InstanceData()
 
         seq, idx, id_ = self.action_to_sequence_map[random_action][random_action_idx]
+        # TODO ne pas loader de idx < self.block_size dans ton data_list... sinon ça fuck ta for loop de loading!
 
         for block_idx in range(self.block_size):
             data_sample = self.data_list[seq][idx - self.block_size + block_idx + 1]
