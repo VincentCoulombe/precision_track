@@ -140,7 +140,7 @@ class MART(BaseModel):
         pose_embs = self.pose_encoder(poses.reshape(-1, self.block_size, self.n_pose * 2))
         dyns_embs = self.velocity_encoder(dynamics)
         feat_embs = self.feature_encoder(features)
-        x = torch.cat((feat_embs, pose_embs, dyns_embs), dim=-1)  # TODO attention-based fusion, rester en 128!
+        x = torch.cat((feat_embs, pose_embs, dyns_embs), dim=-1)
 
         x = self.proj(x)
         x = x + self.pe(torch.arange(0, self.block_size, device=x.device, dtype=torch.long))

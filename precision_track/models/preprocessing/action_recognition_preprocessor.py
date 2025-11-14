@@ -8,7 +8,7 @@ import torch
 from mmengine.model import BaseDataPreprocessor
 
 from precision_track.registry import MODELS
-from precision_track.utils import get_device, kpts_to_poses, parse_pose_metainfo, VelocityRBFEncoder
+from precision_track.utils import get_device, kpts_to_poses, parse_pose_metainfo
 
 
 class IdIndexMap:
@@ -72,6 +72,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         kpts_conf_thr: Optional[float] = 0.5,
         device: Optional[str] = None,
         with_vels: Optional[bool] = False,
+        velocity_encoder: Optional[dict] = None,
         with_kpts: Optional[bool] = False,
         with_kpt_vels: Optional[bool] = False,
         with_actions: Optional[bool] = False,
@@ -131,6 +132,10 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
 
         self.roll = torch.zeros_like(self._head, dtype=bool)
         self.consecutive_hits = torch.zeros_like(self._head)
+
+        self.vel_encoder = None
+        if velocity_encoder is not None:
+            self.vel_encoder = MODELS.build(velocity_encoder)
 
     def _init_graph(self):
         self.skeleton_sources = torch.as_tensor([s for s, _ in self.skeleton_links], device=self._device)
@@ -219,6 +224,8 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
             if scale is not None:
                 vels = vels / scale
             vels = vels.to(self.block_vels.dtype).view(features.shape[0], 2)
+            if self.vel_encoder is not None:
+                vels = self.vel_encoder(vels)
             self._ring_write(self.block_vels, running_idxs, vels)
             self._ring_write(self.block_vels, hidden_idxs)
 
@@ -391,7 +398,6 @@ class ActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
         scales = []
         for data_sample in data["data_samples"]:
             dynamics.append(data_sample.pred_track_instances.velocities.view(self.block_size, 2))
-            # TODO rework scale... devrait être sqrt(w^2+h^2) et être dans le data_sample (provient du postprocessing)
             skeleton, scale = kpts_to_poses(
                 data_sample.pred_track_instances.kpts.to(self.device),
                 data_sample.pred_track_instances.kpt_vis.to(self.device),
@@ -442,6 +448,8 @@ class ActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
             )
             inst_skeletons.append(skeleton.view(self.block_size, -1))
             dynamics[i, ...] /= scale
+        if self.vel_encoder is not None:
+            dynamics = self.vel_encoder(dynamics)
         skeletons = torch.stack(inst_skeletons, dim=0)
         labels = data_sample.gt_instance_labels.action_labels.view(N).to(self.device)
         features = data["inputs"][0].view(N, T, -1).to(self.device)

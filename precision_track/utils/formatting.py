@@ -429,6 +429,7 @@ def kpts_to_poses(
 
     scale = 1
     if normalize:
+        # Normalizing with respect to the subject's median bone lengths is more robust to occlusion than normalizing with respect to its bounding boxe sizes.
         lens = torch.norm(bone_vec, dim=-1)
         lens[~vis_mask] = torch.nan
         scale, _ = torch.nanmedian(lens, dim=1, keepdim=True)
@@ -439,37 +440,6 @@ def kpts_to_poses(
     bone_vec[~vis_mask[..., None].expand_as(bone_vec)] = 0.0
 
     return bone_vec, scale
-
-    # ---------- cosine-angle stream ----------------------------------------
-    # TODO à optimiser.....
-    # T, V, C = kpts.shape
-    # angles_cos = torch.zeros((T, V), dtype=kpts.dtype, device=kpts.device)
-
-    # # pre-gather bone indices touching each joint
-    # src_map = {j: torch.where(skeleton_sources == j)[0] for j in range(V)}
-    # tgt_map = {j: torch.where(skeleton_targets == j)[0] for j in range(V)}
-
-    # for j in range(V):
-    #     if len(src_map[j]) == 0 or len(tgt_map[j]) == 0:
-    #         continue  # is an extremity
-
-    #     child_idx = tgt_map[j][0]
-    #     parent_idx = src_map[j][0]
-
-    #     v_child = bone_vec[:, child_idx]
-    #     v_parent = -bone_vec[:, parent_idx]
-
-    #     valid = vis_mask[:, child_idx] & vis_mask[:, parent_idx]
-
-    #     dot_product = (v_child * v_parent).sum(-1)
-    #     cosθ = dot_product / (v_child.norm(dim=-1) * v_parent.norm(dim=-1)) + eps
-
-    #     angles_cos[valid, j] = cosθ[valid]
-
-    # return bone_vec, angles_cos
-    # return torch.hstack((bone_vec.view(-1, 18), angles_cos))  # TODO rendrep lus efficace, shotgun mémoire au début.
-
-    return bone_vec
 
 
 def velocity_to_dir_speed(velocity, eps=1e-6):

@@ -891,7 +891,6 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         weighted_selection: Optional[bool] = False,
         inference_resolution: Optional[tuple] = None,
         ignore_idx: Optional[int] = -100,
-        regenerate_idx: Optional[int] = None,
         *args,
         **kwargs,
     ):
@@ -930,17 +929,8 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         self.n_velocities = n_velocities
 
         self._ignore_idx = int(ignore_idx)
-        if regenerate_idx is not None:
-            regenerate_idx = int(regenerate_idx)
-        self._regenerate_idx = regenerate_idx
 
     def prepare_data(self, idx):
-        if self._regenerate_idx is not None and idx % self._length == self._regenerate_idx:
-            # TODO Apprendre comment les workers marche? Comment safely reloader pour tout les process sans que ça prenne une éternité?
-            # TODO Solution problable, passer par un HOOK...
-            self.logger.info(f"Regenerating the dataset...")
-            self.load_data_list()
-
         random_action = np.random.choice(a=self.labels, p=self.p)
 
         nb_action_labels = len(self.action_to_sequence_map[random_action])
@@ -959,8 +949,6 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         inputs_ds.pred_track_instances = InstanceData()
 
         seq, idx, id_ = self.action_to_sequence_map[random_action][random_action_idx]
-        # TODO ne pas loader de idx < self.block_size dans ton data_list... sinon ça fuck ta for loop de loading!
-
         for block_idx in range(self.block_size):
             data_sample = self.data_list[seq][idx - self.block_size + block_idx + 1]
             id_idx = torch.where(data_sample.pred_track_instances.instances_id == id_)[0]
@@ -1022,8 +1010,12 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
                         seq_dynamics[id_][-1] = frame_id
                     frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
 
-                    self.action_to_sequence_map[action].append((s, i, id_))
+                    if frame_id >= self.block_size:
+                        self.action_to_sequence_map[action].append((s, i, id_))
                 data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
+
+        for seq in data_list:  # Delete first self.block_size frames of each sequence
+            del seq[: self.block_size]
         return data_list
 
 
@@ -1074,6 +1066,7 @@ class ActionRecognitionPerFrameDataset(ActionRecognitionDataset):
 
     def load_data_list(self) -> List[dict]:
         data_list = super().load_data_list()
+        # TODO remove first block_size frames of each sequences
         self.idx_to_seq = dict()
         self._length = 0
         for i, seq in enumerate(data_list):

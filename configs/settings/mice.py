@@ -2,7 +2,7 @@ _base_ = "./_base_.py"
 
 # Common
 metainfo = "../configs/metadata/mice.py"
-wandb_logging = False
+wandb_logging = True
 # /Common
 
 # 1) Detection
@@ -155,7 +155,7 @@ mart_checkpoint = deployed_directory + "mart_DEPLOYED.onnx"
 inference_resolution = (2720, 2720)
 block_size = 30
 
-n_encoded_dynamics = 10
+n_encoded_dynamics = 2
 n_embd_dynamics = 32
 n_embd_pose = 96
 n_embd_features = 128
@@ -172,13 +172,7 @@ if with_action_recognition:
     action_recognition_input_names = ["features", "poses", "dynamics"]
     action_recognition_output_names = ["class_logits", "action_embeddings"]
 
-    velocity_encoder = dict(
-        type="VelocityRBFEncoder",
-        config=dict(
-            num_rbf=n_encoded_dynamics,
-            max_rel_vel=5,
-        ),
-    )
+    velocity_encoder = None
 
     analyzer = dict(
         type="ActionRecognitionBackend",

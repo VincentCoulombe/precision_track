@@ -1,20 +1,7 @@
-from typing import List, Optional, Tuple, Union
-
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from mmengine import Config
-from mmengine.model import BaseModel
-from torch import Tensor
 
 from precision_track.registry import MODELS
-from precision_track.utils import PoseDataSample, reformat, parse_pose_metainfo, get_device
-
-# from .modules.blocks.transformers import ProjLN, TransformerBlock, TransformerMLP
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from precision_track.utils import get_device
 
 
 @MODELS.register_module()
