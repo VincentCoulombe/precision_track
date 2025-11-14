@@ -316,6 +316,9 @@ class RandomFlip(BaseTransform):
             assert 0 <= sum(prob) <= 1
         elif isinstance(prob, float):
             assert 0 <= prob <= 1
+        elif isinstance(prob, int):
+            prob = float(prob)
+            assert 0 <= prob <= 1
         else:
             raise ValueError(
                 f"probs must be float or list of float, but \
@@ -385,7 +388,7 @@ class RandomFlip(BaseTransform):
             results["flip"] = True
             results["flip_direction"] = flip_dir
 
-            h, w = results.get("input_size", results["img_shape"])
+            h, w = results.get("ori_shape", results.get("input_size", results["img_shape"]))
             # flip image and mask
             if isinstance(results["img"], list):
                 results["img"] = [imflip(img, direction=flip_dir) for img in results["img"]]

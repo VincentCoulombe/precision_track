@@ -9,7 +9,6 @@ weight_decay = _base_.action_recognition_weight_decay
 num_iter = _base_.action_recognition_num_iter
 warmup_iter = _base_.action_recognition_warmup_iter
 val_interval = _base_.action_recognition_val_interval
-# val_interval = 1
 
 work_dir = _base_.training_work_dir
 
@@ -242,7 +241,7 @@ custom_hooks = [
     dict(
         type="ActionRecognitionRegenerationSwitchHook",
         priority=51,
-        generate_every=100,
+        generate_every=5000,
     ),
 ]
 # /Hooks

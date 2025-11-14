@@ -826,7 +826,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                             if hasattr(data_sample.gt_instance_labels, "action_labels"):
                                 action_labels = data_sample.gt_instance_labels.action_labels[matched_gts][unique_idx]
                             if hasattr(data_sample.gt_instances, "actions"):
-                                actions = data_sample.gt_instances.actions[matched_gts][unique_idx]
+                                actions = np.array(data_sample.gt_instances.actions[matched_gts]).reshape(len(matched_gts))[unique_idx]
 
                             input_size = data_sample.metainfo["input_size"]
                             input_scale = data_sample.metainfo["ori_shape"]
@@ -1015,7 +1015,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
                         seq_dynamics[id_][-1] = frame_id
                     frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
 
-                    if frame_id >= self.block_size:
+                    if frame_id >= self.block_size:  # Removing first self.block_size frames from each sequences.
                         self.action_to_sequence_map[action].append((s, i, id_))
                 data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
         return data_list

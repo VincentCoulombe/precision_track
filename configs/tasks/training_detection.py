@@ -11,9 +11,7 @@ val_interval = _base_.val_interval
 work_dir = _base_.training_work_dir
 
 resume = _base_.resume
-# load_from = _base_.training_checkpoint
-load_from = _base_.tracking_checkpoint
-
+load_from = _base_.training_checkpoint
 
 input_size = _base_.input_size
 pad_value = _base_.pad_value
