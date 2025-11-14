@@ -119,6 +119,10 @@ class ActionRecognitionRegenerationSwitchHook(Hook):
         runner.logger.info("Generating new training sequences.")
         runner.train_dataloader.dataset.load_data_list()
 
+    def before_train_iter(self, runner, batch_idx: int, data_batch=None) -> None:
+        if batch_idx > 0 and batch_idx % self.generate_every == 0:
+            self._modify_dataloader(runner)
+
     def before_train_epoch(self, runner: Runner):
         epoch = runner.epoch
         if epoch > 0 and epoch % self.generate_every == 0:
