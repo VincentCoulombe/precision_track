@@ -36,17 +36,17 @@ val_bboxes_gt_paths = _base_.action_recognition_val_bboxes_gt_paths
 val_keypoints_gt_paths = _base_.action_recognition_val_keypoints_gt_paths
 val_actions_gt_paths = _base_.action_recognition_val_actions_gt_paths
 
-# data_root = "../../datasets/MICE/sequential_nano/"
+data_root = "../../datasets/MICE/sequential_nano/"
 
-# val_sequences = ["videos/14-20-02.avi"]
-# val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
-# val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
-# val_actions_gt_paths = ["actions/14-20-02.csv"]
+val_sequences = ["videos/14-20-02.avi"]
+val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
+val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
+val_actions_gt_paths = ["actions/14-20-02.csv"]
 
-# train_sequences = val_sequences
-# train_bboxes_gt_paths = val_bboxes_gt_paths
-# train_keypoints_gt_paths = val_keypoints_gt_paths
-# train_actions_gt_paths = val_actions_gt_paths
+train_sequences = val_sequences
+train_bboxes_gt_paths = val_bboxes_gt_paths
+train_keypoints_gt_paths = val_keypoints_gt_paths
+train_actions_gt_paths = val_actions_gt_paths
 # /Settings
 
 # Model
@@ -139,19 +139,27 @@ optim_wrapper = dict(
 
 # Dataloaders
 codec = dict(type="SequenceAnnotationProcessor", input_size=_base_.input_size, convert_cats=True)
-load_img = [dict(type="LoadImage"), dict(type="BottomupResize", input_size=_base_.input_size, pad_val=_base_.pad_value)]
+
+load_img = [dict(type="LoadImage")]
+crop = [dict(type="SequenceRandomCrop", crop_size=(0.85, 1.0))]
+resize = [dict(type="BottomupResize", input_size=_base_.input_size, pad_val=(_base_.pad_value, _base_.pad_value, _base_.pad_value))]
+transforms = [
+    dict(type="SequenceYOLOXHSVRandomAug", hue_delta=0),
+    dict(type="SequenceRandomContrastAug"),
+    # dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
+    # dict(type="SequenceRandomOcclusion"),
+]
 load_anns = [
-    dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False),
+    dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False, min_kpt_vis=3),
     dict(type="GenerateTarget", encoder=codec),
     dict(type="PackPoseInputs"),
 ]
 
-
 train_dataloader = dict(
     batch_size=batch_size,
-    # num_workers=0,
-    num_workers=8,
-    persistent_workers=True,
+    num_workers=0,
+    # num_workers=8,
+    # persistent_workers=True,
     pin_memory=True,
     sampler=dict(type="InfiniteSampler"),
     dataset=dict(
@@ -171,7 +179,7 @@ train_dataloader = dict(
             actions_gt_paths=train_actions_gt_paths,
         ),
         block_size=block_size,
-        pipeline=load_img + load_anns,
+        pipeline=load_img + resize + transforms + load_anns,
         inference_resolution=_base_.inference_resolution,
         training=True,
     ),
@@ -179,9 +187,9 @@ train_dataloader = dict(
 
 val_dataloader = dict(
     batch_size=1,
-    # num_workers=0,
-    num_workers=2,
-    persistent_workers=True,
+    num_workers=0,
+    # num_workers=2,
+    # persistent_workers=True,
     pin_memory=True,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(
@@ -201,7 +209,7 @@ val_dataloader = dict(
             actions_gt_paths=val_actions_gt_paths,
         ),
         block_size=block_size,
-        pipeline=load_img + load_anns,
+        pipeline=load_img + resize + load_anns,
         inference_resolution=_base_.inference_resolution,
         training=False,
     ),

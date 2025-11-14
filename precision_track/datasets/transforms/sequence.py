@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from typing import Union, List, Tuple
 import numpy as np
+import cv2
 
 from .common import RandomFlip, RandomCrop
 from .base import BaseTransform
@@ -106,3 +107,75 @@ class SequenceRandomCrop(RandomCrop, BaseSequenceTransform):
             self._get_reltiave_offsets((margin_h, margin_w))
         results = self._crop_data(results, crop_size, self.allow_negative_crop)
         return results
+
+
+@TRANSFORMS.register_module()
+class SequenceRandomContrastAug(BaseTransform):
+    def __init__(self, contrast_range=(0.75, 1.25)) -> None:
+        assert isinstance(contrast_range, tuple) and len(contrast_range) == 2, "contrast_range must be a tuple of two floats"
+        self.contrast_range = contrast_range
+        self.contrast_factor = 1.0
+
+    def set_stochastic_params(self) -> None:
+        self.contrast_factor = np.random.uniform(*self.contrast_range)
+
+    def transform(self, results: dict) -> dict:
+        img = results["img"]
+
+        img = img.astype(np.float32)
+        mean = img.mean(axis=(0, 1), keepdims=True)
+        img = (img - mean) * self.contrast_factor + mean
+        img = np.clip(img, 0, 255).astype(np.uint8)
+
+        results["img"] = img
+        return results
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(contrast_range={self.contrast_range})"
+
+
+@TRANSFORMS.register_module()
+class SequenceYOLOXHSVRandomAug(BaseTransform):
+    def __init__(self, hue_delta: int = 5, saturation_delta: int = 30, value_delta: int = 30) -> None:
+        self.hue_delta = hue_delta
+        self.saturation_delta = saturation_delta
+        self.value_delta = value_delta
+        self.hsv_gains = None
+
+    def _get_hsv_gains(self):
+        hsv_gains = np.random.uniform(-1, 1, 3) * [
+            self.hue_delta,
+            self.saturation_delta,
+            self.value_delta,
+        ]
+        # random selection of h, s, v
+        hsv_gains *= np.random.randint(0, 2, 3)
+        # prevent overflow
+        hsv_gains = hsv_gains.astype(np.int16)
+        return hsv_gains
+
+    def set_stochastic_params(self) -> None:
+        self.hsv_gains = self._get_hsv_gains()
+
+    def transform(self, results: dict) -> dict:
+        if self.hsv_gains is None:
+            return results
+
+        img = results["img"]
+
+        img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int16)
+
+        img_hsv[..., 0] = (img_hsv[..., 0] + self.hsv_gains[0]) % 180
+        img_hsv[..., 1] = np.clip(img_hsv[..., 1] + self.hsv_gains[1], 0, 255)
+        img_hsv[..., 2] = np.clip(img_hsv[..., 2] + self.hsv_gains[2], 0, 255)
+        cv2.cvtColor(img_hsv.astype(img.dtype), cv2.COLOR_HSV2BGR, dst=img)
+
+        results["img"] = img
+        return results
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f"(hue_delta={self.hue_delta}, "
+        repr_str += f"saturation_delta={self.saturation_delta}, "
+        repr_str += f"value_delta={self.value_delta})"
+        return repr_str

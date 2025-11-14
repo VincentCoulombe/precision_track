@@ -1,6 +1,6 @@
 from .bottomup_transforms import BottomupRandomAffine, BottomupResize
 from .common import FilterAnnotations, GenerateTarget, RandomCrop, RandomFlip, Resize, YOLOXHSVRandomAug
-from .sequence import SequenceRandomCrop, SequenceRandomFlip, SequenceRandomOcclusion
+from .sequence import SequenceRandomCrop, SequenceRandomFlip, SequenceRandomOcclusion, SequenceRandomContrastAug, SequenceYOLOXHSVRandomAug
 
 # from .converting import KeypointConverter
 from .formatting import PackPoseInputs
@@ -25,4 +25,6 @@ __all__ = [
     "SequenceRandomCrop",
     "SequenceRandomFlip",
     "SequenceRandomOcclusion",
+    "SequenceRandomContrastAug",
+    "SequenceYOLOXHSVRandomAug",
 ]

@@ -625,6 +625,11 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                 data_info[key] = deepcopy(self._metainfo[key])
         return data_info
 
+    def set_sequence_transforms(self):
+        for transform in self.pipeline.transforms:
+            if hasattr(transform, "set_stochastic_params"):
+                transform.set_stochastic_params()
+
     def _init_data_prefix_key(self, key):
         if isinstance(self.data_prefix[key], str):
             directory = os.path.join(self.data_root, self.data_prefix[key])
@@ -704,7 +709,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
 
         data_list = [[] for _ in sequences_name]
         for sequence_idx, kpts_idx, bboxes_idx, actions_idx in tqdm(prefix_map):
-
+            self.set_sequence_transforms()
             vid_reader = VideoReader(self.data_prefix["sequences"][sequence_idx])
             sequence_name = sequences_name[sequence_idx]
             kpts_output = self.data_prefix["keypoints_outputs"][kpts_idx]
@@ -1013,9 +1018,6 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
                     if frame_id >= self.block_size:
                         self.action_to_sequence_map[action].append((s, i, id_))
                 data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
-
-        for seq in data_list:  # Delete first self.block_size frames of each sequence
-            del seq[: self.block_size]
         return data_list
 
 

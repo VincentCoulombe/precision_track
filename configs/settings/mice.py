@@ -2,7 +2,7 @@ _base_ = "./_base_.py"
 
 # Common
 metainfo = "../configs/metadata/mice.py"
-wandb_logging = True
+wandb_logging = False
 # /Common
 
 # 1) Detection

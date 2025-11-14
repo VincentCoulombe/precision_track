@@ -1,2 +1,2 @@
-project = "MART_online"
+project = "MART_offline"
 entity = "vincent-coulombe"
