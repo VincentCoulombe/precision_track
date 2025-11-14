@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 from mmengine import Config
-from precision_track.models import TestPreprocessor
+from precision_track.models import ActionRecognitionPreprocessor
 
 ROOT = "./tests/"
 
@@ -28,7 +28,7 @@ def metainfo():
 
 @pytest.fixture
 def preprocessor_config():
-    """Default configuration for TestPreprocessor"""
+    """Default configuration for ActionRecognitionPreprocessor"""
     return {
         "embd_size": 256,
         "block_size": 8,
@@ -44,9 +44,9 @@ def preprocessor_config():
 
 @pytest.fixture
 def preprocessor(metainfo, preprocessor_config):
-    """Create a TestPreprocessor instance with mocked dependencies"""
+    """Create a ActionRecognitionPreprocessor instance with mocked dependencies"""
     preprocessor_config["metainfo"] = metainfo
-    return TestPreprocessor(**preprocessor_config)
+    return ActionRecognitionPreprocessor(**preprocessor_config)
 
 
 def create_track_instance(num_instances, embd_size=256, num_keypoints=17, ids=None, labels=None, include_actions=True, feature_pattern=None):
@@ -351,11 +351,6 @@ class TestHardCase:
                 )
 
     def test_intermittent_tracking(self, preprocessor):
-        # TODO Une instance qui réapparait dans son block devrait garder le même idx ("0-0")
-        # TODO Une instance qui réapparait après son block et avant qu'une autre instance apparaisse devrait garder le même idx ("0-2")
-        # TODO Une instance qui réapparait après son block et après qu'une autre instance apparaisse devrait CHANGER de idx ("0-1")
-        # TODO Une instance qui réapparait après son block n'as pas de valid_context avant block_size frame supp ("0-2")
-
         block_size = preprocessor._block_size
         embd_size = preprocessor._embd_size
 

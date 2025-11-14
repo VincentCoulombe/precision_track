@@ -499,9 +499,14 @@ class PosesShape(InputShape):
 @TASK_UTILS.register_module()
 class VelocityShape(InputShape):
 
-    def __init__(self, block_size: int):
+    def __init__(self, block_size: int, n_encoding: int = None):
         assert 0 < block_size
-        self.shape = (block_size, 16)  # TODO to refactor
+        if n_encoding is None:
+            n_encoding = 2
+        else:
+            n_encoding = int(n_encoding)
+        assert 0 < n_encoding
+        self.shape = (block_size, n_encoding)
 
 
 @TASK_UTILS.register_module()

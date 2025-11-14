@@ -36,6 +36,13 @@ class SpatialRBFAttentionMask(nn.Module):
         self.beta = nn.Parameter(torch.tensor(0.1))
 
     def forward(self, bboxes):
+        """
+        Args:
+            bboxes (torch.Tensor): Bounding Boxes of the cxcywh format
+
+        Returns:
+            torch.Tensor: The spatial RBF attention biases
+        """
         if bboxes.ndim == 2:
             bboxes = bboxes.unsqueeze(0)
 
@@ -53,6 +60,262 @@ class SpatialRBFAttentionMask(nn.Module):
 
         bias = torch.einsum("bijk,hk->bijh", phi, self.Wb)
         return (self.beta * bias).permute(0, 3, 1, 2).contiguous()
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class FlexibleRBFAttentionMask(nn.Module):
+    # TODO Tester!
+    # TODO 1) doit être capable de donner la même chose que SpatialRBFAttentionMask si j'utilise juste la distance
+    # TODO 2) Comprendre les autres métriques (Noter dans Canva) + refactor velocities (pas besoin des recalculer) + s'assurer que tout est OK!
+    """
+    Flexible spatio-temporal RBF attention bias.
+
+    Supports any combination of:
+      - d: normalized pairwise distance
+      - a: approach speed (i -> j) along line of centers
+      - f: velocity alignment (cosine similarity of v_i and v_j)
+
+    Output:
+      bias: (B, n_head, N, N) to be added to attention logits.
+    """
+
+    def __init__(self, config):
+        super().__init__()
+
+        self.n_head = int(config.n_head)
+        self.eps = 1e-6
+
+        # Which relational features to use
+        self.use_dist = getattr(config, "use_dist", True)
+        self.use_approach = getattr(config, "use_approach", False)
+        self.use_align = getattr(config, "use_align", False)
+
+        # RBF configuration
+        self.num_rbf_dist = int(getattr(config, "num_rbf_dist", getattr(config, "num_rbf", 8)))
+        self.num_rbf_approach = int(getattr(config, "num_rbf_approach", getattr(config, "num_rbf", 8)))
+        self.num_rbf_align = int(getattr(config, "num_rbf_align", getattr(config, "num_rbf", 8)))
+
+        self.max_rel_dist = float(getattr(config, "max_rel_dist", 16.0))
+        # Max absolute approach speed before clamping (in pixels / normed units)
+        self.max_rel_vel = float(getattr(config, "max_rel_vel", 1.0))
+
+        # --- RBF banks ---
+        def make_rbf_bank(num_rbf, low, high, sigma):
+            if num_rbf <= 0:
+                return None, None
+            mu = torch.linspace(low, high, num_rbf)
+            sigma = torch.full((num_rbf,), sigma)
+            return mu, sigma
+
+        # Distance RBF: d in [0, max_rel_dist]
+        if self.use_dist:
+            mu_d, sigma_d = make_rbf_bank(
+                self.num_rbf_dist,
+                low=0.0,
+                high=self.max_rel_dist,
+                sigma=getattr(config, "sigma_dist", 0.5),
+            )
+            self.register_buffer("mu_dist", mu_d)
+            self.register_buffer("sigma_dist", sigma_d)
+
+        # Approach RBF: a_normalized in [-1, 1]
+        if self.use_approach:
+            mu_a, sigma_a = make_rbf_bank(
+                self.num_rbf_approach,
+                low=-1.0,
+                high=1.0,
+                sigma=getattr(config, "sigma_approach", 0.25),
+            )
+            self.register_buffer("mu_approach", mu_a)
+            self.register_buffer("sigma_approach", sigma_a)
+
+        # Alignment RBF: f in [-1, 1]
+        if self.use_align:
+            mu_f, sigma_f = make_rbf_bank(
+                self.num_rbf_align,
+                low=-1.0,
+                high=1.0,
+                sigma=getattr(config, "sigma_align", 0.25),
+            )
+            self.register_buffer("mu_align", mu_f)
+            self.register_buffer("sigma_align", sigma_f)
+
+        # Total RBF feature dimension for MLP input
+        in_dim = 0
+        if self.use_dist:
+            in_dim += self.num_rbf_dist
+        if self.use_approach:
+            in_dim += self.num_rbf_approach
+        if self.use_align:
+            in_dim += self.num_rbf_align
+
+        if in_dim == 0:
+            raise ValueError("At least one of use_dist/use_approach/use_align must be True.")
+
+        hidden_dim = int(getattr(config, "rbf_mlp_hidden_dim", 64))
+        self.mlp = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, self.n_head),
+        )
+
+        # Global scale for the whole bias block
+        self.beta = nn.Parameter(torch.tensor(0.1))
+
+    def _rbf(self, x, mu, sigma):
+        """
+        x: (B, N, N)
+        mu, sigma: (M,)
+        returns: (B, N, N, M)
+        """
+        x = x.unsqueeze(-1)  # (B, N, N, 1)
+        return torch.exp(-0.5 * ((x - mu) / (sigma + self.eps)) ** 2)
+
+    def _compute_distance(self, bboxes):
+        """
+        bboxes: (B, N, 4) in cx, cy, w, h
+        returns: d_ij: (B, N, N)
+        """
+        centers = bboxes[..., :2]  # (B, N, 2)
+        widths = bboxes[..., 2]
+        heights = bboxes[..., 3]
+        sizes = torch.sqrt(widths**2 + heights**2)  # (B, N)
+
+        # Pairwise center distance
+        ci = centers[:, :, None, :]  # (B, N, 1, 2)
+        cj = centers[:, None, :, :]  # (B, 1, N, 2)
+        diff = ci - cj  # (B, N, N, 2)
+        euc_dist = diff.norm(p=2, dim=-1)  # (B, N, N)
+
+        # Size normalization (avg diag)
+        si = sizes[:, :, None]  # (B, N, 1)
+        sj = sizes[:, None, :]  # (B, 1, N)
+        size_norm = 0.5 * (si + sj) + self.eps  # (B, N, N)
+
+        d_ij = (euc_dist / size_norm).clamp(max=self.max_rel_dist)
+        return d_ij, centers
+
+    def _compute_velocity_features(self, centers, prev_bboxes=None, velocities=None):
+        """
+        centers: (B, N, 2)
+        prev_bboxes: optional (B, N, 4) or (N, 4)
+        velocities: optional (B, N, 2) or (N, 2)
+
+        returns:
+          velocities: (B, N, 2) or None
+        """
+        if velocities is not None:
+            if velocities.ndim == 2:
+                velocities = velocities.unsqueeze(0)
+            return velocities
+
+        if prev_bboxes is not None:
+            if prev_bboxes.ndim == 2:
+                prev_bboxes = prev_bboxes.unsqueeze(0)
+            prev_centers = prev_bboxes[..., :2]
+            v = centers - prev_centers  # (B, N, 2)
+            return v
+
+        return None  # No velocity available
+
+    def _compute_approach(self, centers, velocities):
+        """
+        centers: (B, N, 2)
+        velocities: (B, N, 2)
+        returns: a_ij_normalized in [-1, 1], (B, N, N)
+        """
+        B, N, _ = centers.shape
+
+        ci = centers[:, :, None, :]  # (B, N, 1, 2)
+        cj = centers[:, None, :, :]  # (B, 1, N, 2)
+        r_ij = cj - ci  # (B, N, N, 2)
+
+        r_norm = r_ij.norm(p=2, dim=-1, keepdim=True)  # (B, N, N, 1)
+        r_hat = r_ij / (r_norm + self.eps)
+
+        v_i = velocities[:, :, None, :]  # (B, N, 1, 2) broadcast over j
+
+        a_ij = (v_i * r_hat).sum(dim=-1)  # (B, N, N)
+
+        # Clamp and normalize to [-1, 1] for RBF
+        a_ij = a_ij.clamp(-self.max_rel_vel, self.max_rel_vel)
+        a_ij_norm = a_ij / (self.max_rel_vel + self.eps)
+        return a_ij_norm
+
+    def _compute_alignment(self, velocities):
+        """
+        velocities: (B, N, 2)
+        returns: f_ij in [-1, 1], (B, N, N)
+        """
+        vi = velocities[:, :, None, :]  # (B, N, 1, 2)
+        vj = velocities[:, None, :, :]  # (B, 1, N, 2)
+
+        dot = (vi * vj).sum(dim=-1)  # (B, N, N)
+        ni = vi.norm(p=2, dim=-1)  # (B, N, 1)
+        nj = vj.norm(p=2, dim=-1)  # (B, 1, N)
+
+        denom = ni * nj + self.eps
+        cos_sim = (dot / denom).clamp(-1.0, 1.0)  # (B, N, N)
+        return cos_sim
+
+    def forward(self, bboxes, prev_bboxes=None, velocities=None):
+        """
+        Args:
+            bboxes: (B, N, 4) or (N, 4) in cx, cy, w, h
+            prev_bboxes: optional (B, N, 4) or (N, 4) if you want the module
+                         to compute velocities internally.
+            velocities: optional (B, N, 2) or (N, 2) precomputed.
+
+        Returns:
+            bias: (B, n_head, N, N)
+        """
+        if bboxes.ndim == 2:
+            bboxes = bboxes.unsqueeze(0)
+
+        # Distance (and centers)
+        d_ij, centers = self._compute_distance(bboxes)
+
+        # Velocity tensor if any velocity-based feature is used
+        need_vel = self.use_approach or self.use_align
+        vel = None
+        if need_vel:
+            vel = self._compute_velocity_features(centers, prev_bboxes, velocities)
+            if vel is None:
+                raise ValueError("use_approach/use_align is True but no prev_bboxes or velocities were provided.")
+
+        # Collect RBF features
+        feats = []
+
+        if self.use_dist:
+            phi_d = self._rbf(d_ij, self.mu_dist, self.sigma_dist)  # (B, N, N, M_d)
+            feats.append(phi_d)
+
+        if self.use_approach:
+            a_ij = self._compute_approach(centers, vel)  # (B, N, N)
+            phi_a = self._rbf(a_ij, self.mu_approach, self.sigma_approach)  # (B, N, N, M_a)
+            feats.append(phi_a)
+
+        if self.use_align:
+            f_ij = self._compute_alignment(vel)  # (B, N, N)
+            phi_f = self._rbf(f_ij, self.mu_align, self.sigma_align)  # (B, N, N, M_f)
+            feats.append(phi_f)
+
+        # Concatenate along last dim → (B, N, N, D_in)
+        phi_cat = torch.cat(feats, dim=-1)
+
+        B, N, _, D_in = phi_cat.shape
+        phi_flat = phi_cat.view(B * N * N, D_in)  # (B*N*N, D_in)
+        bias_flat = self.mlp(phi_flat)  # (B*N*N, n_head)
+        bias = bias_flat.view(B, N, N, self.n_head)  # (B, N, N, H)
+
+        bias = self.beta * bias  # global scale
+        bias = bias.permute(0, 3, 1, 2).contiguous()  # (B, H, N, N)
+
+        return bias
 
 
 if __name__ == "__main__":

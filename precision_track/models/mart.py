@@ -37,8 +37,9 @@ class MART(BaseModel):
 
         n_embd_dynamics = config.n_embd_dynamics
         config.n_embd = n_embd_dynamics
+        n_encoded_dynamics = config.get("n_encoded_dynamics", 2)
         self.velocity_encoder = nn.Sequential(
-            ProjLN(2, config.n_embd, bias=config.bias),
+            ProjLN(n_encoded_dynamics, config.n_embd, bias=config.bias),
             TransformerMLP(config),
             nn.LayerNorm(config.n_embd, bias=config.bias),
         )
@@ -105,16 +106,10 @@ class MART(BaseModel):
         else:
             raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss, predict and tensor mode.")
 
-    def loss(self, inputs: List[dict], data_samples: List[PoseDataSample], *args, **kwargs) -> dict:
-        # this is a quick hack to temporaly accomodate the old preprocessor
-        features = inputs
-        poses = data_samples
-        dynamics = args[0]
-        action_labels = args[1]
-        # batched_inputs = self._build_batch(inputs=inputs)
-        # features = batched_inputs["features"]
-        # dynamics = batched_inputs["dynamics"]
-        # poses = batched_inputs["poses"]
+    def loss(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, labels: torch.Tensor) -> dict:
+        features = self.dropout(features)
+        dynamics = self.dropout(dynamics)
+        poses = self.dropout(poses)
 
         features = self.dropout(features)
         dynamics = self.dropout(dynamics)
@@ -123,48 +118,12 @@ class MART(BaseModel):
         class_logits, decoder_embs = self._forward(features, poses, dynamics, return_embs=True)
         N, T, _ = decoder_embs.shape
         losses = dict()
-
-        # action_labels = batched_inputs.get("actions")
-        if action_labels is not None:
-            action_labels = action_labels.reshape(N * T).long()
-            # losses["classification_loss"] = self.loss_actions(class_logits.reshape(N * T, self.n_class), action_labels, *args, **kwargs)
-            losses["classification_loss"] = F.cross_entropy(class_logits.reshape(N * T, self.n_class), action_labels)
+        labels = labels.reshape(N * T).long()
+        losses["classification_loss"] = F.cross_entropy(class_logits.reshape(N * T, self.n_class), labels)
         return losses
 
-    @staticmethod
-    def _build_batch(inputs: List[PoseDataSample]) -> dict:
-        out = dict()
-        features = []
-        poses = []
-        dynamics = []
-        actions = []
-        for seq_input in inputs:
-            for k, v in seq_input.pred_track_instances.items():
-                if isinstance(v, torch.Tensor):
-                    if k == "features":
-                        features.append(v)
-                    if k == "poses":
-                        poses.append(v)
-                    if k == "dynamics":
-                        dynamics.append(v)
-                    if k == "actions":
-                        actions.append(v)
-
-        for k, list_of_tensor in zip(["features", "poses", "dynamics", "actions"], [features, poses, dynamics, actions]):
-            if list_of_tensor:
-                out[k] = torch.concat(list_of_tensor, dim=0)
-        return out
-
-    # def val_step(self, data: Union[tuple, dict, list]) -> list:
-    #     return self.test_step(data)
-
-    # def test_step(self, data: Union[dict, tuple, list]) -> list:
-    #     batched_inputs = self._build_batch(inputs=data)
-    #     return self.predict(inputs=batched_inputs, data_samples=data)
-
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
-        # class_logits, action_embeddings = self._forward(**inputs, data_samples=data_samples, return_embs=True)
-        class_logits, action_embeddings = self._forward(*inputs, data_samples=data_samples, return_embs=True)
+        class_logits, action_embeddings = self._forward(*inputs, data_samples, return_embs=True)
         return F.softmax(class_logits[:, -1, :], dim=-1), action_embeddings[:, -1, :]
 
     def _forward(

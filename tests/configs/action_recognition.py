@@ -13,9 +13,9 @@ assigner = dict(
 
 metainfo = _base_.metainfo
 
-new_data_preprocessor = dict(
-    type="TestPreprocessor",
-    embd_size=128,  # TODO à dynamiser
+inference_data_preprocessor = dict(
+    type="ActionRecognitionPreprocessor",
+    embd_size=n_embd_features,
     metainfo=metainfo,
     _delete_=True,
     block_size=block_size,
@@ -28,7 +28,7 @@ action_recognition_output_names = ["class_logits", "action_embeddings"]
 analyzer = dict(
     type="ActionRecognitionBackend",
     data_preprocessor=dict(
-        type="ActionRecognitionPreprocessor",
+        type="ActionRecognitionTrainingPreprocessor",
         metainfo=metainfo,
         _delete_=True,
         block_size=block_size,

@@ -1,6 +1,7 @@
 from typing import Optional, List, Union, Any
 from addict import Dict
 import torch
+import torch.nn.functional as F
 import numpy as np
 
 from precision_track.utils import PoseDataSample, xyxy_cxcywh
@@ -62,7 +63,7 @@ def postprocess_one_stage_detections(
         pred_instances.keypoints = i_kpts
         pred_instances.keypoint_scores = i_kpt_vis
         pred_instances.labels = i_labels
-        pred_instances.features = i_features
+        pred_instances.features = F.normalize(i_features, p=2, dim=-1, eps=1e-12)
         pred_instances.kept_idxs = i_kept_idxs
         pred_instances.feature_maps = features[i]
         pred_instances.priors = i_priors
@@ -97,12 +98,15 @@ def postprocess_fpv_action_recognition(
         data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
         preds = preds[0]
 
-    current_timestep_probs = preds.detach().cpu().numpy().astype(np.float32)
+    if isinstance(preds, torch.Tensor):
+        preds = preds.detach().cpu().numpy().astype(np.float32)
 
-    actions = actions_map[np.argmax(current_timestep_probs, axis=1).reshape(-1)]
-    action_scores = np.max(current_timestep_probs, axis=1).reshape(-1)
+    actions = actions_map[np.argmax(preds, axis=1).reshape(-1)]
+    action_scores = np.max(preds, axis=1).reshape(-1)
 
-    valid_context = data_sample["pred_track_instances"]["valid_action_recognition_context"].detach().cpu().numpy()
+    valid_context = data_sample["pred_track_instances"]["valid_action_recognition_context"]
+    if isinstance(valid_context, torch.Tensor):
+        valid_context = valid_context.detach().cpu().numpy()
     actions[~valid_context] = "Analyzing..."
     action_scores[~valid_context] = 1
 

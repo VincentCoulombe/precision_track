@@ -82,7 +82,8 @@ detector = dict(
 model = dict(
     _base_.analyzer.runtime.model,
     data_preprocessor=dict(
-        type="ActionRecognitionPreprocessor",
+        type="ActionRecognitionTrainingPreprocessor",
+        velocity_encoder=_base_.velocity_encoder,
         metainfo=metainfo,
         _delete_=True,
         block_size=block_size,

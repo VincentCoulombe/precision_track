@@ -87,7 +87,7 @@ pipelined = False
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
-with_validation = False
+with_validation = True
 with_action_recognition = True
 
 
@@ -98,7 +98,6 @@ stitching_algorithm = dict(
     beta=0.5,
     match_thr=0.9,
 )
-stitching_algorithm = None
 if with_validation:
     valid_tags = [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 22, 23, 25]
     assert len(valid_tags) == num_mice, f"To ensure a sucessful validation, please make sure that the number of mice match the number of valid tags."
@@ -156,6 +155,7 @@ mart_checkpoint = deployed_directory + "mart_DEPLOYED.onnx"
 inference_resolution = (2720, 2720)
 block_size = 30
 
+n_encoded_dynamics = 10
 n_embd_dynamics = 32
 n_embd_pose = 96
 n_embd_features = 128
@@ -172,13 +172,25 @@ if with_action_recognition:
     action_recognition_input_names = ["features", "poses", "dynamics"]
     action_recognition_output_names = ["class_logits", "action_embeddings"]
 
+    velocity_encoder = dict(
+        type="VelocityRBFEncoder",
+        config=dict(
+            num_rbf=n_encoded_dynamics,
+            max_rel_vel=5,
+        ),
+    )
+
     analyzer = dict(
         type="ActionRecognitionBackend",
         data_preprocessor=dict(
             type="ActionRecognitionPreprocessor",
+            embd_size=n_embd_features,
             metainfo=metainfo,
             _delete_=True,
             block_size=block_size,
+            with_actions=False,
+            with_kpts=True,
+            with_vels=True,
         ),
         metainfo=metainfo,
         input_names=action_recognition_input_names,
@@ -203,6 +215,7 @@ if with_action_recognition:
                 config=dict(
                     n_embd=n_embd_features,
                     block_size=block_size,
+                    n_encoded_dynamics=n_encoded_dynamics,
                     n_embd_dynamics=n_embd_dynamics,
                     n_embd_pose=n_embd_pose,
                     n_block=4,
@@ -222,7 +235,7 @@ if with_action_recognition:
             input_shapes=[
                 dict(type="FeaturesShape", block_size=block_size, n_embd=n_embd_features),
                 dict(type="PosesShape", block_size=block_size, metainfo=metainfo),
-                dict(type="VelocityShape", block_size=block_size),
+                dict(type="VelocityShape", block_size=block_size, n_encoding=n_encoded_dynamics),
             ],
         ),
     )
@@ -238,8 +251,7 @@ action_recognition_weight_decay = 0.01
 action_recognition_dropout = 0
 action_recognition_num_iter = 100000
 action_recognition_warmup_iter = int(0.1 * action_recognition_num_iter)
-# action_recognition_val_interval = action_recognition_num_iter // 100
-action_recognition_val_interval = 10
+action_recognition_val_interval = action_recognition_num_iter // 100
 
 
 action_recognition_data_root = "../../datasets/MICE/sequential/"
