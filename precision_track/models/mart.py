@@ -111,10 +111,6 @@ class MART(BaseModel):
         dynamics = self.dropout(dynamics)
         poses = self.dropout(poses)
 
-        features = self.dropout(features)
-        dynamics = self.dropout(dynamics)
-        poses = self.dropout(poses)
-
         class_logits, decoder_embs = self._forward(features, poses, dynamics, return_embs=True)
         N, T, _ = decoder_embs.shape
         losses = dict()

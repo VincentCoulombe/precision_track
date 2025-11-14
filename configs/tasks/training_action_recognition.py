@@ -145,7 +145,7 @@ resize = [dict(type="BottomupResize", input_size=_base_.input_size, pad_val=(_ba
 transforms = [
     dict(type="SequenceYOLOXHSVRandomAug", hue_delta=0),
     dict(type="SequenceRandomContrastAug"),
-    # dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
+    dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
     # dict(type="SequenceRandomOcclusion"),
 ]
 load_anns = [
@@ -241,7 +241,7 @@ custom_hooks = [
     dict(
         type="ActionRecognitionRegenerationSwitchHook",
         priority=51,
-        generate_every=5000,
+        generate_every=1000,
     ),
 ]
 # /Hooks
