@@ -983,7 +983,6 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         inputs_ds.pred_track_instances.kpts = kpts
         inputs_ds.pred_track_instances.kpt_vis = kpt_vis
         inputs_ds.pred_track_instances.velocities = dynamics
-        inputs_ds.pred_track_instances.features = inputs
         inputs_ds.img_id = idx
         inputs_ds.seq_id = seq
         inputs_ds.instance_id = id_

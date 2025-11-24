@@ -35,17 +35,17 @@ val_bboxes_gt_paths = _base_.action_recognition_val_bboxes_gt_paths
 val_keypoints_gt_paths = _base_.action_recognition_val_keypoints_gt_paths
 val_actions_gt_paths = _base_.action_recognition_val_actions_gt_paths
 
-# data_root = "../../datasets/MICE/sequential_nano/"
+data_root = "../../datasets/MICE/sequential_nano/"
 
-# val_sequences = ["videos/14-20-02.avi"]
-# val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
-# val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
-# val_actions_gt_paths = ["actions/14-20-02.csv"]
+val_sequences = ["videos/14-20-02.avi"]
+val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
+val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
+val_actions_gt_paths = ["actions/14-20-02.csv"]
 
-# train_sequences = val_sequences
-# train_bboxes_gt_paths = val_bboxes_gt_paths
-# train_keypoints_gt_paths = val_keypoints_gt_paths
-# train_actions_gt_paths = val_actions_gt_paths
+train_sequences = val_sequences
+train_bboxes_gt_paths = val_bboxes_gt_paths
+train_keypoints_gt_paths = val_keypoints_gt_paths
+train_actions_gt_paths = val_actions_gt_paths
 # /Settings
 
 # Model
@@ -156,9 +156,9 @@ load_anns = [
 
 train_dataloader = dict(
     batch_size=batch_size,
-    # num_workers=0,
-    num_workers=8,
-    persistent_workers=True,
+    num_workers=0,
+    # num_workers=8,
+    # persistent_workers=True,
     pin_memory=True,
     sampler=dict(type="InfiniteSampler"),
     dataset=dict(
@@ -186,9 +186,9 @@ train_dataloader = dict(
 
 val_dataloader = dict(
     batch_size=1,
-    # num_workers=0,
-    num_workers=2,
-    persistent_workers=True,
+    num_workers=0,
+    # num_workers=2,
+    # persistent_workers=True,
     pin_memory=True,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(

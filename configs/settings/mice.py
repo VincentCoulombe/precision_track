@@ -6,7 +6,7 @@ wandb_logging = True
 # /Common
 
 # 1) Detection
-with_pose_estimation = False
+with_pose_estimation = True
 half_precision = True
 
 widen_factor = 0.5

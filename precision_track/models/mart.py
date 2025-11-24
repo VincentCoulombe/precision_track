@@ -119,7 +119,7 @@ class MART(BaseModel):
         return losses
 
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
-        class_logits, action_embeddings = self._forward(*inputs, data_samples, return_embs=True)
+        class_logits, action_embeddings = self._forward(*inputs, data_samples=data_samples, return_embs=True)
         return F.softmax(class_logits[:, -1, :], dim=-1), action_embeddings[:, -1, :]
 
     def _forward(
