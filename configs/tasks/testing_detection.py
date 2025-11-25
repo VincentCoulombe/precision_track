@@ -1,4 +1,4 @@
-_base_ = "../models/rtmdet-pose.py"
+_base_ = "../models/yolox-pose.py"
 
 # Settings
 work_dir = _base_.testing_work_dir

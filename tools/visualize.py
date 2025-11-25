@@ -6,7 +6,7 @@ from precision_track import Result, Visualizer
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a detector")
+    parser = argparse.ArgumentParser()
     parser.add_argument("source", help="Path to the video to process")
     parser.add_argument("sink", help="Path to the saved annotated video")
     args = parser.parse_args()

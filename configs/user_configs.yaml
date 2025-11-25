@@ -1,0 +1,30 @@
+# ================================
+# General on/off options
+# ================================
+booleans:
+  pipelined: false
+  with_validation: false
+  with_action_recognition: false
+  with_pose_estimation: true
+
+# ================================
+# Training parameters, directories and paths
+# ================================
+training:
+  metainfo: "../configs/metadata/mice.py"
+  dataset_name: "mice"
+  data_root: "../../datasets/MICE/pose-estimation/"
+  resume: false
+  training_checkpoint: "../checkpoints/model_ap/model_ap.pth"
+  testing_checkpoint: "../work_dir/training_runs/mice/epoch_300.pth"
+  deploying_directory: "../checkpoints/"
+  deploying_sanity_check_img_path: "images/0000003435.jpg"
+  batch_size: 38
+  wandb_logging: False
+
+# ================================
+# Tracking parameters, directories and paths
+# ================================
+tracking:
+  num_subjects: { "mouse": 20 }
+  tracking_checkpoint: ""

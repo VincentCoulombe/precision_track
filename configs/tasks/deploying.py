@@ -104,7 +104,7 @@ output_names = [
 runtime_config = dict(
     type="tensorrt",
     paths=dict(
-        directory=_base_.deployed_directory,
+        directory=_base_.deploying_directory,
         deployed_name=_base_.deployed_name,
     ),
     common_config=dict(half_precision=_base_.half_precision, max_workspace_size=4 << 30),
@@ -113,8 +113,8 @@ runtime_config = dict(
             input_shapes=dict(
                 input=dict(
                     min_shape=[1, 3, 640, 640],
-                    opt_shape=[30, 3, 640, 640],
-                    max_shape=[30, 3, 640, 640],
+                    opt_shape=[_base_.tracking_batch_size, 3, 640, 640],
+                    max_shape=[_base_.tracking_batch_size, 3, 640, 640],
                 )
             )
         )
@@ -154,29 +154,10 @@ block_size = _base_.block_size
 mart_runtime_config = dict(
     type="tensorrt",
     paths=dict(
-        directory=_base_.mart_deployed_directory,
+        directory=_base_.mart_deploying_directory,
         deployed_name=_base_.mart_deployed_name,
     ),
     common_config=dict(half_precision=_base_.half_precision, max_workspace_size=4 << 30),
-    model_inputs=dict(
-        input_shapes=dict(
-            features=dict(
-                min_shape=[1, block_size, _base_.n_embd_features],
-                opt_shape=[20, block_size, _base_.n_embd_features],
-                max_shape=[100, block_size, _base_.n_embd_features],
-            ),
-            poses=dict(
-                min_shape=[1, block_size, 18],  # TODO rendre dynamique
-                opt_shape=[20, block_size, 18],
-                max_shape=[100, block_size, 18],
-            ),
-            dynamics=dict(
-                min_shape=[1, block_size, 2],
-                opt_shape=[20, block_size, 2],
-                max_shape=[100, block_size, 2],
-            ),
-        )
-    ),
     output_names=_base_.action_recognition_output_names,
 )
 mart_dynamic_axes = dict(
