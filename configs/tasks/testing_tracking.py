@@ -1,4 +1,4 @@
-_base_ = "../models/rtmdet-pose.py"
+_base_ = "../models/yolox-pose.py"
 
 # Settings
 testing_checkpoint = _base_.testing_checkpoint

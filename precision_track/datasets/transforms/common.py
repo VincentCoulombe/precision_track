@@ -810,6 +810,10 @@ class FilterAnnotations(BaseTransform):
         """
         assert "keypoints" in results
         kpts = results["keypoints"]
+        num_kpts = results.get("num_keypoints", 0)
+        if isinstance(num_kpts, list):
+            num_kpts = num_kpts[0]
+        num_kpts = int(num_kpts)
         if kpts.shape[0] == 0:
             return results
 
@@ -820,7 +824,7 @@ class FilterAnnotations(BaseTransform):
         if self.by_area and "area" in results:
             area = results["area"]
             tests.append(area >= self.min_gt_area)
-        if self.by_kpt and results["num_keypoints"][0] > 0:
+        if self.by_kpt and num_kpts > 0:
             kpts_vis = results["keypoints_visible"]
             if kpts_vis.ndim == 3:
                 kpts_vis = kpts_vis[..., 0]

@@ -9,7 +9,7 @@ hyperparams = _base_.hyperparams
 input_size = _base_.input_size
 pad_value = _base_.pad_value
 
-metainfo = _base_.metainfo
+metainfo = "../configs/metadata/mice.py"
 
 low_thr = _base_.low_thr
 high_thr = _base_.high_thr
@@ -40,6 +40,7 @@ detector = dict(
             "priors",
             "strides",
         ],
+        deploying_directory=_base_.deploying_directory,
     ),
     data_preprocessor=data_preprocessor,
     data_postprocessor=_base_.model.data_postprocessor,

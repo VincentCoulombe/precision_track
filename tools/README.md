@@ -6,70 +6,107 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 
 ## Overview
 
-- **Five applications**
-  - `train.py` — Orchestrate the training of Detection, Feature Extraction and Action recognition models.
-  - `test.py` — Evaluate the trained models, reports the metrics described in our publication.
-  - `deploy.py` — Package/Export models to ONNX and TensorRT engines. Also automatically optimizes various tracking hyperparameters. The optimal hyperparameters are then saved in .json format.
+- **Seven applications**
+
+  - `train_detection.py` — Orchestrate the training and deployment of **Detection models**.
+  - `train_action_recognition.py` — Orchestrate the training and deployment of **MART models**.
+
+  - `test_detection.py` — Evaluate the trained **Detection models** on your **COCO-style Dataset**. Report [Pose-Tracking Metrics](https://www.biorxiv.org/content/10.1101/2024.12.26.630112v3). The reports will be logged and also saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
+
+  - `test_tracking.py` — Evaluate the trained **Detection models** on your **MOT-style Benchmark**. Report [CLEAR Metrics](https://link.springer.com/article/10.1155/2008/246309). The reports will be logged and also saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
+
+  - `test_action_recognition.py` — Evaluate the trained **MART models** on your **MART-style Dataset**. Report the [standards classification metrics](https://cohere.com/blog/classification-eval-metrics). The reports will be logged and also saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
+
   - `track.py` — Run tracking on pre‑recorded videos
+
   - `visualize.py` — Render tracking + action recognition from MOT outputs
+
 - **Configuration**
-  - Single source of truth via config file. Once the settings files are configured, the integration is seamless.
-  - see our [Settings & Configuration Guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs)
+  - Via your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs)
 
 ---
 
-## 1) train.py
+## 1) train_detection.py
 
-- **Purpose:** Detection, Feature Extraction and Action recognition models.
+- **Purpose:** Train Detection models.
 
-- **Inputs:** The desired task's configuration file:
+- **Inputs:**:
 
-  - "../configs/tasks/training_detection.py"
-  - "../configs/tasks/training_feature_extraction.py"
-  - "../configs/tasks/training_action_recognition.py"
+  - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `--optimize_hyperparams` True to optimize your tracking hyperparameters and generate an `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
 
-- **Outputs:** The training log as well as the most performant checkpoint will be saved at the defined `training_work_dir` from the settings.
+- **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory.
 
 - **Examples**
 
   ```bash
-  python train.py --config ../configs/tasks/training_detection.py
+  python train_detection.py --deploy=true --optimize_hyperparams=false
   ```
 
 ---
 
-## 2) test.py
+## 2) train_action_recognition.py
 
-- **Purpose:** Evaluate Detection, Feature Extraction and Action recognition models trained checkpoints on val/test splits.
+- **Purpose:** Train Action Recognition models.
 
-- **Inputs:** The desired task's configuration file:
+- **Inputs:**:
 
-  - "../configs/tasks/testing_detection.py"
-  - "../configs/tasks/testing_feature_extraction.py"
-  - "../configs/tasks/testing_action_recognition.py"
+  - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `--optimize_hyperparams` True to optimize your tracking hyperparameters and generate an `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
 
-- **Outputs:** The metrics will be saved at the defined `testing_work_dir` from the settings.
+- **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory.
 
 - **Examples**
 
   ```bash
-  python test.py --config ../configs/tasks/testing_detection.py
+  python train_action_recognition.py --deploy=true --optimize_hyperparams=false
   ```
 
 ---
 
-## 3) deploy.py — deploy/export the models
+## 3) test_detection.py
 
-- **Purpose:** Optimizes and deploys all the configured models as well as the tracking hyperparameters.
-- **Outputs:** Deployed Python, ONNX and TensorRT as well as the hyperparameters.json file will be saved at defined `deployed_directory` from the settings.
+- **Purpose:** Evaluate Detection models (trained checkpoints) on val/test splits.
+
+- **Outputs:** The metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
+
 - **Examples**
+
   ```bash
-  python deploy.py
+  python test_detection.py
   ```
 
 ---
 
-## 4) track.py — run tracking on videos
+## 4) test_tracking.py
+
+- **Purpose:** Evaluate your PrecisionTracker on labelled MOT benchmarks.
+
+- **Outputs:** The metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
+
+- **Examples**
+
+  ```bash
+  python test_tracking.py
+  ```
+
+---
+
+## 5) test_action_recognition.py
+
+- **Purpose:** Evaluate your MART model on val/test splits.
+
+- **Outputs:** The metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
+
+- **Examples**
+
+  ```bash
+  python test_action_recognition.py
+  ```
+
+---
+
+## 6) track.py — run tracking on videos
 
 - **Purpose:** run detector/pose/action heads + association on pre‑recorded media.
 - **Inputs:** `--video PATH` (path to the recording file)
@@ -89,7 +126,7 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 
 ---
 
-## 5) visualize.py — render tracking & actions
+## 7) visualize.py — render tracking & actions
 
 - **Purpose:** Turn the available MOT outputs, in the defined `work_dir` from the settings, into annotated videos. The visuals are completely configurable in the "Visualization" section of the `tasks/tracking.py` setting file.
 - **Inputs:** `--source PATH` (path to the recording file) `--sink PATH` (path to the annotated video file)
@@ -104,16 +141,9 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 - **Train → Test → Deploy**
 
   ```bash
-  <!-- First, train and test a detection model -->
-  python train.py --config ../configs/tasks/training_detection.py
-  python test.py --config ../configs/tasks/testing_detection.py
-
-  <!-- Second, train and test a feature extraction model -->
-  python train.py --config ../configs/tasks/training_feature_extraction.py
-  python test.py --config ../configs/tasks/testing_feature_extraction.py
-
-  <!-- Third, deploy your models -->
-  python deploy.py
+  <!-- Train, Test and Deploy Detection model -->
+  python train_detection.py --deploy=true --optimize_hyperparams=false
+  python test_detection.py
   ```
 
 - **Track → Visualize**

@@ -1,15 +1,14 @@
 import argparse
 import logging
 import os
-
+import yaml
 import mmengine
 from mmengine import Config
 from mmengine.logging import MMLogger
 
-from precision_track import AssociationStep, Runner
-from precision_track.deploy.to_onnx import mart_to_onnx, to_onnx
+from precision_track import Runner
+from precision_track.deploy.to_onnx import to_onnx
 from precision_track.deploy.to_tensorrt import to_tensorrt
-from precision_track.models.backends import DetectionBackend
 from precision_track.models.optimization.thresholds_search import StitchingHyperparamsGridSearch, ThresholdsGridSearch
 from precision_track.utils import (
     deploy_weights,
@@ -21,7 +20,15 @@ from precision_track.utils import (
     load_config,
     load_hyperparameter_dict,
     parse_device_id,
+    load_user_configs,
 )
+
+
+if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:
+    import torch._dynamo
+
+    cache_size_limit = int(os.environ["DYNAMO_CACHE_SIZE_LIMIT"])
+    torch._dynamo.config.cache_size_limit = cache_size_limit
 
 
 def str2bool(v):
@@ -36,9 +43,14 @@ def str2bool(v):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Export model to backends.")
-    parser.add_argument("optimize_hyperparams", type=str2bool, nargs="?", default=True, help="True to optimize the hyperparameters, False otherwise")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--deploy", type=str2bool, default=True, help="True deploy the trained model, False otherwise")
+    parser.add_argument("--optimize_hyperparams", type=str2bool, default=True, help="True to optimize the hyperparameters, False otherwise")
+    parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
+    parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
     args = parser.parse_args()
+    if "LOCAL_RANK" not in os.environ:
+        os.environ["LOCAL_RANK"] = str(args.local_rank)
     return args
 
 
@@ -56,6 +68,12 @@ def deploy(deploy_cfg: Config, runtime_cfg_key: str, ckpt_path: str, logger: MML
 
 def main(args):
     logger = MMLogger.get_instance("mmengine", log_level=logging.INFO, file_mode="w")
+    system_configs_path = "../configs/tasks/training_detection.py"
+    with open("../configs/user_configs.yaml", "r") as f:
+        user_configs = yaml.safe_load(f)
+    load_user_configs(user_configs, system_configs_path)
+    runner = Runner(system_configs_path, args.launcher, mode="train")
+    runner()
 
     deploy_cfg = load_config("../configs/tasks/deploying.py")
     deployed_path = deploy(deploy_cfg, "runtime_config", deploy_cfg["testing_checkpoint"], logger)
@@ -79,36 +97,37 @@ def main(args):
         metrics = runner()
         load_calibration(deployed_path, metrics)
 
-    if deploy_cfg["runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:
-        ir_config = get_ir_config(deploy_cfg)
-        ir_save_file = ir_config["save_file"]
-        logger.info(f"Deploying {ir_save_file} to ONNX.")
-        to_onnx(
-            deploy_cfg["img"],
-            deploy_cfg["runtime_config"]["paths"]["directory"],
-            ir_save_file,
-            deploy_cfg,
-            deployed_path,
-            device=device,
-        )
+    if args.deploy:
+        if deploy_cfg["runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:
+            ir_config = get_ir_config(deploy_cfg)
+            ir_save_file = ir_config["save_file"]
+            logger.info(f"Deploying {ir_save_file} to ONNX.")
+            to_onnx(
+                deploy_cfg["img"],
+                deploy_cfg["runtime_config"]["paths"]["directory"],
+                ir_save_file,
+                deploy_cfg,
+                deployed_path,
+                device=device,
+            )
 
-    if deploy_cfg["runtime_config"]["type"] == "tensorrt":
-        logger.info(f"Optimizing {ir_save_file} to TensorRT.")
+        if deploy_cfg["runtime_config"]["type"] == "tensorrt":
+            logger.info(f"Optimizing {ir_save_file} to TensorRT.")
 
-        common_params = get_common_config(deploy_cfg)
-        model_params = get_model_inputs(deploy_cfg)[0]
+            common_params = get_common_config(deploy_cfg)
+            model_params = get_model_inputs(deploy_cfg)[0]
 
-        final_params = common_params
-        final_params.update(model_params)
+            final_params = common_params
+            final_params.update(model_params)
 
-        to_tensorrt(
-            os.path.join(deploy_cfg["runtime_config"]["paths"]["directory"], ir_save_file),
-            input_shapes=final_params["input_shapes"],
-            log_level=None,
-            half_precision=final_params.get("half_precision", False),
-            max_workspace_size=final_params.get("max_workspace_size", 0),
-            device_id=parse_device_id(device),
-        )
+            to_tensorrt(
+                os.path.join(deploy_cfg["runtime_config"]["paths"]["directory"], ir_save_file),
+                input_shapes=final_params["input_shapes"],
+                log_level=None,
+                half_precision=final_params.get("half_precision", False),
+                max_workspace_size=final_params.get("max_workspace_size", 0),
+                device_id=parse_device_id(device),
+            )
 
     tracking_config = load_config(deploy_cfg.tracking_cfg)
     tracking_config.load_from = deployed_path
@@ -156,40 +175,6 @@ def main(args):
                     match_thr=search_results.loc[0, "match_thr"],
                     eps=search_results.loc[0, "eps"],
                 ),
-            )
-
-    if deploy_cfg["with_action_recognition"] and deploy_cfg.get("analyzer", None) is not None:  # MART
-        deployed_path = deploy(deploy_cfg, "mart_runtime_config", deploy_cfg["mart_testing_checkpoint"], logger)
-        if deploy_cfg["mart_runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:
-            ir_config = deploy_cfg["mart_onnx_config"]
-            ir_save_file = ir_config["save_file"]
-            logger.info(f"Deploying {ir_save_file} to ONNX.")
-            detector = DetectionBackend(**tracking_config.detector)
-            assigner = AssociationStep(**tracking_config.assigner)
-            mart_to_onnx(
-                assigner(detector([deploy_cfg["img"]], [0])[0]),
-                deploy_cfg["mart_runtime_config"]["paths"]["directory"],
-                ir_save_file,
-                deploy_cfg,
-                deployed_path,
-                device=device,
-            )
-        if deploy_cfg["mart_runtime_config"]["type"] == "tensorrt":
-            logger.info(f"Optimizing {ir_save_file} to TensorRT.")
-
-            common_params = deploy_cfg["mart_runtime_config"]["common_config"]
-            model_params = deploy_cfg["mart_runtime_config"]["model_inputs"]
-
-            final_params = common_params
-            final_params.update(model_params)
-
-            to_tensorrt(
-                os.path.join(deploy_cfg["mart_runtime_config"]["paths"]["directory"], ir_save_file),
-                input_shapes=final_params["input_shapes"],
-                log_level=None,
-                half_precision=final_params.get("half_precision", False),
-                max_workspace_size=final_params.get("max_workspace_size", 0),
-                device_id=parse_device_id(device),
             )
 
 

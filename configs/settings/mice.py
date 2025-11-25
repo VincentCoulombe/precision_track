@@ -1,7 +1,7 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = "../configs/metadata/mice.py"
+metainfo = '../configs/metadata/mice.py'
 wandb_logging = False
 # /Common
 
@@ -13,10 +13,11 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = "../data/pose-estimation/"
-training_work_dir = _base_.work_dir + "training_runs/mice/"
+data_root = '../../datasets/MICE/pose-estimation/'
+dataset_name = 'mice'
+training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
-training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
+training_checkpoint = '../checkpoints/yolox_ap/yolox-pose_s_ap.pth'
 
 input_size = (640, 640)
 pad_value = 114
@@ -49,8 +50,8 @@ else:
 #   1.1) /Training
 
 #   1.2) Testing
-testing_work_dir = _base_.work_dir + "testing_runs/mice/"
-testing_checkpoint = "../tests/configs/model_mice.pth"
+testing_work_dir = _base_.work_dir + "testing_runs/" + dataset_name + "/"
+testing_checkpoint = '../work_dir/training_runs/mice/epoch_300.pth'
 
 testing_anns_path = validation_anns_path
 testing_imgs_path = validation_imgs_path
@@ -58,7 +59,7 @@ testing_output_file = testing_work_dir + "pose-detection_metrics.csv"
 #   1.2) /Testing
 
 #   1.3) Calibration
-calibration_output_dir = _base_.work_dir + "calibration_runs/mice/"
+calibration_output_dir = _base_.work_dir + "calibration_runs/" + dataset_name + "/"
 #   1.3) /Calibration
 
 #   1.4) Feature Extraction
@@ -72,35 +73,34 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 #   1.4) /Feature Extraction
 
 #   1.5) Deployment
-sanity_check_img = data_root + "images/0000003435.jpg"
+deploying_sanity_check_img_path = 'images/0000003435.jpg'
+sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deployed_directory = "../tests/configs/"
-deployed_name = "model_mice_clustering_DEPLOYED.pth"
+deploying_directory = '../checkpoints/'
+deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
 
 
 # 2) Tracking
-tracking_checkpoint = deployed_directory + "model_mice_clustering_DEPLOYED.onnx"
+tracking_checkpoint = ''
 
-pipelined = True
+pipelined = False
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = True
+with_action_recognition = False
 
-
-num_mice = 20
+num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
-    capped_classes={"mouse": num_mice},
+    capped_classes=num_subjects,
     beta=0.5,
     match_thr=0.9,
 )
 if with_validation:
     valid_tags = [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 22, 23, 25]
-    assert len(valid_tags) == num_mice, f"To ensure a sucessful validation, please make sure that the number of mice match the number of valid tags."
     validator = dict(
         type="ArucoValidation",
         num_tags=32,
@@ -138,7 +138,7 @@ eps_range = [1e-2, 1e-1]
 #   2.1) /Tuning
 
 #   2.2) Testing
-hyperparams = deployed_directory + "hyperparameters.json"
+hyperparams = deploying_directory + "hyperparameters.json"
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
@@ -150,7 +150,7 @@ testing_tracking_output_file = testing_work_dir + "CLEAR_metrics.csv"
 
 
 # 3) Action Recognition
-mart_checkpoint = deployed_directory + "mart_DEPLOYED.onnx"
+mart_checkpoint = deploying_directory + "mart_DEPLOYED.onnx"
 
 inference_resolution = (2720, 2720)
 block_size = 30
@@ -269,7 +269,7 @@ action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
 #   3.1) /Training
 
 #   3.2) Testing
-mart_testing_checkpoint = deployed_directory + "mart.pth"
+mart_testing_checkpoint = deploying_directory + "mart.pth"
 
 action_recognition_test_sequences = action_recognition_val_sequences
 action_recognition_test_bboxes_gt_paths = action_recognition_val_bboxes_gt_paths
@@ -278,7 +278,7 @@ action_recognition_test_actions_gt_paths = action_recognition_val_actions_gt_pat
 #   3.2) /Testing
 
 #   3.3) Deployment
-mart_deployed_directory = deployed_directory
+mart_deploying_directory = deploying_directory
 mart_deployed_name = "mart_DEPLOYED.pth"
 #   3.3) /Deployment
 # 3) /Action Recognition

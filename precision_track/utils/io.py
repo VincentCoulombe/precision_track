@@ -15,6 +15,10 @@ import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
 from typing import Callable, Dict, List, Union
+import re
+from pathlib import Path
+import runpy
+
 
 import cv2
 import mmengine
@@ -748,3 +752,82 @@ def _process_mmcls_checkpoint(checkpoint):
     new_checkpoint = dict(state_dict=new_state_dict)
 
     return new_checkpoint
+
+
+import ast
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Set
+
+
+def load_system_config_dict(system_configs_path: str, final_base: str = "./_base_.py") -> Dict[str, Any]:
+    start_path = Path(system_configs_path).resolve()
+    visited: Set[Path] = set()
+    BASE_PATTERN = re.compile(r"^_base_\s*=\s*(.+)$", re.MULTILINE)
+
+    def _find_settings(path: Path) -> str:
+        assert path.exists(), f"The '{path}' path does not exist."
+        if path in visited:
+            raise RuntimeError(f"Cyclic _base_ include detected at {path}")
+        visited.add(path)
+
+        text = path.read_text(encoding="utf-8")
+
+        m = BASE_PATTERN.search(text)
+        if not m:
+            raise ValueError(f"Reached a leaf node of the configuration graph that is not a settings file: {text}.")
+
+        rhs = m.group(1).strip()
+        try:
+            base_value = ast.literal_eval(rhs)
+        except Exception as e:
+            print(f"Encountered the following error when trying to infer the settings files of the '{path}' file: {e}.")
+
+        if base_value == final_base:
+            return path, text
+
+        if isinstance(base_value, str):
+            base_files = [base_value]
+        elif isinstance(base_value, (list, tuple)):
+            base_files = list(base_value)
+        else:
+            raise ValueError(f"Unexpected _base_ encountered when parsing the '{path}' config file.")
+
+        # Is multiple bases, follow the first one. Please enforce this convention in your config files.
+        base_file = base_files[0]
+        base_path = (path.parent / base_file).resolve()
+
+        return _find_settings(base_path)
+
+    return _find_settings(start_path)
+
+
+def load_user_configs(user_configs: dict, system_configs_path: str) -> None:
+    system_configs_path, system_configs = load_system_config_dict(system_configs_path)
+
+    # 2) Apply all user overrides
+    for section_dict in user_configs.values():
+        for user_config_k, user_config_v in section_dict.items():
+            # Python representation of the value (adds quotes for strings, etc.)
+            value_repr = repr(user_config_v)
+
+            pattern = rf"^{re.escape(user_config_k)}\s*=.*$"
+            replacement_line = f"{user_config_k} = {value_repr}"
+
+            if re.search(pattern, system_configs, flags=re.MULTILINE):
+                # Replace existing assignment
+                system_configs = re.sub(
+                    pattern,
+                    replacement_line,
+                    system_configs,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+            else:
+                # Append new assignment at the end
+                if system_configs and not system_configs.endswith("\n"):
+                    system_configs += "\n"
+                system_configs += f"{user_config_k} = {value_repr}\n"
+
+    # 3) Write back to disk once, after all modifications
+    system_configs_path.write_text(system_configs, encoding="utf-8")
