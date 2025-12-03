@@ -6,6 +6,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import ast
 import io
 import logging
 import os
@@ -14,12 +15,8 @@ import pkgutil
 import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
-from typing import Callable, Dict, List, Union
-import re
+from typing import Callable, Dict, List, Union, Set, Any
 from pathlib import Path
-import runpy
-
-
 import cv2
 import mmengine
 import torch
@@ -33,6 +30,7 @@ from mmengine.utils import check_file_exist, digit_version, mkdir_or_exist, trac
 from mmengine.utils.dl_utils import load_url
 
 SUPPORTED_IMG_BACKEND = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".pgm", ".pbm", ".ppm", ".ras"]
+SUPPORTED_VIDEO_BACKEND = [".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg"]
 ENV_MMENGINE_HOME = "MMENGINE_HOME"
 ENV_XDG_CACHE_HOME = "XDG_CACHE_HOME"
 DEFAULT_CACHE_DIR = "~/.cache"
@@ -752,12 +750,6 @@ def _process_mmcls_checkpoint(checkpoint):
     new_checkpoint = dict(state_dict=new_state_dict)
 
     return new_checkpoint
-
-
-import ast
-import re
-from pathlib import Path
-from typing import Any, Dict, List, Set
 
 
 def load_system_config_dict(system_configs_path: str, final_base: str = "./_base_.py") -> Dict[str, Any]:

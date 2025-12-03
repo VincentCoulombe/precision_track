@@ -11,8 +11,6 @@ pad_value = _base_.pad_value
 
 metainfo = _base_.metainfo
 tracking_cfg = "../configs/tasks/tracking.py"
-videos = _base_.testing_video_paths
-gt_paths = _base_.testing_gt_paths
 
 img = _base_.sanity_check_img
 

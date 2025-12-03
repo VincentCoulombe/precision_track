@@ -14,6 +14,8 @@ metainfo = "../configs/metadata/mice.py"
 low_thr = _base_.low_thr
 high_thr = _base_.high_thr
 init_thr = _base_.init_thr
+
+display_search_zones = False
 # /Settings
 
 # Model
@@ -171,12 +173,14 @@ else:
             ],
         ),
     ]
-if _base_.stitching_algorithm is not None:
-    dict(
-        type="SearchAreaPainter",
-        annotations=[dict(type="Box")],
-        color=[255, 0, 0],
-    ),
+if _base_.stitching_algorithm is not None and display_search_zones:
+    painters += [
+        dict(
+            type="SearchAreaPainter",
+            annotations=[dict(type="Box")],
+            color=[255, 0, 0],
+        ),
+    ]
 if _base_.validator is not None:
     painters += [
         dict(

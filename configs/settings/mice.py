@@ -17,7 +17,7 @@ data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
-training_checkpoint = '../checkpoints/yolox_ap/yolox-pose_s_ap.pth'
+training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
 
 input_size = (640, 640)
 pad_value = 114
@@ -142,8 +142,7 @@ hyperparams = deploying_directory + "hyperparameters.json"
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
-testing_video_paths = data_root + "/benchmark/data/"
-testing_gt_paths = data_root + "benchmark/annotations/"
+testing_tracking_data_root = data_root + "/benchmark/"
 testing_tracking_output_file = testing_work_dir + "CLEAR_metrics.csv"
 #   2.2) /Testing
 # 2) /Tracking

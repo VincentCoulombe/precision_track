@@ -177,13 +177,17 @@ class PoseEstimationECEMetric(BaseMetric):
 
         self._find_optimal_temperature(score_logits, objectness_logits, score_labels)
 
-        metrics["calibrated_temperature"] = self.temperature
-
         calibrated_scores, _ = self._logits_to_scores_and_labels(score_logits * self.temperature, objectness_logits)
         calibrated_bboxes_ece, loss = self._calculate_ece(calibrated_scores, score_labels, 1, by_prop=False)
         self.logger.info(f"Optimal temperature found: {self.temperature: .4f}")
         self.logger.info(f"Post calibration ECE: {calibrated_bboxes_ece: .4f}. Post calibration loss: {loss.item(): .4f}")
+
+        if calibrated_bboxes_ece > self.bboxes_ece and loss.item() > self.bboxes_loss:
+            self.logger.info("The calibration did not converge. Reverting back to a temperature of 1.")
+            self.temperature = 1.0
+
         metrics["calibrated_bboxes_ece"] = calibrated_bboxes_ece
+        metrics["calibrated_temperature"] = self.temperature
 
         if self.output_files is not None:
             self.logger.info("Saving the calibration results...")
