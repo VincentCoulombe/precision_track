@@ -38,7 +38,7 @@ class BasePainter(metaclass=abc.ABCMeta):
 @VISUALIZERS.register_module()
 class BoundingBoxPainter(BasePainter):
 
-    def __init__(self, annotations: List[Config], palette: Optional[dict]) -> None:
+    def __init__(self, annotations: List[Config], palette: Optional[dict] = None) -> None:
         """Paints any combination of supported annotations. Check the
         annotations module to see which ones are supported.
 
@@ -56,7 +56,7 @@ class BoundingBoxPainter(BasePainter):
 @VISUALIZERS.register_module()
 class SearchAreaPainter(BasePainter):
 
-    def __init__(self, annotations: List[Config], color: Optional[List[int]] = None, *args, **kwargs) -> None:
+    def __init__(self, annotations: List[Config], palette: Optional[dict] = None, **kwargs) -> None:
         """Paints any combination of supported annotations. Check the
         annotations module to see which ones are supported.
 
@@ -64,15 +64,10 @@ class SearchAreaPainter(BasePainter):
             annotations (List[Config]): A list of supported annotations
             palette (Optional[dict]): The color palette
         """
-        if color is None:
-            color = [255, 255, 255]
-        assert isinstance(color, list)
-        for c in color:
-            assert 0 <= c <= 255
         super().__init__(["CsvSearchAreas"])
         self.annotations = []
         for ann in annotations:
-            ann.update({"palette": dict(nan_color=color)})
+            ann.update({"palette": palette})
             self.annotations.append(VISUALIZERS.build(ann))
 
     def __call__(self, frame: np.ndarray, outputs: List[Dict[str, np.ndarray]], idx: int) -> None:

@@ -40,7 +40,7 @@ class NMSPostProcessor(BasePostProcessor):
 
         bboxes = bboxes[keep_idxs]
         features = features[keep_idxs]
-        # features = F.normalize(features, p=2, dim=-1, eps=1e-12)
+        features = F.normalize(features, p=2, dim=-1, eps=1e-12)
 
         if bboxes.numel() > 0:
             features_nms = features

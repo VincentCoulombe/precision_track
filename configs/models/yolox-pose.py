@@ -32,14 +32,14 @@ model = dict(
         pad_size_divisor=32,
         mean=[0, 0, 0],
         std=[1, 1, 1],
-        # batch_augments=[ # TODO Fuck le online training... Trouver une manière de le dynamiser
-        #     dict(
-        #         type="BatchSyncRandomResize",
-        #         random_size_range=(480, 800),
-        #         size_divisor=32,
-        #         interval=1,
-        #     ),
-        # ],
+        batch_augments=[
+            dict(
+                type="BatchSyncRandomResize",
+                random_size_range=(480, 800),
+                size_divisor=32,
+                interval=1,
+            ),
+        ],
     ),
     backbone=dict(
         type="CSPDarknet",

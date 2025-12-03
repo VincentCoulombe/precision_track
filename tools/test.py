@@ -1,7 +1,7 @@
 import argparse
 import os
 
-from precision_track import PrecisionTrackRunner
+from precision_track import Runner
 
 
 def parse_args():
@@ -16,7 +16,7 @@ def parse_args():
 
 
 def main(args):
-    runner = PrecisionTrackRunner(args.config, args.launcher, mode="test")
+    runner = Runner(args.config, args.launcher, mode="test")
     runner()
 
 
@@ -24,4 +24,4 @@ if __name__ == "__main__":
     # main(parse_args())
     from addict import Dict
 
-    main(Dict({"config": "../configs/tasks/testing_action_recognition.py", "launcher": "none"}))
+    main(Dict({"config": "../configs/tasks/testing_detection.py", "launcher": "none"}))

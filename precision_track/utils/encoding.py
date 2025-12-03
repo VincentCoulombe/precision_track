@@ -22,3 +22,21 @@ class VelocityRBFEncoder:
             velocities = velocities.unsqueeze(0)
         velocities = velocities.norm(p=2, dim=-1).clamp(max=self.max_rel_vel)
         return torch.exp(-0.5 * ((velocities.unsqueeze(-1) - self.mu) / self.sigma) ** 2)
+
+
+@MODELS.register_module()
+class VelocityAbsEncoder:
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, velocities):
+        return torch.abs(velocities)
+
+
+@MODELS.register_module()
+class VelocityNormEncoder:
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, velocities):
+        return torch.norm(velocities, p=2, dim=-1)

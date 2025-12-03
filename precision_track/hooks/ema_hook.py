@@ -4,12 +4,9 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-from mmengine.model import ExponentialMovingAverage, is_model_wrapper
+from mmengine.model import ExponentialMovingAverage
 from mmengine.registry import MODELS
 from torch import Tensor
-from mmengine.hooks import Hook
-
-from precision_track.registry import HOOKS
 
 
 @MODELS.register_module()
@@ -58,64 +55,3 @@ class ExpMomentumEMA(ExponentialMovingAverage):
         """
         momentum = (1 - self.momentum) * math.exp(-float(1 + steps) / self.gamma) + self.momentum
         averaged_param.mul_(1 - momentum).add_(source_param, alpha=momentum)
-
-
-@HOOKS.register_module()
-class AnalyzerEMAHook(ExpMomentumEMA):
-    def __init__(self, ema_type: str = "ExponentialMovingAverage", strict_load: bool = False, begin_iter: int = 0, begin_epoch: int = 0, **kwargs):
-        self.strict_load = strict_load
-        self.ema_cfg = dict(type=ema_type, **kwargs)
-        assert not (begin_iter != 0 and begin_epoch != 0), "`begin_iter` and `begin_epoch` should not be both set."
-        assert begin_iter >= 0, "`begin_iter` must larger than or equal to 0, " f"but got begin_iter: {begin_iter}"
-        assert begin_epoch >= 0, "`begin_epoch` must larger than or equal to 0, " f"but got begin_epoch: {begin_epoch}"
-        self.begin_iter = begin_iter
-        self.begin_epoch = begin_epoch
-        self.enabled_by_epoch = self.begin_epoch > 0
-
-    def before_run(self, runner) -> None:
-        """Create an ema copy of the model.
-
-        Args:
-            runner (Runner): The runner of the training process.
-        """
-        model = runner.model
-        if is_model_wrapper(model):
-            model = model.analyzer.model.module
-        else:
-            model = model.analyzer.model
-        self.src_model = model
-        self.ema_model = MODELS.build(self.ema_cfg, default_args=dict(model=self.src_model))
-
-
-@HOOKS.register_module()
-class DetectorEMAHook(Hook):
-    priority = "NORMAL"
-
-    def __init__(self, ema_type: str = "ExponentialMovingAverage", strict_load: bool = False, begin_iter: int = 0, begin_epoch: int = 0, **kwargs):
-        self.strict_load = strict_load
-        self.ema_cfg = dict(type=ema_type, **kwargs)
-        assert not (begin_iter != 0 and begin_epoch != 0), "`begin_iter` and `begin_epoch` should not be both set."
-        assert begin_iter >= 0, "`begin_iter` must larger than or equal to 0, " f"but got begin_iter: {begin_iter}"
-        assert begin_epoch >= 0, "`begin_epoch` must larger than or equal to 0, " f"but got begin_epoch: {begin_epoch}"
-        self.begin_iter = begin_iter
-        self.begin_epoch = begin_epoch
-        # If `begin_epoch` and `begin_iter` are not set, `EMAHook` will be
-        # enabled at 0 iteration.
-        self.enabled_by_epoch = self.begin_epoch > 0
-
-    def before_run(self, runner) -> None:
-        """Create an ema copy of the model.
-
-        Args:
-            runner (Runner): The runner of the training process.
-        """
-        if not hasattr(runner, "detector"):
-            raise ValueError("The provided Runner does not have a detector.")
-        model = runner.detector
-        if is_model_wrapper(model):
-            model = model.module
-        self.src_model = model
-        self.ema_model = MODELS.build(self.ema_cfg, default_args=dict(model=self.src_model))
-
-    def after_load_detector_checkpoint(self, runner, checkpoint: dict) -> None:
-        super().after_load_checkpoint(runner, checkpoint)

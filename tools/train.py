@@ -2,7 +2,7 @@ import argparse
 import os
 
 from mmengine.config import Config
-from precision_track.apis import PrecisionTrackRunner, SequenceRunner
+from precision_track.apis import Runner
 
 # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 # os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -36,14 +36,7 @@ def parse_args():
 
 
 def main(args):
-    cfg = Config.fromfile(args.config)
-    runner = cfg.pop("runner", "PrecisionTrackRunner")
-    if runner == "PrecisionTrackRunner":
-        runner = PrecisionTrackRunner(cfg=cfg, launcher=args.launcher, mode="train")
-    elif runner == "SequenceRunner":
-        runner = SequenceRunner(cfg=cfg, launcher=args.launcher, mode="train")
-    else:
-        raise ValueError(f"{runner} not supported.")
+    runner = Runner(args.config, args.launcher, mode="train")
     runner()
 
 
@@ -51,4 +44,4 @@ if __name__ == "__main__":
     # main(parse_args())
     from addict import Dict
 
-    main(Dict({"config": "../configs/tasks/training_action_recognition.py", "launcher": "none"}))
+    main(Dict({"config": "../configs/tasks/training_detection.py", "launcher": "none"}))

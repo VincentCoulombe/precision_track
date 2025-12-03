@@ -35,17 +35,17 @@ val_bboxes_gt_paths = _base_.action_recognition_val_bboxes_gt_paths
 val_keypoints_gt_paths = _base_.action_recognition_val_keypoints_gt_paths
 val_actions_gt_paths = _base_.action_recognition_val_actions_gt_paths
 
-data_root = "../../datasets/MICE/sequential_nano/"
+# data_root = "../../datasets/MICE/sequential_nano/"
 
-val_sequences = ["videos/14-20-02.avi"]
-val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
-val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
-val_actions_gt_paths = ["actions/14-20-02.csv"]
+# val_sequences = ["videos/14-20-02.avi"]
+# val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
+# val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
+# val_actions_gt_paths = ["actions/14-20-02.csv"]
 
-train_sequences = val_sequences
-train_bboxes_gt_paths = val_bboxes_gt_paths
-train_keypoints_gt_paths = val_keypoints_gt_paths
-train_actions_gt_paths = val_actions_gt_paths
+# train_sequences = val_sequences
+# train_bboxes_gt_paths = val_bboxes_gt_paths
+# train_keypoints_gt_paths = val_keypoints_gt_paths
+# train_actions_gt_paths = val_actions_gt_paths
 # /Settings
 
 # Model
@@ -143,7 +143,7 @@ load_img = [dict(type="LoadImage")]
 crop = [dict(type="SequenceRandomCrop", crop_size=(0.85, 1.0))]
 resize = [dict(type="BottomupResize", input_size=_base_.input_size, pad_val=(_base_.pad_value, _base_.pad_value, _base_.pad_value))]
 transforms = [
-    dict(type="SequenceYOLOXHSVRandomAug", hue_delta=0),
+    dict(type="SequenceYOLOXHSVRandomAug", value_delta=15, hue_delta=0, saturation_delta=0),
     dict(type="SequenceRandomContrastAug"),
     dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
     # dict(type="SequenceRandomOcclusion"),
@@ -216,7 +216,9 @@ val_dataloader = dict(
 # /Dataloaders
 
 # Evaluation
-val_evaluator = [dict(type="MultiClassActionRecognitionMetrics", metainfo=metainfo, confusion_matrix_save_dir=work_dir, label_index_mode="last")]
+val_evaluator = [
+    dict(type="MultiClassActionRecognitionMetrics", metainfo=metainfo, confusion_matrix_save_dir=work_dir, metric_save_dir=work_dir, label_index_mode="last")
+]
 # /Evaluation
 
 
@@ -258,6 +260,9 @@ if _base_.wandb_logging:
                 project=_base_.project,
                 entity=_base_.entity,
             ),
+            define_metric_cfg={
+                "ActionRecognition/Macro F1": "max",
+            },
             save_dir=work_dir + "wandb/",
         ),
     )

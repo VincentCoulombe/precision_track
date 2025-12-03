@@ -811,14 +811,14 @@ class FilterAnnotations(BaseTransform):
         Returns:
             dict: Updated result dict.
         """
-        assert "keypoints" in results
-        kpts = results["keypoints"]
+        kpts = results.get("keypoints", np.empty(0))
+        if kpts.shape[0] == 0:
+            return results
+
         num_kpts = results.get("num_keypoints", 0)
         if isinstance(num_kpts, list):
             num_kpts = num_kpts[0]
         num_kpts = int(num_kpts)
-        if kpts.shape[0] == 0:
-            return results
 
         tests = []
         if self.by_box and "bbox" in results:

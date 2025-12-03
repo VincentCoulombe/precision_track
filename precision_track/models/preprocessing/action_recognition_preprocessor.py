@@ -328,7 +328,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
 @MODELS.register_module()
 class ActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
     METAINFO_KEYS = ["skeleton_links"]
-    SUPPORTED_MODES = ["loss", "sequence"]
+    SUPPORTED_MODES = ["loss", "sequence", "pretrain"]
 
     def __init__(
         self,
@@ -383,7 +383,8 @@ class ActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
             return self.loss(data, *args, **kwargs)
         elif self.mode == "sequence":
             return self.sequence(data, *args, **kwargs)
-        return self.predict(data, *args, **kwargs)
+        elif self.mode == "pretrain":
+            return self.pretrain(data, *args, **kwargs)
 
     def loss(
         self,
@@ -420,6 +421,36 @@ class ActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
         positives = torch.stack(positives, dim=0).to(self.device).to(torch.int64)
 
         return dict(features=features, poses=skeletons, dynamics=dynamics, labels=labels, binary_labels=positives)
+
+    def pretrain(
+        self,
+        data: dict,
+        *args,
+        **kwargs,
+    ) -> dict:
+        dynamics = []
+        skeletons = []
+        scales = []
+        for data_sample in data["data_samples"]:
+            dynamics.append(data_sample.pred_track_instances.velocities.view(self.block_size, 2))
+            skeleton, scale = kpts_to_poses(
+                data_sample.pred_track_instances.kpts.to(self.device),
+                data_sample.pred_track_instances.kpt_vis.to(self.device),
+                self.skeleton_sources,
+                self.skeleton_targets,
+                self.kpts_conf_thr,
+                normalize=True,
+            )
+            skeletons.append(skeleton.view(self.block_size, -1))
+            scales.append(scale)
+
+        dynamics = torch.stack(dynamics, dim=0).to(self.device) / torch.stack(scales, dim=0).to(self.device)
+        if self.vel_encoder is not None:
+            dynamics = self.vel_encoder(dynamics)
+        skeletons = torch.stack(skeletons, dim=0)
+        features = torch.stack(data["inputs"], dim=0).to(self.device)
+
+        return dict(features=features, poses=skeletons, dynamics=dynamics)
 
     def sequence(
         self,

@@ -1,7 +1,9 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = "../configs/metadata/mice.py"
+# metainfo = "../configs/metadata/mice.py"
+metainfo = "../../datasets/camille/stripedmice.py"
+
 wandb_logging = True
 # /Common
 
@@ -13,10 +15,14 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = "../../datasets/MICE/pose-estimation/"
+# data_root = "../../datasets/MICE/pose-estimation/"
+data_root = "../../datasets/camille/640x640/"
+
 training_work_dir = _base_.work_dir + "training_runs/mice/"
 resume = False
-training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
+# training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
+training_checkpoint = "../checkpoints/yolox_ap/yolox-pose_s_ap.pth"
+
 
 input_size = (640, 640)
 pad_value = 114
@@ -50,7 +56,7 @@ else:
 
 #   1.2) Testing
 testing_work_dir = _base_.work_dir + "testing_runs/mice/"
-testing_checkpoint = "../tests/configs/model_mice.pth"
+testing_checkpoint = "../checkpoints/camille/epoch_300.pth"
 
 testing_anns_path = validation_anns_path
 testing_imgs_path = validation_imgs_path
@@ -81,17 +87,18 @@ deployed_name = "model_mice_clustering_DEPLOYED.pth"
 
 
 # 2) Tracking
-tracking_checkpoint = deployed_directory + "model_mice_clustering_DEPLOYED.onnx"
+# tracking_checkpoint = deployed_directory + "model_mice_clustering_DEPLOYED.onnx"
+tracking_checkpoint = testing_checkpoint
 
 pipelined = False
 tracking_batch_size = 30
-num_tentatives = 3
+num_tentatives = 5
 nb_frames_retain = 10
-with_validation = True
-with_action_recognition = True
+with_validation = False
+with_action_recognition = False
 
 
-num_mice = 20
+num_mice = 5
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes={"mouse": num_mice},
@@ -138,7 +145,9 @@ eps_range = [1e-2, 1e-1]
 #   2.1) /Tuning
 
 #   2.2) Testing
-hyperparams = deployed_directory + "hyperparameters.json"
+# hyperparams = deployed_directory + "hyperparameters.json"
+hyperparams = "../checkpoints/camille/hyperparameters.json"
+
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]

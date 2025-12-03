@@ -171,11 +171,19 @@ else:
         ),
     ]
 if _base_.stitching_algorithm is not None:
-    dict(
-        type="SearchAreaPainter",
-        annotations=[dict(type="Box")],
-        color=[255, 0, 0],
-    ),
+    painters += [
+        dict(
+            type="SearchAreaPainter",
+            annotations=[
+                dict(
+                    type="Box",
+                    thickness=3,
+                )
+            ],
+            color=[255, 0, 0],
+        )
+    ]
+
 if _base_.validator is not None:
     painters += [
         dict(
@@ -188,7 +196,7 @@ if _base_.validator is not None:
 painters += [
     dict(
         type="LabelPainter",
-        info=["id"],
+        info=["id", "score"],
         metafile_path=metainfo,
         label_position="TOP_CENTER",
         text_color=[0, 0, 0],

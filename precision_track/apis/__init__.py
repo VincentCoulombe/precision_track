@@ -1,7 +1,7 @@
 from .association_step import AssociationStep  # noqa
 from .result import Result  # noqa
-from .runner import PrecisionTrackRunner, SequenceRunner  # noqa
+from .runner import Runner  # noqa
 from .tracker import PipelinedTracker, Tracker  # noqa
 from .visualizer import Visualizer  # noqa
 
-__all__ = ["AssociationStep", "Result", "PrecisionTrackRunner", "SequenceRunner", "PipelinedTracker", "Tracker", "Visualizer"]
+__all__ = ["AssociationStep", "Result", "Runner", "PipelinedTracker", "Tracker", "Visualizer"]

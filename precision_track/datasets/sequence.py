@@ -9,6 +9,7 @@ from logging import WARNING
 from typing import Callable, List, Optional, Tuple, Union
 import cv2
 import numpy as np
+import math
 import torch
 from addict import Dict
 from mmengine import Config
@@ -143,11 +144,11 @@ class OnlineRandomSequenceDataset(BaseDataset):
         prefix_keys = self._add_prefix_key(prefix_keys, "keypoints_gt_paths")
         prefix_keys = self._add_prefix_key(prefix_keys, "actions_gt_paths")
 
-        lengths = [len(self.data_prefix[key]) for key in prefix_keys]
+        lengths = [len(self.data_prefix[key]) for key in self.MANDATORY_PREFIX_KEYS]
         assert len(set(lengths)) == 1, "Ensure that you have the same number of gt paths than of image directories."
 
         sequences, keypoints_outputs, bboxes_outputs, actions_outputs = [], [], [], []
-        for seq, bboxes_path, kpts_path, actions_path in zip(*[self.data_prefix[k] for k in prefix_keys]):
+        for seq, bboxes_path, kpts_path, actions_path in zip(*[self.data_prefix[k] for k in self.MANDATORY_PREFIX_KEYS]):
             full_dir = os.path.join(self.data_root, seq)
             sequences.append(full_dir)
 
@@ -571,7 +572,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
         self.detector = DetectionBackend(**detector)
         self.actions_gt_format = actions_gt_format
         self.action_to_label_map = dict()
-        self.input_scale = inference_resolution
+        self.input_scale = inference_resolution  # TODO rendre dynamique. 1 par video...
         self.input_center = None
         self.cat_warned = False
         if isinstance(self.input_scale, (Tuple, list, np.ndarray)):
@@ -822,9 +823,12 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                             keypoints = outputs[j]["pred_instances"]["keypoints"][matched_preds][unique_idx].cpu()
                             keypoints_visible = outputs[j]["pred_instances"]["keypoint_scores"][matched_preds][unique_idx].cpu()
                             labels = outputs[j]["pred_instances"]["labels"][matched_preds][unique_idx].cpu()
-                            action_labels = None
+
+                            action_labels = []
                             if hasattr(data_sample.gt_instance_labels, "action_labels"):
                                 action_labels = data_sample.gt_instance_labels.action_labels[matched_gts][unique_idx]
+
+                            actions = []
                             if hasattr(data_sample.gt_instances, "actions"):
                                 actions = np.array(data_sample.gt_instances.actions[matched_gts]).reshape(len(matched_gts))[unique_idx]
 
@@ -881,13 +885,11 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         n_velocities: int,
         bboxes_gt_format: Optional[str] = "CsvBoundingBoxes",
         keypoints_gt_format: Optional[str] = "CsvKeypoints",
-        actions_gt_format: Optional[str] = None,
         data_root: Optional[str] = ".",
         data_prefix: dict = dict(
             sequences=["."],
             bboxes_gt_paths=[""],
             keypoints_gt_paths=[""],
-            actions_gt_paths=[None],
         ),
         pipeline: List[Union[dict, Callable]] = [],
         test_mode: bool = False,
@@ -905,7 +907,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
             detector=detector,
             bboxes_gt_format=bboxes_gt_format,
             keypoints_gt_format=keypoints_gt_format,
-            actions_gt_format=actions_gt_format,
+            actions_gt_format=None,
             data_root=data_root,
             data_prefix=data_prefix,
             pipeline=pipeline,
@@ -941,7 +943,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         nb_action_labels = len(self.action_to_sequence_map[random_action])
         assert self.block_size < nb_action_labels, f"An action have less labels ({nb_action_labels}) than the specified block size ({self.block_size})."
 
-        random_action_idx = np.random.randint(self.block_size, nb_action_labels)
+        random_action_idx = np.random.randint(0, nb_action_labels)
         inputs = torch.zeros((self.block_size, self.n_feats), dtype=torch.float32, device="cpu")
         kpts = torch.zeros((self.block_size, self.n_kpts, 2), dtype=torch.float32, device="cpu")
         kpt_vis = torch.zeros((self.block_size, self.n_kpts), dtype=torch.float32, device="cpu")
@@ -958,12 +960,12 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
             data_sample = self.data_list[seq][idx - self.block_size + block_idx + 1]
             id_idx = torch.where(data_sample.pred_track_instances.instances_id == id_)[0]
             if id_idx.numel() > 0:
-                inputs[block_idx] = noisify(data_sample.pred_track_instances.features[id_idx], intensity=0.01)
+                inputs[block_idx] = data_sample.pred_track_instances.features[id_idx]
 
                 kpts[block_idx] = data_sample.pred_track_instances.kpts[id_idx]
                 kpt_vis[block_idx] = data_sample.pred_track_instances.kpt_vis[id_idx]
 
-                dynamics[block_idx] = noisify(data_sample.pred_track_instances.dynamics[id_idx], intensity=1)
+                dynamics[block_idx] = data_sample.pred_track_instances.dynamics[id_idx]
 
                 actions[block_idx] = data_sample.gt_instance_labels.action_labels[id_idx]
                 positives[block_idx] = data_sample.gt_instance_labels.action_labels[id_idx] != self.negative_label
@@ -1045,12 +1047,10 @@ class ActionRecognitionPerFrameDataset(ActionRecognitionDataset):
             for valid_idx, valid_id in enumerate(valid_ids):
                 id_idx = torch.where(data_sample.pred_track_instances.instances_id == valid_id)[0]
                 if id_idx.numel() > 0:
-                    # inputs[valid_idx, block_idx] = noisify(data_sample.pred_track_instances.features[id_idx], intensity=0.01)
                     inputs[valid_idx, block_idx] = data_sample.pred_track_instances.features[id_idx]
 
                     kpts[valid_idx, block_idx] = data_sample.pred_track_instances.kpts[id_idx]
                     kpt_vis[valid_idx, block_idx] = data_sample.pred_track_instances.kpt_vis[id_idx]
-                    # dynamics[valid_idx, block_idx] = noisify(data_sample.pred_track_instances.dynamics[id_idx], intensity=1)
                     dynamics[valid_idx, block_idx] = data_sample.pred_track_instances.dynamics[id_idx]
 
         inputs_ds.gt_instance_labels.action_labels = actions
@@ -1067,7 +1067,6 @@ class ActionRecognitionPerFrameDataset(ActionRecognitionDataset):
 
     def load_data_list(self) -> List[dict]:
         data_list = super().load_data_list()
-        # TODO remove first block_size frames of each sequences
         self.idx_to_seq = dict()
         self._length = 0
         for i, seq in enumerate(data_list):
@@ -1076,6 +1075,209 @@ class ActionRecognitionPerFrameDataset(ActionRecognitionDataset):
                 self.idx_to_seq[self._length] = (i, j)
                 self._length += 1
         return data_list
+
+    def __len__(self):
+        return self._length
+
+
+@DATASETS.register_module()
+class MAEDataset(OfflineRandomSequenceDataset):
+    UNSUP_MANDATORY_KEYS = ["sequences"]
+
+    def __init__(
+        self,
+        from_file,
+        n_feats: int,
+        n_velocities: int,
+        detector,
+        bboxes_gt_format="CsvBoundingBoxes",
+        keypoints_gt_format="CsvKeypoints",
+        data_root=".",
+        data_prefix=dict(sequences=["."], bboxes_gt_paths=[""], keypoints_gt_paths=[""]),
+        pipeline=[],
+        test_mode=False,
+        block_size=2,
+        inference_resolution=None,
+        nb_simulteneous_seq=3,
+        supervized=True,
+        *args,
+        **kwargs,
+    ):
+        self.instance_sequences = defaultdict(list)
+        assert nb_simulteneous_seq > 0
+        self.nb_simulteneous_seq = int(nb_simulteneous_seq)
+        self._all_data_prefix = None
+        self._nb_sequences = 0
+        super().__init__(
+            from_file=from_file,
+            detector=detector,
+            bboxes_gt_format=bboxes_gt_format,
+            keypoints_gt_format=keypoints_gt_format,
+            actions_gt_format=None,
+            data_root=data_root,
+            data_prefix=data_prefix,
+            pipeline=pipeline,
+            test_mode=test_mode,
+            block_size=block_size,
+            inference_resolution=inference_resolution,
+        ),
+        self.instances = list(self.instance_sequences.keys())
+
+        for size in [n_feats, n_velocities]:
+            assert 0 < size
+        self.n_feats = n_feats
+        self.n_kpts = self.metainfo.get("num_keypoints", 0)
+        assert self.n_kpts > 0, f"The metainfo's {self.METAINFO} 'keypoint_info' contains no keypoints."
+        self.n_velocities = n_velocities
+
+        assert isinstance(supervized, bool)
+        self.supervized = supervized
+
+    def prepare_data(self, idx):
+
+        id_ = np.random.choice(self.instances)
+        instance_sequence = self.instance_sequences[id_]
+        seq_idx = np.random.randint(0, len(instance_sequence))
+        seq, idx = self.instance_sequences[id_][seq_idx]
+
+        inputs = torch.zeros((self.block_size, self.n_feats), dtype=torch.float32, device="cpu")
+        kpts = torch.zeros((self.block_size, self.n_kpts, 2), dtype=torch.float32, device="cpu")
+        kpt_vis = torch.zeros((self.block_size, self.n_kpts), dtype=torch.float32, device="cpu")
+        dynamics = torch.zeros((self.block_size, self.n_velocities), dtype=torch.float32, device="cpu")
+        inputs_ds = PoseDataSample()
+        inputs_ds.gt_instance_labels = InstanceData()
+        inputs_ds.gt_instances = InstanceData()
+        inputs_ds.pred_track_instances = InstanceData()
+
+        for block_idx in range(self.block_size):
+            data_sample = self.data_list[seq][idx - self.block_size + block_idx + 1]
+            id_idx = torch.where(data_sample.pred_track_instances.instances_id == id_)[0]
+            if id_idx.numel() > 0:
+                inputs[block_idx] = data_sample.pred_track_instances.features[id_idx]
+
+                kpts[block_idx] = data_sample.pred_track_instances.kpts[id_idx]
+                kpt_vis[block_idx] = data_sample.pred_track_instances.kpt_vis[id_idx]
+
+                dynamics[block_idx] = data_sample.pred_track_instances.dynamics[id_idx]
+
+        assert id_idx.numel() > 0, f"Bad synchronization for id {id_} of frame {idx} of sequence {seq}."
+
+        inputs_ds.pred_track_instances.kpts = kpts
+        inputs_ds.pred_track_instances.kpt_vis = kpt_vis
+        inputs_ds.pred_track_instances.velocities = dynamics
+        inputs_ds.img_id = idx
+        inputs_ds.seq_id = seq
+        inputs_ds.instance_id = id_
+
+        return dict(inputs=inputs, data_samples=inputs_ds)
+
+    def _pick_random_seqs(self):
+        seq_idxs = np.arange(self._nb_sequences)
+        selected_seq_idxs = []
+        for _ in range(self.nb_simulteneous_seq):
+            selected_seq_idxs.append(np.random.choice(seq_idxs, replace=False))
+        self.data_prefix = copy.deepcopy(self._all_data_prefix)
+        for k, v in self.data_prefix.items():
+            self.data_prefix[k] = np.array(v)[selected_seq_idxs].tolist()
+
+    def _maybe_init_all_prefix(self):
+        if self._all_data_prefix is None:
+            self._all_data_prefix = copy.deepcopy(self.data_prefix)
+            self._nb_sequences = len(self._all_data_prefix["sequences"])
+
+    def _join_prefix(self):
+        if self.supervized:
+            missing_keys = [k for k in self.MANDATORY_PREFIX_KEYS if k not in self.data_prefix]
+            assert not missing_keys, f"Missing mandatory keys: {missing_keys}"
+
+            self._maybe_init_all_prefix()
+            self._pick_random_seqs()
+
+            for key in self.MANDATORY_PREFIX_KEYS:
+                self._init_data_prefix_key(key)
+
+            prefix_keys = self.MANDATORY_PREFIX_KEYS
+
+            lengths = [len(self.data_prefix[key]) for key in prefix_keys]
+            assert len(set(lengths)) == 1, "Ensure that you have the same number of gt paths than of image directories."
+
+            sequences, keypoints_outputs, bboxes_outputs = [], [], []
+            for seq, bboxes_path, kpts_path in zip(*[self.data_prefix[k] for k in prefix_keys]):
+                full_dir = os.path.join(self.data_root, seq)
+                sequences.append(full_dir)
+
+                bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "path": os.path.join(self.data_root, bboxes_path)})
+                bboxes_output.read()
+                bboxes_outputs.append(bboxes_output)
+
+                kpts_output = OUTPUTS.build({"type": self.keypoints_gt_format, "path": os.path.join(self.data_root, kpts_path)})
+                kpts_output.read()
+                keypoints_outputs.append(kpts_output)
+
+            self.data_prefix.update(
+                {
+                    "sequences": sequences,
+                    "bboxes_outputs": bboxes_outputs,
+                    "keypoints_outputs": keypoints_outputs,
+                }
+            )
+        else:
+            missing_keys = [k for k in self.UNSUP_MANDATORY_KEYS if k not in self.data_prefix]
+            assert not missing_keys, f"Missing mandatory keys: {missing_keys}"
+            self._maybe_init_all_prefix()
+            self._pick_random_seqs()
+
+            for key in self.UNSUP_MANDATORY_KEYS:
+                self._init_data_prefix_key(key)
+
+            sequences = []
+            for seq in zip(*[self.data_prefix[k] for k in self.UNSUP_MANDATORY_KEYS]):
+                full_dir = os.path.join(self.data_root, seq)
+                sequences.append(full_dir)
+
+            self.data_prefix.update(
+                {
+                    "sequences": sequences,
+                }
+            )
+
+    def load_data_list(self) -> List[dict]:
+        if self.supervized:  # TODO Si t'a des labels
+            data_list = super().load_data_list()
+        else:
+            data_list = self.load_data_list_unsupervized()
+        for s, sequence in enumerate(data_list):
+            seq_dynamics = dict()
+            for i, data_sample in enumerate(sequence):
+                frame_id = data_sample.img_id
+                bboxes = data_sample.pred_track_instances.bboxes
+                del data_sample.pred_track_instances.bboxes
+                ids = data_sample.pred_track_instances.instances_id
+                frame_dynamics = torch.zeros((len(ids), 6), device=ids.device, dtype=bboxes.dtype)
+                centroids = bboxes[:, :2].numpy()
+                for j, (id_, location) in enumerate(zip(ids, centroids)):
+                    id_ = id_.item()
+                    if id_ not in seq_dynamics:
+                        seq_dynamics[id_] = np.array([location[0], location[1], 0, 0, 0, 0, frame_id], dtype=np.float32)
+                    else:
+                        dynamics = seq_dynamics[id_][:6]
+                        dt = frame_id - seq_dynamics[id_][-1]
+                        dynamics = update_dynamics_2d(dynamics, location.astype(np.float32), seq_dynamics[id_][:2].copy(), 0.5, dt)
+                        seq_dynamics[id_][:6] = dynamics
+                        seq_dynamics[id_][-1] = frame_id
+                    frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
+
+                    if frame_id >= self.block_size:  # Removing first self.block_size frames from each sequences.
+                        self.instance_sequences[id_].append((s, i))
+                        self._length += 1
+                data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
+        self._length = max([len(s) for s in self.instance_sequences.values()])
+        assert self.block_size < self._length, f"The specified block size ({self.block_size}) is bigger than the biggest sequence ({self._length})."
+        return data_list
+
+    def load_data_list_unsupervized(self):
+        # TODO Juste tracker (pas de ReID/validation, pas de labels)
+        pass
 
     def __len__(self):
         return self._length
