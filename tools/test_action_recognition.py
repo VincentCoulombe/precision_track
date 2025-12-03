@@ -3,7 +3,7 @@ import yaml
 from precision_track import Runner
 from precision_track.utils import load_user_configs
 
-from train_detection import parse_args
+from test_tracking import parse_args
 
 
 def main(args):
