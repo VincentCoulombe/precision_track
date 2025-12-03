@@ -3,6 +3,7 @@ from collections import defaultdict
 import os
 import logging
 from mmengine.logging import MMLogger
+import argparse
 
 from precision_track import Runner, AssociationStep
 from precision_track.utils import load_user_configs
@@ -10,7 +11,18 @@ from precision_track.deploy.to_onnx import mart_to_onnx
 from precision_track.deploy.to_tensorrt import to_tensorrt
 from precision_track.models.backends import DetectionBackend
 
-from train_detection import parse_args, deploy, load_config, parse_device_id, get_device
+from train_detection import str2bool, deploy, load_config, parse_device_id, get_device
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("deploy", type=str2bool, default=True, help="True deploy the trained model, False otherwise")
+    parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
+    parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
+    args = parser.parse_args()
+    if "LOCAL_RANK" not in os.environ:
+        os.environ["LOCAL_RANK"] = str(args.local_rank)
+    return args
 
 
 def main(args):

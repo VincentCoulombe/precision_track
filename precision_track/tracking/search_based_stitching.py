@@ -52,7 +52,7 @@ class SearchBasedStitching(BaseStitchingAlgorithm):
                         print_log(f"The system will be tracking a maximum of {cap} {capped_cls}.", logger="current")
                 elif self.verbose:
                     print_log(
-                        f"Subjects classified as: '{capped_cls}' will be tracked without a cap, since the provided number of subjects for that class is: {cap}.",
+                        f"Subjects classified as: '{capped_cls}' will be tracked without a cap, since you registered {cap} subjects in your config.",
                         logger="current",
                     )
             elif self.verbose:

@@ -32,15 +32,17 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 
 - **Inputs:**:
 
-  - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
-  - `--optimize_hyperparams` True to optimize your tracking hyperparameters and generate an `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `format_dataset`. True to resize and format your COCO-style dataset (accelerate the model's training significantly), False otherwise. Default to True.
+  - `deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `calibrate`. True to calibrate and generate or update the `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `optimize_hyperparams` True to optimize your tracking hyperparameters and generate an `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
 
 - **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory.
 
 - **Examples**
 
   ```bash
-  python train_detection.py --deploy=true --optimize_hyperparams=false
+  python train_detection.py deploy=true calibrate=true optimize_hyperparams=false format_dataset=true
   ```
 
 ---
@@ -51,15 +53,14 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 
 - **Inputs:**:
 
-  - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
-  - `--optimize_hyperparams` True to optimize your tracking hyperparameters and generate an `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
 
 - **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory.
 
 - **Examples**
 
   ```bash
-  python train_action_recognition.py --deploy=true --optimize_hyperparams=false
+  python train_action_recognition.py deploy=true
   ```
 
 ---
@@ -109,7 +110,7 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 ## 6) track.py — run tracking on videos
 
 - **Purpose:** run detector/pose/action heads + association on pre‑recorded media.
-- **Inputs:** `--video PATH` (path to the recording file)
+- **Inputs:** `video` (path to the recording file)
 - **Outputs:** All the available outputs will be saved at the defined `work_dir` from the settings. Heres a list of all the possible outputs:
   - `bboxes.csv`: Contains the MOT formatted bounding boxes of all the tracked subjects over the whole recording.
   - `kpts.csv`: Contains the MOT formatted keypoints of all the tracked subjects over the whole recording.
@@ -120,8 +121,8 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
   - `actions.csv`: Contains the MOT formatted actions over the whole recording. Only available when an action recognition algorithm is used when tracking.
 - **Examples**
   ```bash
-  python track.py --video data/sample.mp4
-  python track.py --video data/sample.avi
+  python track.py video data/sample.mp4
+  python track.py video data/sample.avi
   ```
 
 ---
@@ -129,11 +130,11 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 ## 7) visualize.py — render tracking & actions
 
 - **Purpose:** Turn the available MOT outputs, in the defined `work_dir` from the settings, into annotated videos. The visuals are completely configurable in the "Visualization" section of the `tasks/tracking.py` setting file.
-- **Inputs:** `--source PATH` (path to the recording file) `--sink PATH` (path to the annotated video file)
+- **Inputs:** `source` (path to the recording file) `sink` (path to the annotated video file)
 - **Outputs:** An annotated video will be saved at the provided sink path.
 - **Examples**
   ```bash
-  python visualize.py --source data/sample.mp4 --sink data/annotated_data_sample.mp4
+  python visualize.py source data/sample.mp4 sink data/annotated_data_sample.mp4
   ```
 
 ## Example workflows
@@ -142,13 +143,13 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 
   ```bash
   <!-- Train, Test and Deploy Detection model -->
-  python train_detection.py --deploy=true --optimize_hyperparams=false
+  python train_detection.py calibrate=true deploy=true optimize_hyperparams=false
   python test_detection.py
   ```
 
 - **Track → Visualize**
 
   ```bash
-  python track.py --video last_experiment.mp4
-  python visualize.py --source last_experiment.mp4 --sink annotated_last_experiment.mp4
+  python track.py video last_experiment.mp4
+  python visualize.py source last_experiment.mp4 sink annotated_last_experiment.mp4
   ```

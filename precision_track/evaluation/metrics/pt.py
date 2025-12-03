@@ -76,7 +76,7 @@ class PoseTrackingMetric(BaseMetric):
         metafile = Config.fromfile(metafile)
         assert isinstance(metafile.get("dataset_info").get("classes"), list), f"The metadata file: {metafile} must contain a list of the detected classes."
         self.classes = metafile["dataset_info"]["classes"]
-        self.keypoints = [k["name"] for k in metafile["dataset_info"]["keypoint_info"].values()]
+        self.keypoints = [k["name"] for k in metafile["dataset_info"]["keypoint_info"]]
 
         self.logger = MMLogger.get_current_instance()
         self.output_file = None
