@@ -134,7 +134,7 @@ sigmas = [0.026, 0.025, 0.025, 0.035, 0.035]  # taken from COCO
 from precision_track.utils import parse_pose_metainfo
 
 info = parse_pose_metainfo(dict(from_file="path_to_your_metadata_file.py"))   # Will raise an error if anything is missing or incorectly defined
-print(f"{info.num_keypoints} keypoints loaded ✔︎")
+print(f"{info["num_keypoints"]} keypoints loaded ✔︎")
 ```
 
 ---

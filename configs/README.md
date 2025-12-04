@@ -10,15 +10,17 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 ### The **`./user_configs.yaml/` file** have three section:
 
-1. **booleans** → Turn features ON or OFF
+1. **booleans** → Enable or disable functionalities
 2. **training** → Training parameters, directories and paths
 3. **tracking** → Tracking parameters
 
+**⚠️IMPORTANT⚠️** Unless explicitely specified, make sure the your **paths** are **relative** to the `tools` directory from your **precision_track** GitHub directory.
+
+**⚠️IMPORTANT⚠️** For Windows and WSL users. Paths **outside** of your precision_track's directory will not exists within your docker container. Ensure that all the provided paths are **inside** your precision_track's directory.
+
 ---
 
-# 1. Booleans – Turn Features On/Off
-
-### Use this section to enable or disable functionalities.
+# 1. Booleans – Enable or disable functionalities
 
 - **pipelined**  
   Runs processes in parallel to make tracking _faster_.
@@ -28,17 +30,17 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 - **with_validation**  
   Enables **Tailtag/ArUco tag re-identification**.
 
-  - Turn ON only if your animals wear Tailtags.
+  - Set as `true` only if your animals wear Tailtags.
 
 - **with_action_recognition**  
   Enables the MART model to recognize animal actions.
 
-  - Turn ON only if you have trained a MART model (Guides and tutorials on how to do it coming out soon).
+  - Set as `true` only if you have trained a MART model (Guides and tutorials on how to do it coming out soon).
 
 - **with_pose_estimation**  
   Enables full pose (keypoints + skeleton).
-  - Turn OFF if you want box-only tracking.
-  - Turn ON only if you have trained your PrecisionTrack on a COCO formatted dataset containing keypoints.
+  - Set as `false` if you want box-only tracking.
+  - Set as `true` only if your COCO formatted dataset (`data_root`) contain keypoints.
 
 ---
 
@@ -50,7 +52,7 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
   A small python file that describes your species: names of keypoints, skeleton shape, etc. Please refer to our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) for more details.
 
 - **dataset_name**  
-  The label that will appear in logs and created sub-directories under the `precision_track/work_dir/` directory. Namely, the training logs and testing metrics will be saved there.
+  The label that will appear in logs and created sub-directories under the `precision_track/work_dir/training_runs` and `precision_track/work_dir/testing_runs` directories. Namely, the training logs and testing metrics will be saved there.
 
 - **data_root**  
   Root directory of your **COCO-style dataset**. Expected structure:
@@ -66,26 +68,26 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
   │ ├── ...
 ```
 
+**⚠️IMPORTANT⚠️** For Windows and WSL users. Paths **outside** of your precision_track's directory will not exists within your docker container. Ensure that all the provided paths are **inside** your precision_track's directory.
+
 - **resume**  
   Turn ON if you want to continue a stopped training.
 
 - **training_checkpoint**  
-  Path to a `.pth` file used to initialize training.
+  Path to a `.pth` file used to initialize training with transfer learning. Using a checkpoint strongly improves performance.
 
-  - Can be a pretrained model or a checkpoint from a previous run.
-  - If you do not have a checkpoint from a previous run, we highly recommend downloading our [AP Checkpoint](https://drive.google.com/drive/folders/1_U9fDDAW7UYm_xelod9ehrSNFdpYUz0o) as your starting checkpoint.
-
-- **testing_checkpoint**  
-  Path to a `.pth` file used to testing both the detections and (optionally) the tracking performances of your model. By default, it takes the last saved checkpoint of the training run (epoch_300.pth)
-
-  - The checkpoint **does not** have to be in your `precision_track/work_dir/training_runs/` directory. In fact, we suggest not to leave it there as it might get override by futur training runs.
-  - As a good practice, I suggest you keep a collection of well named checkpoints. This way, you will be able to perform regression tests and compare the performances of your models.
+  - Can be either a model you already pretrained or our available **AP Checkpoint** (recommended):  
+    [Download here](https://drive.google.com/drive/folders/1_U9fDDAW7UYm_xelod9ehrSNFdpYUz0o).
+  - For better organization, create a dedicated **checkpoints directory** (e.g., `../checkpoints/`). You may store the AP Checkpoint locally as:  
+    `../checkpoints/ap/model_ap.pth`.
 
 - **deploying_directory**  
-  Directory where all deployment artifacts are saved after a successful training run. At minimum, a `_DEPLOYED.pth` (which is a lighter copy of your **testing_checkpoint**) will be provided. Also, a `_DEPLOYED.onnx` file will be provided if your machine supports FP16 conversion (it should). For more informations about **ONNX** please visit [The following](https://onnx.ai/). Finally, a `.engine` checkpoint will be provided if your machine is **CUDA accelerated**. This last checkpoint is the absolute fastest version of your model. As such, it will be the system's preferred **runtime** whenever it is available. For more informations about **TensorRT Engines** please visit [The following](https://docs.nvidia.com/tensorrt/index.html).
+  Directory where all deployment artifacts are saved after a successful training run. At minimum, a `_DEPLOYED.pth` (which is a lighter copy of the last checkpoint of your training run (`../work_dir/training_runs/<dataset_name>/epoch_300.pth`)) will be saved here. Also, a `_DEPLOYED.onnx` file will be saved if your machine supports FP16 conversion (it should). For more informations about **ONNX** please visit [The following](https://onnx.ai/). Finally, a `.engine` checkpoint will be saved if your machine is **CUDA accelerated**. This last checkpoint is the absolute fastest version of your model. As such, it will be the system's preferred **runtime** whenever it is available. For more informations about **TensorRT Engines** please visit [The following](https://docs.nvidia.com/tensorrt/index.html).
+
+  - We also highly recommend creating a **checkpoints directory** (`../checkpoints/`) in order to organize all your model's weights. We recommend your `deploying_directory` to be inside this **checkpoints directory**. For example, you could set your `deploying_directory` as `../checkpoints/v1/` then train your network. This will tell your PrecisionTrack trainer to first create the `../checkpoints/v1/` directory then automatically save your last training checkpoint to this directory.
 
 - **deploying_sanity_check_img_path**
-  path (relative to **data_root**) to **any** image from your **COCO-style dataset**. This image will be used to ensure that the `.onnx` and the `.engine` checkpoints are accurate.
+  Path (this path is relative to your `data_root` directory, not your `tools` directory) to **any** image from your **COCO-style dataset**. This image will be used to ensure that the `.onnx` and the `.engine` checkpoints are accurate. This is only relevant if the [training tool's](https://github.com/VincentCoulombe/precision_track/tree/main/tools) `deploy` option is set to `true`.
 
 - **batch_size**  
   How many images are processed at once.
@@ -108,7 +110,7 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 - **tracking_checkpoint**  
   This config allow you to select a specific checkpoint to track with. This checkpoint could be:
 
-  - Your **testing_checkpoint**
+  - The last checkpoint of your latest training run (`../work_dir/training_runs/<dataset_name>/epoch_300.pth`)
   - Your `_DEPLOYED.pth`
   - Your `_DEPLOYED.onnx`
   - Your `.engine`

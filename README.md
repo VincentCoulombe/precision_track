@@ -268,9 +268,9 @@ Run the following git command in your terminal:
 
 - The container has read/write access **only** to your `precision_track` directory.
 - Keep everything under `precision_track/`:
-  - Datasets → `precision_track/datasets/`
-  - Settings → `precision_track/configs/settings/`
-  - Metadata → `precision_track/configs/metadata/`
+  - Datasets → `precision_track/datasets/<your datasets>/`
+  - User Configs → `precision_track/configs/user_configs.yaml`
+  - Metadata → `precision_track/configs/metadata/<your metadata file>.py`
 
 ### 5) Define your `user_configs.yaml` (configuration file)
 

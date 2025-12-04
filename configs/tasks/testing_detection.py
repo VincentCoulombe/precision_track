@@ -6,7 +6,7 @@ work_dir = _base_.testing_work_dir
 batch_size = _base_.batch_size
 half_precision = _base_.half_precision
 
-load_from = _base_.testing_checkpoint
+load_from = _base_.deploying_directory + _base_.deployed_name
 
 input_size = _base_.input_size
 pad_value = _base_.pad_value

@@ -293,7 +293,7 @@ def infer_paths(path_or_dir: Union[List[str], str]) -> Union[List[str], str]:
         return path_or_dir
     assert osp.exists(path_or_dir), f"{path_or_dir} does not exists."
     if osp.isdir(path_or_dir):
-        root = osp.abspath(osp.dirname(path_or_dir))
+        root = osp.abspath(osp.normpath(path_or_dir))
         paths = []
         for file in os.listdir(path_or_dir):
             paths.append(osp.join(root, file))

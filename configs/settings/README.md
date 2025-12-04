@@ -26,6 +26,8 @@ Follow the step‑by‑step checklist, then consult each section for detailed ex
 
 ## ⚙️ 1. Common
 
+**⚠️IMPORTANT⚠️** In this section, make sure the your **paths** are **relative** to the **tools** directory from your **precision_track** GitHub directory.
+
 ### Metadata & experiment tracking
 
 - **`metainfo`**: Python file holding your dataset meta‑information (keypoint names, skeleton, class labels). Please refer to our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) for setupping instructions
@@ -34,6 +36,8 @@ Follow the step‑by‑step checklist, then consult each section for detailed ex
 ---
 
 ## 🔍 2. Detection Configuration
+
+**⚠️IMPORTANT⚠️** In this section, make sure the your **paths** are **relative** to the **tools** directory from your **precision_track** GitHub directory.
 
 - **`with_pose_estimation`**: If `True`, automatically configure the model to train, test, deploy, track and visualize with keypoints. Without considering keypoints if `False`.
 
@@ -105,6 +109,8 @@ Follow the step‑by‑step checklist, then consult each section for detailed ex
 
 ## 🎯 3. Tracking
 
+**⚠️IMPORTANT⚠️** In this section, make sure the your **paths** are **relative** to the **tools** directory from your **precision_track** GitHub directory.
+
 ### 3.0 Runtime setup
 
 - **`tracking_checkpoint`**: Detection's model (either deployed or not) that will actually be used _inside_ the tracker.
@@ -142,6 +148,8 @@ When `with_validation = True`:
 ---
 
 ## 🎬 4. Action Recognition
+
+**⚠️IMPORTANT⚠️** In this section, make sure the your **paths** are **relative** to the **tools** directory from your **precision_track** GitHub directory.
 
 ### 4.0 Runtime (inference)
 

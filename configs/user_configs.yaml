@@ -16,7 +16,6 @@ training:
   data_root: "../../datasets/MICE/pose-estimation/"
   resume: false
   training_checkpoint: "../checkpoints/model_ap/model_ap.pth"
-  testing_checkpoint: "../work_dir/training_runs/mice/epoch_300.pth"
   deploying_directory: "../checkpoints/"
   deploying_sanity_check_img_path: "images/0000003435.jpg"
   batch_size: 38
