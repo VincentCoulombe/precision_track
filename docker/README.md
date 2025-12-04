@@ -26,7 +26,7 @@
 - **Make the build script executable (once):**
 
 ```bash
-sudo chmod +x ./docker/building_image.sh
+(cd ./docker && sudo chmod +x ./building_image.sh)
 ```
 
 - **Build options:**
@@ -48,10 +48,13 @@ sudo chmod +x ./docker/building_image.sh
   - **Examples:**
 
   ```bash
-  bash ./docker/building_image.sh # Auto-detect default
-  bash ./docker/building_image.sh --cuda
-  bash ./docker/building_image.sh --cpu --skip-tests
-  bash ./docker/building_image.sh --both
+  (cd ./docker && bash ./building_image.sh) # Auto-detect default
+
+  (cd ./docker && bash ./building_image.sh --cuda)
+
+  (cd ./docker && bash ./building_image.sh --cpu --skip-tests)
+
+  (cd ./docker && bash ./building_image.sh --both)
   ```
 
 ### 3) Launch your development container (each session)
@@ -65,7 +68,7 @@ sudo chmod +x ./docker/building_image.sh
 - **Make the build script executable (once):**
 
 ```bash
-sudo
+sudo chmod +x ./docker/launching_container.sh
 ```
 
 - **Launch options:**

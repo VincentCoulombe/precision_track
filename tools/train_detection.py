@@ -27,6 +27,8 @@ from precision_track.utils import (
     resize_coco_dataset,
 )
 
+from test_detection import main as test_detection_main
+
 
 if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:
     import torch._dynamo
@@ -48,10 +50,11 @@ def str2bool(v):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("format_dataset", type=str2bool, default=True, help="True to format the training dataset, False otherwise")
-    parser.add_argument("calibrate", type=str2bool, default=True, help="True calibrate the trained model, False otherwise")
-    parser.add_argument("deploy", type=str2bool, default=True, help="True deploy the trained model, False otherwise")
-    parser.add_argument("optimize_hyperparams", type=str2bool, default=True, help="True to optimize the hyperparameters, False otherwise")
+    parser.add_argument("--test", type=str2bool, default=True, help="True to test the trained model, False otherwise")
+    parser.add_argument("--format_dataset", type=str2bool, default=True, help="True to format the training dataset, False otherwise")
+    parser.add_argument("--calibrate", type=str2bool, default=True, help="True to calibrate the trained model, False otherwise")
+    parser.add_argument("--deploy", type=str2bool, default=True, help="True to deploy the trained model, False otherwise")
+    parser.add_argument("--optimize_hyperparams", type=str2bool, default=True, help="True to optimize the hyperparameters, False otherwise")
     parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
     parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
     args = parser.parse_args()
@@ -99,11 +102,11 @@ def main(args):
             resize_coco_dataset(data_root, formatted_dataset_data_root, ann_name=f"{ann_name}.json")
         load_user_configs(formatted_dataset_cfg, system_configs_path)
 
-    # runner = Runner(system_configs_path, args.launcher, mode="train")
-    # runner()
+    runner = Runner(system_configs_path, args.launcher, mode="train")
+    runner()
 
     deploy_cfg = load_config("../configs/tasks/deploying.py")
-    deployed_path = deploy(deploy_cfg, "runtime_config", deploy_cfg["testing_checkpoint"], logger)
+    deployed_path = deploy(deploy_cfg, "runtime_config", os.path.join(training_config.work_dir, f"epoch_{training_config.num_epochs}.pth"), logger)
     deploy_cfg["model"]["checkpoint"] = deployed_path
 
     device = deploy_cfg["device"]
@@ -117,6 +120,9 @@ def main(args):
         deploy_cfg["runtime_config"]["common_config"]["half_precision"] = False
     precision = "FP16" if half_precision else "FP32"
     logger.info(f"Deploying on device: {device} with precision: {precision}.")
+
+    if args.test:
+        test_detection_main(args=args)
 
     if args.calibrate:
         runner = Runner(deploy_cfg, "none", mode="calibrate")
@@ -160,14 +166,21 @@ def main(args):
     tracking_config.load_from = deployed_path
 
     if args.optimize_hyperparams:
+        load_user_configs(dict(training=dict(data_root=data_root)), system_configs_path)
+        deploy_cfg = load_config("../configs/tasks/deploying.py")
         testing_tracking_data_root = deploy_cfg.testing_tracking_data_root
         mot_dataset_ok, feedback = check_if_mot_dataset_is_ok(testing_tracking_data_root)
+
         if mot_dataset_ok:
+
+            video_paths = os.path.join(os.path.normpath(testing_tracking_data_root), "videos")
+            gt_paths = os.path.join(os.path.normpath(testing_tracking_data_root), "bboxes")
+
             logger.info(f"Searching for optimal tracking hyperparameters...")
             search_results = ThresholdsGridSearch(
                 tracking_config=tracking_config,
-                video_paths=os.path.join(testing_tracking_data_root, "bboxes"),
-                gt_paths=os.path.join(testing_tracking_data_root, "videos"),
+                video_paths=video_paths,
+                gt_paths=gt_paths,
                 metadata_path=deploy_cfg.metainfo,
                 output_path=os.path.join(deploy_cfg["runtime_config"]["paths"]["directory"], "tracking_predictions.csv"),
                 save_path=os.path.join(deploy_cfg["runtime_config"]["paths"]["directory"], "thresholds_grid_search_results.csv"),
@@ -187,8 +200,8 @@ def main(args):
             if "stitching_algorithm" in tracking_config:
                 search_results = StitchingHyperparamsGridSearch(
                     tracking_config=tracking_config,
-                    video_paths=os.path.join(testing_tracking_data_root, "bboxes"),
-                    gt_paths=os.path.join(testing_tracking_data_root, "videos"),
+                    video_paths=video_paths,
+                    gt_paths=gt_paths,
                     metadata_path=deploy_cfg.metainfo,
                     bboxes_path=os.path.join(deploy_cfg["runtime_config"]["paths"]["directory"], "tracking_predictions.csv"),
                     search_zones_path=os.path.join(deploy_cfg["runtime_config"]["paths"]["directory"], "search_zones.csv"),
@@ -206,10 +219,10 @@ def main(args):
                         eps=search_results.loc[0, "eps"],
                     ),
                 )
-            else:
-                logger.warning(
-                    f"To be able to search for the optimal hyperparameters, you will need a correctly formatted MOT dataset. Since: {feedback}, your MOT dataset is not correctly formatted."
-                )
+        else:
+            logger.warning(
+                f"To be able to search for the optimal hyperparameters, you will need a correctly formatted MOT dataset. Since: {feedback}, your MOT dataset is not correctly formatted."
+            )
 
 
 if __name__ == "__main__":

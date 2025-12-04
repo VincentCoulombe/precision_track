@@ -2,7 +2,6 @@ _base_ = "../models/yolox-pose.py"
 
 
 # Settings
-work_dir = _base_.testing_work_dir
 device = _base_.deployment_device
 calibration_output_dir = _base_.calibration_output_dir
 

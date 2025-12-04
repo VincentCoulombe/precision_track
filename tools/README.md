@@ -1,12 +1,42 @@
 # PrecisionTrack toolkit guide
 
-PrecisionTrack's toolkit is composed of a series of configurable applications that you can run directly from your terminal. Here is a guide on how to use every one of them.
+PrecisionTrack's toolkit is composed of a series of configurable tools that you can run directly from your terminal. Here is a guide on how to use every one of them.
 
 ---
 
 ## Overview
 
-- **Seven applications**
+**⚠️IMPORTANT⚠️** Make sure to run each tool from the precision_track's `tools` directory.
+
+```bash
+cd ./tools
+```
+
+**Note**: For Windows and WSL users. You'll first need to change your directory to PrecisionTrack's. To do so, follow these steps:
+
+1. Launch WSL
+2. Launch precision_track's Docker container from inside WSL
+3. Enter the following command:
+
+   ```bash
+   ls
+   ```
+
+   You should then see the content of your precision_track's directory. Something like:
+
+   ```bash
+   Colab      assets       docker           pytest.ini    setup.py  tracking_predictions.csv
+   LICENSE    checkpoints  precision_track  requirements  tests     work_dir
+   README.md  configs      pyproject.toml   setup.cfg     tools
+   ```
+
+4. Enter the following command to enter the `tools` directory:
+
+   ```bash
+   cd ./tools
+   ```
+
+- **There are seven tools in the `tools` directory**
 
   - `train_detection.py` — Orchestrate the training and deployment of **Detection models**.
   - `train_action_recognition.py` — Orchestrate the training and deployment of **MART models**.
@@ -32,17 +62,18 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 
 - **Inputs:**:
 
-  - `format_dataset`. True to resize and format your COCO-style dataset (accelerate the model's training significantly), False otherwise. Default to True.
-  - `deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
-  - `calibrate`. True to calibrate and generate or update the `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
-  - `optimize_hyperparams` True to optimize your tracking hyperparameters and generate an `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `--format_dataset`. True to resize and format your COCO-style dataset (accelerate the model's training significantly), False otherwise. Default to True.
+  - `--test`. True to automatically launch the `test_detection.py` tool after the training run, False otherwise. Default to True.
+  - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `--calibrate`. True to calibrate and generate or update the `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `--optimize_hyperparams` True to optimize your tracking hyperparameters and generate a `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
 
-- **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory.
+- **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory. A `hyperparams.json` file and `DEPLOYED` checkpoints will be saved in your `<deploying_directory>`. Testing metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
 
 - **Examples**
 
   ```bash
-  python train_detection.py deploy=true calibrate=true optimize_hyperparams=false format_dataset=true
+  python train_detection.py --test=true --deploy=true --calibrate=true --optimize_hyperparams=false --format_dataset=true
   ```
 
 ---
@@ -53,14 +84,15 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 
 - **Inputs:**:
 
-  - `deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `--test`. True to automatically launch the `test_action_recognition.py` tool after the training run, False otherwise. Default to True.
+  - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
 
-- **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory.
+- **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory. `DEPLOYED` checkpoints will be saved in your `<deploying_directory>`. Testing metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
 
 - **Examples**
 
   ```bash
-  python train_action_recognition.py deploy=true
+  python train_action_recognition.py --deploy=true
   ```
 
 ---
@@ -142,14 +174,14 @@ PrecisionTrack's toolkit is composed of a series of configurable applications th
 - **Train → Test → Deploy**
 
   ```bash
-  <!-- Train, Test and Deploy Detection model -->
-  python train_detection.py calibrate=true deploy=true optimize_hyperparams=false
-  python test_detection.py
+  <!-- Train, Test and Deploy Detection model. -->
+  python train_detection.py --test=true --calibrate=true --deploy=true --optimize_hyperparams=false
   ```
 
 - **Track → Visualize**
 
   ```bash
-  python track.py video last_experiment.mp4
-  python visualize.py source last_experiment.mp4 sink annotated_last_experiment.mp4
+  <!-- Track on a specified video and the render the results. -->
+  python track.py video <your video name>.mp4
+  python visualize.py source <your video name>.mp4 sink annotated_<your video name>.mp4
   ```

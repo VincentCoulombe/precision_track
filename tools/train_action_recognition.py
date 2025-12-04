@@ -12,11 +12,13 @@ from precision_track.deploy.to_tensorrt import to_tensorrt
 from precision_track.models.backends import DetectionBackend
 
 from train_detection import str2bool, deploy, load_config, parse_device_id, get_device
+from test_action_recognition import main as test_ar_main
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("deploy", type=str2bool, default=True, help="True deploy the trained model, False otherwise")
+    parser.add_argument("--test", type=str2bool, default=True, help="True to test the trained model, False otherwise")
+    parser.add_argument("--deploy", type=str2bool, default=True, help="True to deploy the trained model, False otherwise")
     parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
     parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
     args = parser.parse_args()
@@ -43,56 +45,60 @@ def main(args):
     if device == "auto":
         device = get_device()
 
-    if deploy_cfg["mart_runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:
-        ir_config = deploy_cfg["mart_onnx_config"]
-        ir_save_file = ir_config["save_file"]
-        logger.info(f"Deploying {ir_save_file} to ONNX.")
-        detector = DetectionBackend(**tracking_config.detector)
-        assigner = AssociationStep(**tracking_config.assigner)
-        mart_to_onnx(
-            assigner(detector([deploy_cfg["img"]], [0])[0]),
-            deploy_cfg["mart_runtime_config"]["paths"]["directory"],
-            ir_save_file,
-            deploy_cfg,
-            deployed_path,
-            device=device,
-        )
+    if args.test:
+        test_ar_main(args=args)
 
-    if deploy_cfg["mart_runtime_config"]["type"] == "tensorrt":
-        logger.info(f"Optimizing {ir_save_file} to TensorRT.")
+    if args.deploy:
+        if deploy_cfg["mart_runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:
+            ir_config = deploy_cfg["mart_onnx_config"]
+            ir_save_file = ir_config["save_file"]
+            logger.info(f"Deploying {ir_save_file} to ONNX.")
+            detector = DetectionBackend(**tracking_config.detector)
+            assigner = AssociationStep(**tracking_config.assigner)
+            mart_to_onnx(
+                assigner(detector([deploy_cfg["img"]], [0])[0]),
+                deploy_cfg["mart_runtime_config"]["paths"]["directory"],
+                ir_save_file,
+                deploy_cfg,
+                deployed_path,
+                device=device,
+            )
 
-        common_params = deploy_cfg["mart_runtime_config"]["common_config"]
-        model_params = deploy_cfg["mart_runtime_config"]["model_inputs"]
+        if deploy_cfg["mart_runtime_config"]["type"] == "tensorrt":
+            logger.info(f"Optimizing {ir_save_file} to TensorRT.")
 
-        input_shapes = deploy_cfg["analyzer"]["runtime"]["input_shapes"]
-        input_names = deploy_cfg["action_recognition_input_names"]
+            common_params = deploy_cfg["mart_runtime_config"]["common_config"]
+            model_params = deploy_cfg["mart_runtime_config"]["model_inputs"]
 
-        num_subjects = deploy_cfg.get("num_subjects")
-        if isinstance(num_subjects, dict):
-            num_subjects = max([int(v) for v in num_subjects.values()])
-        elif isinstance(num_subjects, int):
-            num_subjects = num_subjects
-        else:
-            num_subjects = 1
-        max_subjects = 10 * num_subjects
+            input_shapes = deploy_cfg["analyzer"]["runtime"]["input_shapes"]
+            input_names = deploy_cfg["action_recognition_input_names"]
 
-        formatted_input_shapes = defaultdict(dict)
-        for k, input_shape in zip(input_names, input_shapes):
-            formatted_input_shapes[k]["min_shape"] = [1] + list(input_shape.shape)
-            formatted_input_shapes[k]["opt_shape"] = [num_subjects] + list(input_shape.shape)
-            formatted_input_shapes[k]["max_shape"] = [max_subjects] + list(input_shape.shape)
+            num_subjects = deploy_cfg.get("num_subjects")
+            if isinstance(num_subjects, dict):
+                num_subjects = max([int(v) for v in num_subjects.values()])
+            elif isinstance(num_subjects, int):
+                num_subjects = num_subjects
+            else:
+                num_subjects = 1
+            max_subjects = 10 * num_subjects
 
-        final_params = common_params
-        final_params.update(model_params)
+            formatted_input_shapes = defaultdict(dict)
+            for k, input_shape in zip(input_names, input_shapes):
+                formatted_input_shapes[k]["min_shape"] = [1] + list(input_shape.shape)
+                formatted_input_shapes[k]["opt_shape"] = [num_subjects] + list(input_shape.shape)
+                formatted_input_shapes[k]["max_shape"] = [max_subjects] + list(input_shape.shape)
 
-        to_tensorrt(
-            os.path.join(deploy_cfg["mart_runtime_config"]["paths"]["directory"], ir_save_file),
-            input_shapes=final_params["input_shapes"],
-            log_level=None,
-            half_precision=final_params.get("half_precision", False),
-            max_workspace_size=final_params.get("max_workspace_size", 0),
-            device_id=parse_device_id(device),
-        )
+            final_params = common_params
+            final_params.update(model_params)
+
+            to_tensorrt(
+                os.path.join(deploy_cfg["mart_runtime_config"]["paths"]["directory"], ir_save_file),
+                input_shapes=final_params["input_shapes"],
+                log_level=None,
+                half_precision=final_params.get("half_precision", False),
+                max_workspace_size=final_params.get("max_workspace_size", 0),
+                device_id=parse_device_id(device),
+            )
 
 
 if __name__ == "__main__":
