@@ -32,9 +32,5 @@ class BaseOutput(metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def scale(self) -> None:
-        """Scale the output's annotations."""
-
-    @abc.abstractmethod
     def valid(self) -> bool:
         """Return True if the output's path is valid, else False."""

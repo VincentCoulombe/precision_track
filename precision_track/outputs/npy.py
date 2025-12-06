@@ -101,3 +101,6 @@ class NpyEmbeddingOutput(BaseOutput):
         self.emb_dim = E
         self.entities = list(self.data[0, :, 0].astype(int))
         self._length = T - 1
+
+    def valid(self) -> bool:
+        return os.path.isfile(self.path)

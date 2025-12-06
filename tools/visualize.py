@@ -22,14 +22,14 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # main(parse_args())
-    from addict import Dict
+    main(parse_args())
+    # from addict import Dict
 
-    main(
-        Dict(
-            {
-                "source": "/home/vincent/Downloads/test_video.mp4",
-                "sink": "../work_dir/rendering_camille.mp4",
-            }
-        )
-    )
+    # main(
+    #     Dict(
+    #         {
+    #             "source": "/home/vincent/Downloads/test_video.mp4",
+    #             "sink": "../work_dir/rendering_camille.mp4",
+    #         }
+    #     )
+    # )

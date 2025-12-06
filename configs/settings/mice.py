@@ -1,10 +1,10 @@
 _base_ = "./_base_.py"
 
 # Common
-# metainfo = "../configs/metadata/mice.py"
-metainfo = "../../datasets/camille/stripedmice.py"
+metainfo = "../configs/metadata/mice.py"
+# metainfo = "../../datasets/camille/stripedmice.py"
 
-wandb_logging = True
+wandb_logging = False
 # /Common
 
 # 1) Detection
@@ -87,18 +87,17 @@ deployed_name = "model_mice_clustering_DEPLOYED.pth"
 
 
 # 2) Tracking
-# tracking_checkpoint = deployed_directory + "model_mice_clustering_DEPLOYED.onnx"
-tracking_checkpoint = testing_checkpoint
+tracking_checkpoint = deployed_directory + "model_mice_clustering_DEPLOYED.onnx"
 
 pipelined = False
 tracking_batch_size = 30
 num_tentatives = 5
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = False
+with_action_recognition = True
 
 
-num_mice = 5
+num_mice = 20
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes={"mouse": num_mice},
@@ -145,8 +144,8 @@ eps_range = [1e-2, 1e-1]
 #   2.1) /Tuning
 
 #   2.2) Testing
-# hyperparams = deployed_directory + "hyperparameters.json"
-hyperparams = "../checkpoints/camille/hyperparameters.json"
+hyperparams = deployed_directory + "hyperparameters.json"
+# hyperparams = "../checkpoints/camille/hyperparameters.json"
 
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]

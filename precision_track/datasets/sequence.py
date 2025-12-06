@@ -19,6 +19,8 @@ from mmengine.structures import InstanceData
 from tqdm import tqdm
 from collections import defaultdict
 
+from precision_track.apis.association_step import AssociationStep
+from precision_track.apis.result import Result
 from precision_track.models.backends import DetectionBackend
 from precision_track.models.optimization.coaches import BaseCoach
 from precision_track.registry import DATASETS, OUTPUTS, COACHES
@@ -36,6 +38,7 @@ from precision_track.utils import (
     reformat,
     update_dynamics_2d,
     get_seq_from_img_folder,
+    batch_tracking,
 )
 
 from .transforms.formatting import image_to_tensor
@@ -1083,6 +1086,7 @@ class ActionRecognitionPerFrameDataset(ActionRecognitionDataset):
 @DATASETS.register_module()
 class MAEDataset(OfflineRandomSequenceDataset):
     UNSUP_MANDATORY_KEYS = ["sequences"]
+    UNSUP_MANDATORY_OUTPUTS = ["CsvBoundingBoxes", "CsvVelocities", "CsvKeypoints", "OnlinePthEmbeddingOutput"]
 
     def __init__(
         self,
@@ -1100,6 +1104,9 @@ class MAEDataset(OfflineRandomSequenceDataset):
         inference_resolution=None,
         nb_simulteneous_seq=3,
         supervized=True,
+        tracking_batch_size=30,
+        assigner=None,
+        outputs=None,
         *args,
         **kwargs,
     ):
@@ -1108,6 +1115,27 @@ class MAEDataset(OfflineRandomSequenceDataset):
         self.nb_simulteneous_seq = int(nb_simulteneous_seq)
         self._all_data_prefix = None
         self._nb_sequences = 0
+
+        assert isinstance(supervized, bool)
+        self.supervized = supervized
+
+        if not self.supervized:
+            assert isinstance(assigner, dict)
+            assert isinstance(outputs, list)
+            filtered_outputs = []
+            already_loaded = []
+            for output in outputs:
+                assert isinstance(output, dict)
+                name = output["type"]
+                if name in self.UNSUP_MANDATORY_OUTPUTS and name not in already_loaded:
+                    filtered_outputs.append(output)
+                    already_loaded.append(name)
+            assert len(filtered_outputs) == len(self.UNSUP_MANDATORY_OUTPUTS)
+            assert tracking_batch_size > 0
+        self.assigner = assigner
+        self.tracking_outputs = filtered_outputs
+        self.tracking_batch_size = int(tracking_batch_size)
+
         super().__init__(
             from_file=from_file,
             detector=detector,
@@ -1121,17 +1149,12 @@ class MAEDataset(OfflineRandomSequenceDataset):
             block_size=block_size,
             inference_resolution=inference_resolution,
         ),
-        self.instances = list(self.instance_sequences.keys())
-
         for size in [n_feats, n_velocities]:
             assert 0 < size
         self.n_feats = n_feats
         self.n_kpts = self.metainfo.get("num_keypoints", 0)
         assert self.n_kpts > 0, f"The metainfo's {self.METAINFO} 'keypoint_info' contains no keypoints."
         self.n_velocities = n_velocities
-
-        assert isinstance(supervized, bool)
-        self.supervized = supervized
 
     def prepare_data(self, idx):
 
@@ -1231,9 +1254,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 self._init_data_prefix_key(key)
 
             sequences = []
-            for seq in zip(*[self.data_prefix[k] for k in self.UNSUP_MANDATORY_KEYS]):
-                full_dir = os.path.join(self.data_root, seq)
-                sequences.append(full_dir)
+            for prefix_list in [self.data_prefix[k] for k in self.UNSUP_MANDATORY_KEYS]:
+                for v in prefix_list:
+                    full_dir = os.path.join(self.data_root, v)
+                    sequences.append(full_dir)
 
             self.data_prefix.update(
                 {
@@ -1242,42 +1266,97 @@ class MAEDataset(OfflineRandomSequenceDataset):
             )
 
     def load_data_list(self) -> List[dict]:
-        if self.supervized:  # TODO Si t'a des labels
+        if self.supervized:
             data_list = super().load_data_list()
+            self._length = 0
+            for s, sequence in enumerate(data_list):
+                seq_dynamics = dict()
+                for i, data_sample in enumerate(sequence):
+                    frame_id = data_sample.img_id
+                    bboxes = data_sample.pred_track_instances.bboxes
+                    del data_sample.pred_track_instances.bboxes
+                    ids = data_sample.pred_track_instances.instances_id
+                    frame_dynamics = torch.zeros((len(ids), 6), device=ids.device, dtype=bboxes.dtype)
+                    centroids = bboxes[:, :2].numpy()
+                    for j, (id_, location) in enumerate(zip(ids, centroids)):
+                        id_ = id_.item()
+                        if id_ not in seq_dynamics:
+                            seq_dynamics[id_] = np.array([location[0], location[1], 0, 0, 0, 0, frame_id], dtype=np.float32)
+                        else:
+                            dynamics = seq_dynamics[id_][:6]
+                            dt = frame_id - seq_dynamics[id_][-1]
+                            dynamics = update_dynamics_2d(dynamics, location.astype(np.float32), seq_dynamics[id_][:2].copy(), 0.5, dt)
+                            seq_dynamics[id_][:6] = dynamics
+                            seq_dynamics[id_][-1] = frame_id
+                        frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
+
+                        if frame_id >= self.block_size:  # Removing first self.block_size frames from each sequences.
+                            self.instance_sequences[id_].append((s, i))
+                            self._length += 1
+                    data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
+            self._length = max([len(s) for s in self.instance_sequences.values()])
+            assert self.block_size < self._length, f"The specified block size ({self.block_size}) is bigger than the biggest sequence ({self._length})."
         else:
             data_list = self.load_data_list_unsupervized()
-        for s, sequence in enumerate(data_list):
-            seq_dynamics = dict()
-            for i, data_sample in enumerate(sequence):
-                frame_id = data_sample.img_id
-                bboxes = data_sample.pred_track_instances.bboxes
-                del data_sample.pred_track_instances.bboxes
-                ids = data_sample.pred_track_instances.instances_id
-                frame_dynamics = torch.zeros((len(ids), 6), device=ids.device, dtype=bboxes.dtype)
-                centroids = bboxes[:, :2].numpy()
-                for j, (id_, location) in enumerate(zip(ids, centroids)):
-                    id_ = id_.item()
-                    if id_ not in seq_dynamics:
-                        seq_dynamics[id_] = np.array([location[0], location[1], 0, 0, 0, 0, frame_id], dtype=np.float32)
-                    else:
-                        dynamics = seq_dynamics[id_][:6]
-                        dt = frame_id - seq_dynamics[id_][-1]
-                        dynamics = update_dynamics_2d(dynamics, location.astype(np.float32), seq_dynamics[id_][:2].copy(), 0.5, dt)
-                        seq_dynamics[id_][:6] = dynamics
-                        seq_dynamics[id_][-1] = frame_id
-                    frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
-
-                    if frame_id >= self.block_size:  # Removing first self.block_size frames from each sequences.
+            for s, sequence in enumerate(data_list):
+                for i, data_sample in enumerate(sequence):
+                    ids = data_sample.pred_track_instances.instances_id
+                    for j, id_ in enumerate(ids):
+                        id_ = id_.item()
                         self.instance_sequences[id_].append((s, i))
                         self._length += 1
-                data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
-        self._length = max([len(s) for s in self.instance_sequences.values()])
-        assert self.block_size < self._length, f"The specified block size ({self.block_size}) is bigger than the biggest sequence ({self._length})."
+        self.instances = list(self.instance_sequences.keys())
         return data_list
 
     def load_data_list_unsupervized(self):
-        # TODO Juste tracker (pas de ReID/validation, pas de labels)
-        pass
+        self.logger.info("Loading sequences...")
+        data_list = [[] for _ in self.data_prefix["sequences"]]
+        for sequence_idx, sequence in tqdm(enumerate(self.data_prefix["sequences"])):
+            self.set_sequence_transforms()
+            vid_reader = VideoReader(sequence)
+            seq_length = len(vid_reader)
+
+            # 1) loader un nouveau tracker
+            assigner = AssociationStep(**self.assigner)
+            result = Result(self.tracking_outputs)
+            # 2) tracker sur video
+            results = batch_tracking(
+                video=vid_reader,
+                detector=self.detector,
+                batch_size=self.tracking_batch_size,
+                result=result,
+                association_step=assigner,
+                validator=None,
+                analyzer=None,
+                verbose=True,
+            )
+            # 3) loader results dans data_list
+            for i in range(seq_length):
+                pred_track_instances = Dict()
+                for o in results.outputs:
+                    frame_output = torch.tensor(o[i])
+                    if o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[0]:
+                        pred_track_instances.labels = frame_output[:, 1]
+                        pred_track_instances.instances_id = frame_output[:, 2]
+                    elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[1]:
+                        pred_track_instances.dynamics = frame_output[:, 3:5]
+                    elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[2]:
+                        frame_output = frame_output[:, 3:]
+                        num_kpts = frame_output.shape[1] // 3
+                        frame_output = frame_output.view(-1, num_kpts, 3)
+                        pred_track_instances.kpts = frame_output[..., :2]
+                        pred_track_instances.kpt_vis = frame_output[..., 2]
+                    elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[3]:
+                        pred_track_instances.features = frame_output
+
+                light_ds = PoseDataSample()
+                light_ds.pred_track_instances = pred_track_instances
+                light_ds.img_id = i
+                light_ds.seq_id = sequence_idx
+
+                data_list[sequence_idx].append(light_ds)
+
+        return data_list
 
     def __len__(self):
         return self._length

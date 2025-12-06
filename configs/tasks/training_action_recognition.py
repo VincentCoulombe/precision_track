@@ -78,6 +78,7 @@ detector = dict(
     temperature_file=_base_.hyperparams,
 )
 
+assert _base_.analyzer is not None, "To train an action recognition model, you will need to set 'with_action_recognition = True' in your user config."
 model = dict(
     _base_.analyzer.runtime.model,
     data_preprocessor=dict(

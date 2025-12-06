@@ -1,5 +1,6 @@
 from .csv import CsvActions, CsvBoundingBoxes, CsvCorrections, CsvKeypoints, CsvSearchAreas, CsvValidations, CsvVelocities
 from .npy import NpyEmbeddingOutput
+from .online import OnlinePthEmbeddingOutput
 from .base import BaseOutput
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "CsvCorrections",
     "CsvActions",
     "NpyEmbeddingOutput",
+    "OnlinePthEmbeddingOutput",
     "BaseOutput",
 ]

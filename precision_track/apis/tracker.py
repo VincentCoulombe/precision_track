@@ -15,9 +15,9 @@ from mmengine.model import BaseModel
 from tqdm import tqdm
 
 from precision_track.models.backends import DetectionBackend
-from precision_track.outputs.display import display_latency, display_progress_bar
+from precision_track.outputs.display import display_latency
 from precision_track.registry import MODELS, TRACKING
-from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear
+from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking
 
 from .association_step import AssociationStep
 from .result import Result
@@ -133,48 +133,21 @@ class Tracker(BaseModel):
             return [output]
         return batched_outputs
 
-    def predict(self, video: VideoReader) -> Result:
+    def predict(self, video: VideoReader, save: bool = True) -> Result:
         assert isinstance(video, VideoReader)
 
-        b_frames = []
-        b_idx = []
-        outputs = deque()
-        frames = deque()
-        frame_id = 0
-        empty = False
-        switches = None
         total_frames = len(video)
         t0 = perf_counter()
-        while True:
-            frame = video.read()
-            if len(b_frames) == self.batch_size or (empty and b_frames):
-                for output in self.detector(inputs=b_frames, data_samples=b_idx):
-                    outputs.appendleft(output)
-                b_frames, b_idx = [], []
-            if frame is not None:
-                b_frames.append(frame)
-                b_idx.append(frame_id)
-                frames.appendleft(frame)
-                frame_id += 1
-                if self.verbose:
-                    display_progress_bar(frame_id, total_frames)
-            else:
-                empty = True
-            if outputs:
-                output = outputs.pop()
-                output = self.association_step(output, switches)
-                frame = frames.pop()
-                if self.validator is not None:
-                    if self.validator._frame_size is None:
-                        self.validator.frame_size = frame.shape[:2]
-                    output, switches = self.validator(frame, output)
-                if self.analyzer is not None:
-                    output = self.analyzer.predict(output)
-
-                self.result(output)
-            elif empty and not b_frames:
-                break
-
+        batch_tracking(
+            video=video,
+            detector=self.detector,
+            batch_size=self.batch_size,
+            result=self.result,
+            association_step=self.association_step,
+            validator=self.validator,
+            analyzer=self.analyzer,
+            verbose=self.verbose,
+        )
         if self.verbose:
             display_latency(
                 np.array([perf_counter() - t0]) / total_frames,
@@ -182,7 +155,8 @@ class Tracker(BaseModel):
                 buffer_size=0,
                 precision=4,
             )
-        self.result.save()
+        if save:
+            self.result.save()
         return self.result
 
     def _process_sequence(
@@ -352,6 +326,7 @@ def analyzing_process(
     analyzer_ready,
     analyzer_cfg=None,
     outout_cfg=None,
+    save=True,
 ):
     analyzer = analyzer_cfg
     if analyzer is not None:
@@ -370,8 +345,8 @@ def analyzing_process(
                 result(output)
             else:
                 break
-
-    result.save()  # TODO refactor the result saving pipeline
+    if save:
+        result.save()  # TODO refactor the result saving pipeline
     analyzer_ready.clear()
 
 
