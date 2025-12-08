@@ -154,7 +154,10 @@ def test_init(CsvClass, path):
         obj = CsvClass(path)
         assert obj.path.endswith(path)
         assert obj.precision == 32
-        assert obj.confidence_threshold == 0.5
+        if CsvClass is CsvBoundingBoxes:
+            assert obj.confidence_threshold == 0.1
+        else:
+            assert obj.confidence_threshold == 0.5
         assert os.path.splitext(path)[1] == obj.EXTENSION
         dir_name = os.path.abspath(os.path.dirname(path))
         assert os.path.exists(dir_name)

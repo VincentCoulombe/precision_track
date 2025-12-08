@@ -18,10 +18,12 @@ def parse_args():
 
 
 def main(args):
+
     system_configs_path = "../configs/tasks/tracking.py"
     with open("../configs/user_configs.yaml", "r") as f:
         user_configs = yaml.safe_load(f)
     load_user_configs(user_configs, system_configs_path)
+
     config = Config.fromfile(system_configs_path)
     video = VideoReader(args.video)
     nb_cpu_cores = psutil.cpu_count(logical=False)

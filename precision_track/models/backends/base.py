@@ -21,11 +21,8 @@ class BaseBackend(BaseModel, metaclass=ABCMeta):
     def __init__(self, runtime: Config, *args, **kwargs):
         super(BaseBackend, self).__init__()
         checkpoint = runtime.get("checkpoint", "")
-        print("CHECKPOINT: ", str(checkpoint))
         if not checkpoint:
             checkpoint = runtime.get("deploying_directory")
-        print("CHECKPOINT: ", str(checkpoint))
-        print(set_runtime_attributes(checkpoint))
         runtime["type"], runtime["checkpoint"] = set_runtime_attributes(checkpoint)
         self._runtime_type = runtime["type"]
         self._runtime = RUNTIMES.build(runtime)

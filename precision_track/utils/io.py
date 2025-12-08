@@ -68,7 +68,7 @@ class VideoReader:
     def __init__(self, filename, cache_capacity=10):
         # Check whether the video path is a url
         if not filename.startswith(("https://", "http://")):
-            check_file_exist(filename, "Video file not found: " + filename)
+            check_file_exist(filename, "Video file not found: " + os.path.abspath(filename))
         self.filename = filename
         self._vcap = cv2.VideoCapture(filename)
         assert cache_capacity > 0

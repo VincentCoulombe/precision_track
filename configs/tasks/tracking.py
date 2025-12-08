@@ -9,13 +9,14 @@ hyperparams = _base_.hyperparams
 input_size = _base_.input_size
 pad_value = _base_.pad_value
 
-metainfo = "../configs/metadata/mice.py"
+metainfo = _base_.metainfo
 
 low_thr = _base_.low_thr
 high_thr = _base_.high_thr
 init_thr = _base_.init_thr
 
-display_search_zones = False
+display_search_zones = _base_.display_search_zones
+display_only_detections = _base_.display_only_detections
 # /Settings
 
 # Model
@@ -76,7 +77,7 @@ outputs = [
     dict(
         type="CsvBoundingBoxes",
         path=_base_.work_dir + "/bboxes.csv",
-        instance_data="pred_track_instances",
+        instance_data="pred_instances" if display_only_detections else "pred_track_instances",
         precision=64,
     ),
     dict(
@@ -95,7 +96,7 @@ if _base_.with_pose_estimation:
         dict(
             type="CsvKeypoints",
             path=_base_.work_dir + "/kpts.csv",
-            instance_data="pred_track_instances",
+            instance_data="pred_instances" if display_only_detections else "pred_track_instances",
             precision=32,
         ),
     ]
@@ -193,7 +194,7 @@ if _base_.validator is not None:
 painters += [
     dict(
         type="LabelPainter",
-        info=["id"],
+        info=["class", "id", "score"],
         metafile_path=metainfo,
         label_position="TOP_CENTER",
         text_color=[0, 0, 0],
