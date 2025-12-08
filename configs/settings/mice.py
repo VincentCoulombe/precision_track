@@ -51,7 +51,7 @@ else:
 
 #   1.2) Testing
 testing_work_dir = _base_.work_dir + "testing_runs/" + dataset_name + "/"
-testing_checkpoint = '../work_dir/training_runs/mice/epoch_300.pth'
+testing_checkpoint = "../work_dir/training_runs/mice/epoch_300.pth"
 
 testing_anns_path = validation_anns_path
 testing_imgs_path = validation_imgs_path
@@ -76,14 +76,15 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 deploying_sanity_check_img_path = 'images/0000003435.jpg'
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = '../checkpoints/'
+deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
 
 
 # 2) Tracking
-tracking_checkpoint = ''
+tracking_checkpoint_name = ''
+tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
 tracking_batch_size = 30
@@ -281,3 +282,9 @@ mart_deploying_directory = deploying_directory
 mart_deployed_name = "mart_DEPLOYED.pth"
 #   3.3) /Deployment
 # 3) /Action Recognition
+
+
+# 4) Visualization
+display_only_detections = False
+display_search_zones = False
+# 4) /Visualization

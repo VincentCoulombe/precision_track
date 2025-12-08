@@ -107,10 +107,9 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
   - If animals **can enter or leave the scene**, set it to **-1**.
   - Ensure that the classes set here are coherent with those in your **metadata file**.
 
-- **tracking_checkpoint**  
-  This config allow you to select a specific checkpoint to track with. This checkpoint could be:
+- **tracking_checkpoint_name**  
+  This config allow you to select, by name, a specific checkpoint, from inside your `deploying_directory`, to track with. This checkpoint could be:
 
-  - The last checkpoint of your latest training run (`../work_dir/training_runs/<dataset_name>/epoch_300.pth`)
   - Your `_DEPLOYED.pth`
   - Your `_DEPLOYED.onnx`
   - Your `.engine`

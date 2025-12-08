@@ -195,7 +195,7 @@ class CsvBoundingBoxes(BaseCsvOutput):
         path: str,
         bbox_format: str = "cxcywh",
         instance_data: str = "pred_instances",
-        confidence_threshold: float = 0.5,
+        confidence_threshold: float = 0.1,
         precision: int = 32,
         ids_field: str = "instances_id",
         save_bbox_format: list = None,
