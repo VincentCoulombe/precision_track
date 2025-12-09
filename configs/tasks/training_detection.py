@@ -13,7 +13,6 @@ work_dir = _base_.training_work_dir
 resume = _base_.resume
 load_from = _base_.training_checkpoint
 
-
 input_size = _base_.input_size
 pad_value = _base_.pad_value
 
@@ -68,7 +67,7 @@ codec = dict(type="YOLOXPoseAnnotationProcessor", input_size=input_size)
 
 load_img = [dict(type="LoadImage")]
 load_anns = [
-    dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False, min_kpt_vis=3),
+    dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False, min_kpt_vis=2),
     dict(type="GenerateTarget", encoder=codec),
     dict(type="PackPoseInputs"),
 ]
@@ -203,6 +202,19 @@ custom_hooks = [
     ),
     dict(type="ModuleFreezingHook", modules_to_freeze=["feature_extraction_head"], priority=30),
 ]
+model = dict(
+    head=dict(
+        # display_assignment_hook=dict(
+        #     type="ActivatedPriorsVisualizationHook",
+        #     augmentations=train_pipeline_stage1,  # To modify to fit the visualization's requirements
+        #     radius=4,
+        #     font_size=4.0,
+        #     palette_size=100,
+        #     interval=50,
+        #     out_dir=_base_.work_dir + "prior_activations/",
+        # )
+    )
+)
 # /Hooks
 
 # Visualization

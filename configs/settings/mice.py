@@ -1,8 +1,8 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../configs/metadata/mice.py'
-wandb_logging = False
+metainfo = '../../datasets/camille/stripedmice_corrected_without_tail.py'
+wandb_logging = True
 # /Common
 
 # 1) Detection
@@ -13,7 +13,7 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
+data_root = '../../datasets/camille/without_tail_640x640/'
 dataset_name = 'mice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -76,14 +76,14 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 deploying_sanity_check_img_path = 'images/0000003435.jpg'
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = '../checkpoints/mice/'
+deploying_directory = '../checkpoints/camille/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
 
 
 # 2) Tracking
-tracking_checkpoint_name = ''
+tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
@@ -93,7 +93,7 @@ nb_frames_retain = 10
 with_validation = False
 with_action_recognition = False
 
-num_subjects = {'mouse': 20}
+num_subjects = {'mouse': 5}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
@@ -286,5 +286,5 @@ mart_deployed_name = "mart_DEPLOYED.pth"
 
 # 4) Visualization
 display_only_detections = False
-display_search_zones = False
+display_search_zones = True
 # 4) /Visualization

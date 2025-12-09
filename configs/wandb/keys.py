@@ -1,2 +1,2 @@
-project = ""
-entity = ""
+project = "PrecisionTrack-Camille"
+entity = "vincent-coulombe"

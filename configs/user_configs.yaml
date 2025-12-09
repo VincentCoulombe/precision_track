@@ -11,30 +11,31 @@ booleans:
 # Training parameters, directories and paths
 # ================================
 training:
-  metainfo: "../configs/metadata/mice.py"
+  # metainfo: "../configs/metadata/mice.py"
+  metainfo: "../../datasets/camille/stripedmice_corrected_without_tail.py"
 
   dataset_name: "mice"
-  data_root: "../../datasets/MICE/pose-estimation/"
+  data_root: "../../datasets/camille/without_tail/"
 
   resume: false
   training_checkpoint: "../checkpoints/model_ap/model_ap.pth"
-  deploying_directory: "../checkpoints/mice/"
+  deploying_directory: "../checkpoints/camille/"
 
   deploying_sanity_check_img_path: "images/0000003435.jpg"
 
   batch_size: 38
-  wandb_logging: false
+  wandb_logging: true
 
 # ================================
 # Tracking parameters, directories and paths
 # ================================
 tracking:
-  num_subjects: { "mouse": 20 }
-  tracking_checkpoint_name: ""
+  num_subjects: { "mouse": 5 }
+  tracking_checkpoint_name: "model_mice_DEPLOYED.pth"
 
 # ================================
 # Visualization parameters
 # ================================
 visualization:
-  display_search_zones: false
+  display_search_zones: true
   display_only_detections: false
