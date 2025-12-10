@@ -17,18 +17,12 @@ low_thr = _base_.low_thr
 high_thr = _base_.high_thr
 init_thr = _base_.init_thr
 
-# data_root = "../../datasets/MICE/sequential_nano/"
 
-# val_sequences = ["videos/14-20-02.avi"]
-# val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
-# val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
-# val_actions_gt_paths = ["actions/14-20-02.csv"]
-
-# train_sequences = val_sequences
-# train_bboxes_gt_paths = val_bboxes_gt_paths
-# train_keypoints_gt_paths = val_keypoints_gt_paths
-# train_actions_gt_paths = val_actions_gt_paths
-
+train_sequences = [
+    "videos/train/13-10-02.avi",
+    "videos/train/13-20-02.avi",
+    "videos/train/13-40-02.avi",
+]
 
 # /Settings
 
@@ -119,7 +113,7 @@ train_dataloader = dict(
         pipeline=_base_.load_img + _base_.resize + _base_.transforms + _base_.load_anns,
         inference_resolution=_base_.inference_resolution,
         training=True,
-        nb_simulteneous_seq=1,
+        nb_simulteneous_seq=2,
         supervized=False,
         _delete_=True,
     ),

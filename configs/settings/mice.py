@@ -4,7 +4,7 @@ _base_ = "./_base_.py"
 metainfo = "../configs/metadata/mice.py"
 # metainfo = "../../datasets/camille/stripedmice.py"
 
-wandb_logging = False
+wandb_logging = True
 # /Common
 
 # 1) Detection

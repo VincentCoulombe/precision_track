@@ -1271,7 +1271,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
             self._length = 0
             for s, sequence in enumerate(data_list):
                 seq_dynamics = dict()
-                for i, data_sample in enumerate(sequence):
+                for data_sample in sequence:
                     frame_id = data_sample.img_id
                     bboxes = data_sample.pred_track_instances.bboxes
                     del data_sample.pred_track_instances.bboxes
@@ -1291,7 +1291,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
                         frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
 
                         if frame_id >= self.block_size:  # Removing first self.block_size frames from each sequences.
-                            self.instance_sequences[id_].append((s, i))
+                            self.instance_sequences[id_].append((s, frame_id))
                             self._length += 1
                     data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
             self._length = max([len(s) for s in self.instance_sequences.values()])
@@ -1299,11 +1299,12 @@ class MAEDataset(OfflineRandomSequenceDataset):
         else:
             data_list = self.load_data_list_unsupervized()
             for s, sequence in enumerate(data_list):
-                for i, data_sample in enumerate(sequence):
+                for data_sample in sequence:
+                    frame_id = data_sample.img_id
                     ids = data_sample.pred_track_instances.instances_id
-                    for j, id_ in enumerate(ids):
+                    for id_ in ids:
                         id_ = id_.item()
-                        self.instance_sequences[id_].append((s, i))
+                        self.instance_sequences[id_].append((s, frame_id))
                         self._length += 1
         self.instances = list(self.instance_sequences.keys())
         return data_list
@@ -1316,10 +1317,8 @@ class MAEDataset(OfflineRandomSequenceDataset):
             vid_reader = VideoReader(sequence)
             seq_length = len(vid_reader)
 
-            # 1) loader un nouveau tracker
             assigner = AssociationStep(**self.assigner)
             result = Result(self.tracking_outputs)
-            # 2) tracker sur video
             results = batch_tracking(
                 video=vid_reader,
                 detector=self.detector,
@@ -1330,7 +1329,6 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 analyzer=None,
                 verbose=True,
             )
-            # 3) loader results dans data_list
             for i in range(seq_length):
                 pred_track_instances = Dict()
                 for o in results.outputs:
