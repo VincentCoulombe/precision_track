@@ -29,12 +29,20 @@ training:
 # Tracking parameters, directories and paths
 # ================================
 tracking:
+  saving_directory: "../work_dir/"
   num_subjects: { "mouse": 20 }
-  tracking_checkpoint_name: ""
+  tracking_checkpoint_name: "model_mice_DEPLOYED.pth"
 
 # ================================
 # Visualization parameters
 # ================================
 visualization:
-  display_search_zones: false
-  display_only_detections: false
+  display_bounding_boxes: true
+  display_poses: true
+  display_velocities: true
+  display_species: true
+  display_confidence_scores: true
+  display_actions: false
+  display_search_zones: true
+  display_validations: false
+  display_untracked_detections: true

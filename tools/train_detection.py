@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument("--format_dataset", type=str2bool, default=True, help="True to format the training dataset, False otherwise")
     parser.add_argument("--calibrate", type=str2bool, default=True, help="True to calibrate the trained model, False otherwise")
     parser.add_argument("--deploy", type=str2bool, default=True, help="True to deploy the trained model, False otherwise")
-    parser.add_argument("--optimize_hyperparams", type=str2bool, default=True, help="True to optimize the hyperparameters, False otherwise")
+    parser.add_argument("--optimize_hyperparams", type=str2bool, default=False, help="True to optimize the hyperparameters, False otherwise")
     parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
     parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
     args = parser.parse_args()

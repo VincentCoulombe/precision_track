@@ -39,14 +39,13 @@ training_imgs_path = data_root + "images/"
 validation_anns_path = data_root + "annotations/val.json"
 validation_imgs_path = training_imgs_path
 
+assign_on = "iou"
 if with_pose_estimation:
     weight_loss_kpts = 30.0
     weight_loss_kpts_vis = 1.0
-    assign_on = "iou"
 else:
     weight_loss_kpts = 0.0
     weight_loss_kpts_vis = 0.0
-    assign_on = "iou"
 #   1.1) /Training
 
 #   1.2) Testing
@@ -83,10 +82,11 @@ deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 
 
 # 2) Tracking
-tracking_checkpoint_name = ''
+tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
+saving_directory = '../work_dir/'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
@@ -128,6 +128,7 @@ if with_validation:
     )
 else:
     validator = None
+    valid_tags = []
 
 #   2.1) Tuning
 low_thr_range = [0.05, 0.1]
@@ -285,6 +286,13 @@ mart_deployed_name = "mart_DEPLOYED.pth"
 
 
 # 4) Visualization
-display_only_detections = False
-display_search_zones = False
+display_bounding_boxes = True
+display_poses = True
+display_velocities = True
+display_species = True
+display_confidence_scores = True
+display_actions = True
+display_search_zones = True
+display_validations = True
+display_untracked_detections = True
 # 4) /Visualization
