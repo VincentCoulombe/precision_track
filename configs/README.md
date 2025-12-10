@@ -101,8 +101,15 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 # 3. Tracking parameters
 
+- **saving_directory**
+  Specifies where PrecisionTrack will **write all tracking outputs** (e.g., bounding boxes, poses, velocities, actions, etc...). The **visualization tool** also **reads from this directory** when rendering videos.
+
+  **⚠️IMPORTANT⚠️**: The **visualization tool** assumes every file in the `saving_directory` belongs to the **same tracking run**. If the `saving_directory` contains **leftovers from older runs**, you may get **incorrect or mixed visualizations**.
+
+  **Best practice**: use a **fresh** or automatically cleaned **directory** for **each run**.
+
 - **num_subjects**
-  Tell PrecisionTrack **how many subjects of each classes are in the scene**
+  Tell PrecisionTrack **how many subjects of each classes are in the scene**.
 
   - If animals **can enter or leave the scene**, set it to **-1**.
   - Ensure that the classes set here are coherent with those in your **metadata file**.
@@ -115,6 +122,30 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
   - Your `.engine`
 
   If left empty (""), PrecisionTrack will automatically select a tracking checkpoint from your **deploying_directory**. The selection is performed **following this priority** : `.engine` -> `_DEPLOYED.onnx` -> `_DEPLOYED.pth`.
+
+---
+
+# 3. Visualization parameters
+
+- **display_bounding_boxes**: Render the tracked subject's bounding boxes, given that a `bboxes.csv` file exists in the `saving_directory`.
+
+- **display_poses**: Render the tracked subject's poses, given that a `kpts.csv` file exists in the `saving_directory`.
+
+- **display_velocities**: Render the tracked subject's velocities, (in the form of an arrow) given that a `velocities.csv` file exists in the `saving_directory`.
+
+- **display_species**: Add the tracked subject's predicted species to the subject's label bars, given that a `bboxes.csv` file exists in the `saving_directory`.
+
+- **display_confidence_scores**: Add the tracked subject's confidence score (which means how confident the subject's detections are) to the subject's label bars, given that a `bboxes.csv` file exists in the `saving_directory`.
+
+- **display_actions**: Add the tracked subject's predicted actions to the subject's label bars, given that a `actions.csv` file exists in the `saving_directory`.
+
+- **display_search_zones**: Render the tracked subject's search zones (as described in the manuscript) to the subject's label bars, given that a `search_areas.csv` file exists in the `saving_directory`.
+
+- **display_validations**: Render the tracked subject's validations (Tailtag detections), given that a `validations.csv` file exists in the `saving_directory`.
+
+- **display_untracked_detections**: Render detected bounding boxes (will be bright white), given that a `detections.csv` file exists in the `saving_directory`.
+
+---
 
 # 🧪 Tips
 

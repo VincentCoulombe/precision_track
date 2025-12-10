@@ -38,19 +38,35 @@ class BasePainter(metaclass=abc.ABCMeta):
 @VISUALIZERS.register_module()
 class BoundingBoxPainter(BasePainter):
 
-    def __init__(self, annotations: List[Config], palette: Optional[dict]) -> None:
+    def __init__(self, annotations: List[Config], palette: Optional[dict], idx: Optional[int] = 0) -> None:
         """Paints any combination of supported annotations. Check the
         annotations module to see which ones are supported.
 
         Args:
             annotations (List[Config]): A list of supported annotations
             palette (Optional[dict]): The color palette
+            idx (Optional[int]): Which CsvBoundingBoxes from the outputs will this particular painter annotate
         """
         super().__init__(["CsvBoundingBoxes"])
         self.annotations = []
         for ann in annotations:
             ann.update({"palette": palette})
             self.annotations.append(VISUALIZERS.build(ann))
+
+        idx = int(idx)
+        assert idx >= 0
+        self.idx = idx
+
+    def __call__(self, frame: np.ndarray, outputs: List[Dict[str, np.ndarray]], idx: int) -> None:
+        output_idx = 0
+        for output in outputs:
+            output_name, output_values = next(iter(output.items()))
+            if self.output_is_supported(output_name):
+                if output_idx == self.idx:
+                    for annotation in self.annotations:
+                        frame = annotation(img=frame, output_values=output_values, idx=idx)
+                output_idx += 1
+        return frame
 
 
 @VISUALIZERS.register_module()
@@ -213,6 +229,7 @@ class LabelPainter(BasePainter):
         text_thickness: Optional[int] = 1,
         text_padding: Optional[int] = 10,
         border_radius: Optional[int] = 1,
+        display_actions: Optional[bool] = True,
         *args,
         **kwargs,
     ) -> None:
@@ -248,6 +265,7 @@ class LabelPainter(BasePainter):
                 border_radius,
             )
         ]
+        self.display_actions = display_actions
 
     def __call__(self, frame: np.ndarray, outputs: List[Dict[str, np.ndarray]], idx: int) -> None:
         """Paint an output on a frame.
@@ -259,11 +277,18 @@ class LabelPainter(BasePainter):
         """
         bboxes_values = None
         action_values = None
+        is_tracking_bboxes = True
+        nb_bboxes_output = sum([1 if next(iter(o.keys())) == "CsvBoundingBoxes" else 0 for o in outputs])
+        if nb_bboxes_output > 1:
+            is_tracking_bboxes = False  # Untracked detecions will always be before bboxes
         for output in outputs:
             output_name, output_values = next(iter(output.items()))
             if output_name == "CsvBoundingBoxes":
-                bboxes_values = output_values
-            elif output_name == "CsvActions":
+                if is_tracking_bboxes:
+                    bboxes_values = output_values
+                else:
+                    is_tracking_bboxes = True  # Skip the first CsvBoundingBoxes (the untracked detections)
+            elif output_name == "CsvActions" and self.display_actions:
                 action_values = output_values
 
         for annotation in self.annotations:

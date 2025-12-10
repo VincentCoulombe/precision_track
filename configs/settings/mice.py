@@ -1,8 +1,8 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../../datasets/camille/stripedmice_corrected_without_tail.py'
-wandb_logging = True
+metainfo = '../configs/metadata/mice.py'
+wandb_logging = False
 # /Common
 
 # 1) Detection
@@ -13,7 +13,7 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/camille/without_tail_640x640/'
+data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -39,14 +39,13 @@ training_imgs_path = data_root + "images/"
 validation_anns_path = data_root + "annotations/val.json"
 validation_imgs_path = training_imgs_path
 
+assign_on = "iou"
 if with_pose_estimation:
     weight_loss_kpts = 30.0
     weight_loss_kpts_vis = 1.0
-    assign_on = "iou"
 else:
     weight_loss_kpts = 0.0
     weight_loss_kpts_vis = 0.0
-    assign_on = "iou"
 #   1.1) /Training
 
 #   1.2) Testing
@@ -76,7 +75,7 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 deploying_sanity_check_img_path = 'images/0000003435.jpg'
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = '../checkpoints/camille/'
+deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
@@ -87,13 +86,14 @@ tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
+saving_directory = '../work_dir/'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
 with_action_recognition = False
 
-num_subjects = {'mouse': 5}
+num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
@@ -128,6 +128,7 @@ if with_validation:
     )
 else:
     validator = None
+    valid_tags = []
 
 #   2.1) Tuning
 low_thr_range = [0.05, 0.1]
@@ -285,6 +286,13 @@ mart_deployed_name = "mart_DEPLOYED.pth"
 
 
 # 4) Visualization
-display_only_detections = False
+display_bounding_boxes = True
+display_poses = True
+display_velocities = True
+display_species = True
+display_confidence_scores = True
+display_actions = True
 display_search_zones = True
+display_validations = True
+display_untracked_detections = True
 # 4) /Visualization
