@@ -139,7 +139,7 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 - **display_actions**: Add the tracked subject's predicted actions to the subject's label bars, given that a `actions.csv` file exists in the `saving_directory`.
 
-- **display_search_zones**: Render the tracked subject's search zones (as described in the manuscript) to the subject's label bars, given that a `search_areas.csv` file exists in the `saving_directory`.
+- **display_search_zones**: Render the tracked subject's search zones (as described in the manuscript), given that a `search_areas.csv` file exists in the `saving_directory`.
 
 - **display_validations**: Render the tracked subject's validations (Tailtag detections), given that a `validations.csv` file exists in the `saving_directory`.
 
