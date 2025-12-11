@@ -118,7 +118,7 @@ class SequencesSwitchHook(Hook):
     def _modify_dataloader(self, runner: Runner):
         runner.logger.info("Generating new training sequences.")
         runner.train_dataloader.dataset._join_prefix()
-        runner.train_dataloader.dataset.full_init()
+        runner.train_dataloader.dataset._init_data_list()
 
     def before_train_iter(self, runner, batch_idx: int, data_batch=None) -> None:
         if batch_idx > 0 and batch_idx % self.generate_every == 0:

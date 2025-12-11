@@ -1096,7 +1096,6 @@ class MAEDataset(OfflineRandomSequenceDataset):
         detector,
         bboxes_gt_format="CsvBoundingBoxes",
         keypoints_gt_format="CsvKeypoints",
-        data_root=".",
         data_prefix=dict(sequences=["."], bboxes_gt_paths=[""], keypoints_gt_paths=[""]),
         pipeline=[],
         test_mode=False,
@@ -1110,7 +1109,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
         *args,
         **kwargs,
     ):
-        self.instance_sequences = defaultdict(list)
+        self.instance_sequences = defaultdict(dict)
         assert nb_simulteneous_seq > 0
         self.nb_simulteneous_seq = int(nb_simulteneous_seq)
         self._all_data_prefix = None
@@ -1142,7 +1141,6 @@ class MAEDataset(OfflineRandomSequenceDataset):
             bboxes_gt_format=bboxes_gt_format,
             keypoints_gt_format=keypoints_gt_format,
             actions_gt_format=None,
-            data_root=data_root,
             data_prefix=data_prefix,
             pipeline=pipeline,
             test_mode=test_mode,
@@ -1159,9 +1157,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
     def prepare_data(self, idx):
 
         id_ = np.random.choice(self.instances)
-        instance_sequence = self.instance_sequences[id_]
+        seq = np.random.choice(list(self.instance_sequences[id_].keys()))
+        instance_sequence = self.instance_sequences[id_][seq]
         seq_idx = np.random.randint(0, len(instance_sequence))
-        seq, idx = self.instance_sequences[id_][seq_idx]
+        idx = instance_sequence[seq_idx]
 
         inputs = torch.zeros((self.block_size, self.n_feats), dtype=torch.float32, device="cpu")
         kpts = torch.zeros((self.block_size, self.n_kpts, 2), dtype=torch.float32, device="cpu")
@@ -1201,6 +1200,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
             selected_seq_idxs.append(np.random.choice(seq_idxs, replace=False))
         self.data_prefix = copy.deepcopy(self._all_data_prefix)
         for k, v in self.data_prefix.items():
+            v = infer_paths(v)
             self.data_prefix[k] = np.array(v)[selected_seq_idxs].tolist()
 
     def _maybe_init_all_prefix(self):
@@ -1226,14 +1226,13 @@ class MAEDataset(OfflineRandomSequenceDataset):
 
             sequences, keypoints_outputs, bboxes_outputs = [], [], []
             for seq, bboxes_path, kpts_path in zip(*[self.data_prefix[k] for k in prefix_keys]):
-                full_dir = os.path.join(self.data_root, seq)
-                sequences.append(full_dir)
+                sequences.append(seq)
 
-                bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "path": os.path.join(self.data_root, bboxes_path)})
+                bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "path": bboxes_path})
                 bboxes_output.read()
                 bboxes_outputs.append(bboxes_output)
 
-                kpts_output = OUTPUTS.build({"type": self.keypoints_gt_format, "path": os.path.join(self.data_root, kpts_path)})
+                kpts_output = OUTPUTS.build({"type": self.keypoints_gt_format, "path": kpts_path})
                 kpts_output.read()
                 keypoints_outputs.append(kpts_output)
 
@@ -1255,10 +1254,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
 
             sequences = []
             for prefix_list in [self.data_prefix[k] for k in self.UNSUP_MANDATORY_KEYS]:
-                for v in prefix_list:
-                    full_dir = os.path.join(self.data_root, v)
-                    sequences.append(full_dir)
-
+                sequences.extend(iter(prefix_list))
             self.data_prefix.update(
                 {
                     "sequences": sequences,
@@ -1291,28 +1287,33 @@ class MAEDataset(OfflineRandomSequenceDataset):
                         frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
 
                         if frame_id >= self.block_size:  # Removing first self.block_size frames from each sequences.
-                            self.instance_sequences[id_].append((s, frame_id))
+                            if s not in self.instance_sequences[id_]:
+                                self.instance_sequences[id_][s] = []
+                            self.instance_sequences[id_][s].append(frame_id)
                             self._length += 1
                     data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
-            self._length = max([len(s) for s in self.instance_sequences.values()])
             assert self.block_size < self._length, f"The specified block size ({self.block_size}) is bigger than the biggest sequence ({self._length})."
         else:
             data_list = self.load_data_list_unsupervized()
             for s, sequence in enumerate(data_list):
                 for data_sample in sequence:
                     frame_id = data_sample.img_id
-                    ids = data_sample.pred_track_instances.instances_id
-                    for id_ in ids:
-                        id_ = id_.item()
-                        self.instance_sequences[id_].append((s, frame_id))
-                        self._length += 1
+                    if frame_id >= self.block_size:
+                        ids = data_sample.pred_track_instances.instances_id
+                        for id_ in ids:
+                            id_ = id_.item()
+                            if s not in self.instance_sequences[id_]:
+                                self.instance_sequences[id_][s] = []
+                            self.instance_sequences[id_][s].append(frame_id)
+                            self._length += 1
         self.instances = list(self.instance_sequences.keys())
         return data_list
 
     def load_data_list_unsupervized(self):
-        self.logger.info("Loading sequences...")
-        data_list = [[] for _ in self.data_prefix["sequences"]]
-        for sequence_idx, sequence in tqdm(enumerate(self.data_prefix["sequences"])):
+        sequences = self.data_prefix["sequences"]
+        self.logger.info(f"Loading sequences: {sequences}...")
+        data_list = [[] for _ in sequences]
+        for sequence_idx, sequence in tqdm(enumerate(sequences)):
             self.set_sequence_transforms()
             vid_reader = VideoReader(sequence)
             seq_length = len(vid_reader)
@@ -1333,19 +1334,22 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 pred_track_instances = Dict()
                 for o in results.outputs:
                     frame_output = torch.tensor(o[i])
-                    if o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[0]:
-                        pred_track_instances.labels = frame_output[:, 1]
-                        pred_track_instances.instances_id = frame_output[:, 2]
-                    elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[1]:
-                        pred_track_instances.dynamics = frame_output[:, 3:5]
-                    elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[2]:
-                        frame_output = frame_output[:, 3:]
-                        num_kpts = frame_output.shape[1] // 3
-                        frame_output = frame_output.view(-1, num_kpts, 3)
-                        pred_track_instances.kpts = frame_output[..., :2]
-                        pred_track_instances.kpt_vis = frame_output[..., 2]
-                    elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[3]:
-                        pred_track_instances.features = frame_output
+                    if len(frame_output) > 0:
+                        if o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[0]:
+                            pred_track_instances.labels = frame_output[:, 1]
+                            pred_track_instances.instances_id = frame_output[:, 2]
+                        elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[1]:
+                            pred_track_instances.dynamics = frame_output[:, 3:5]
+                        elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[2]:
+                            frame_output = frame_output[:, 3:]
+                            num_kpts = frame_output.shape[1] // 3
+                            frame_output = frame_output.view(-1, num_kpts, 3)
+                            pred_track_instances.kpts = frame_output[..., :2]
+                            pred_track_instances.kpt_vis = frame_output[..., 2]
+                        elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[3]:
+                            pred_track_instances.features = frame_output
+                    else:
+                        pred_track_instances.instances_id = frame_output
 
                 light_ds = PoseDataSample()
                 light_ds.pred_track_instances = pred_track_instances
@@ -1355,6 +1359,9 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 data_list[sequence_idx].append(light_ds)
 
         return data_list
+
+    def _init_data_list(self):
+        self.data_list = self.load_data_list()
 
     def __len__(self):
         return self._length

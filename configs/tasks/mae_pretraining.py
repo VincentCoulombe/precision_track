@@ -17,11 +17,10 @@ low_thr = _base_.low_thr
 high_thr = _base_.high_thr
 init_thr = _base_.init_thr
 
+# train_sequences = "../../analyse_longitudinale/clips/"
 
 train_sequences = [
-    "videos/train/13-10-02.avi",
-    "videos/train/13-20-02.avi",
-    "videos/train/13-40-02.avi",
+    "../assets/20mice_sanity_check.avi",
 ]
 
 # /Settings
@@ -103,17 +102,14 @@ train_dataloader = dict(
         n_velocities=2,
         keypoints_gt_format=_base_.keypoints_gt_format,
         bboxes_gt_format=_base_.bboxes_gt_format,
-        data_root=_base_.data_root,
         data_prefix=dict(
-            sequences=_base_.train_sequences,
-            # keypoints_gt_paths=_base_.train_keypoints_gt_paths,
-            # bboxes_gt_paths=_base_.train_bboxes_gt_paths,
+            sequences=train_sequences,
         ),
         block_size=_base_.block_size,
         pipeline=_base_.load_img + _base_.resize + _base_.transforms + _base_.load_anns,
         inference_resolution=_base_.inference_resolution,
         training=True,
-        nb_simulteneous_seq=2,
+        nb_simulteneous_seq=1,
         supervized=False,
         _delete_=True,
     ),
