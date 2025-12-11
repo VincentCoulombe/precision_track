@@ -1109,7 +1109,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
         *args,
         **kwargs,
     ):
-        self.instance_sequences = defaultdict(dict)
+
         assert nb_simulteneous_seq > 0
         self.nb_simulteneous_seq = int(nb_simulteneous_seq)
         self._all_data_prefix = None
@@ -1154,6 +1154,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
         assert self.n_kpts > 0, f"The metainfo's {self.METAINFO} 'keypoint_info' contains no keypoints."
         self.n_velocities = n_velocities
 
+    @force_full_init()
     def prepare_data(self, idx):
 
         id_ = np.random.choice(self.instances)
@@ -1262,6 +1263,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
             )
 
     def load_data_list(self) -> List[dict]:
+        self.instance_sequences = defaultdict(dict)
         if self.supervized:
             data_list = super().load_data_list()
             self._length = 0
