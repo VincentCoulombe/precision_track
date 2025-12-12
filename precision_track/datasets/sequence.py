@@ -1154,7 +1154,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
         assert self.n_kpts > 0, f"The metainfo's {self.METAINFO} 'keypoint_info' contains no keypoints."
         self.n_velocities = n_velocities
 
-    @force_full_init()
+    @force_full_init
     def prepare_data(self, idx):
 
         id_ = np.random.choice(self.instances)
@@ -1264,9 +1264,9 @@ class MAEDataset(OfflineRandomSequenceDataset):
 
     def load_data_list(self) -> List[dict]:
         self.instance_sequences = defaultdict(dict)
+        self._length = 0
         if self.supervized:
             data_list = super().load_data_list()
-            self._length = 0
             for s, sequence in enumerate(data_list):
                 seq_dynamics = dict()
                 for data_sample in sequence:
@@ -1309,6 +1309,18 @@ class MAEDataset(OfflineRandomSequenceDataset):
                             self.instance_sequences[id_][s].append(frame_id)
                             self._length += 1
         self.instances = list(self.instance_sequences.keys())
+
+        seq_counter = 0
+        seq_lenghts = []
+        for id_sequences in self.instance_sequences.values():
+            for seq in id_sequences.values():
+                seq_lenghts.append(len(seq))
+                seq_counter += 1
+        seq_lengths_mean = int(np.mean(seq_lenghts))
+        seq_lenghts_median = int(np.median(seq_lenghts))
+        self.logger.info(
+            f"The dataset contains {seq_counter} sequences. Sequences mean length: {seq_lengths_mean}, sequences median length: {seq_lenghts_median}, length of all sequences: {self._length}."
+        )
         return data_list
 
     def load_data_list_unsupervized(self):

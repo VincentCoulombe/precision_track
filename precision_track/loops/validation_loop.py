@@ -169,14 +169,9 @@ class ValidationLoop(ValLoop):
 
 @LOOPS.register_module()
 class SequenceValidationLoop(ValidationLoop):
+    VALID_MODES = ["pretrain", "predict"]
 
-    def __init__(
-        self,
-        runner,
-        dataloader: Union[DataLoader, Dict],
-        evaluator: Union[Evaluator, Dict, List],
-        fp16: bool = False,
-    ):
+    def __init__(self, runner, dataloader: Union[DataLoader, Dict], evaluator: Union[Evaluator, Dict, List], fp16: bool = False, mode: bool = "predict"):
         super().__init__(
             runner=runner,
             val_cfg=None,
@@ -186,6 +181,29 @@ class SequenceValidationLoop(ValidationLoop):
             is_sequence=True,
         )
         self.backend = self.runner.model
+        self.mode = mode
+
+    @torch.no_grad()
+    def run_iter(self, idx, data_batch: Sequence[dict], *args, **kwargs) -> None:
+        """Iterate one mini-batch.
+
+        Args:
+            data_batch (Sequence[dict]): Batch of data from dataloader.
+        """
+        self.runner.call_hook("before_val_iter", batch_idx=idx, data_batch=data_batch)
+        with autocast(enabled=self.fp16):
+            if self.mode == "predict":
+                outputs = self.backend.val_step(data_batch, *args, **kwargs)
+            else:
+                data = self.backend.data_preprocessor(data_batch)
+                outputs = self.backend.pretrain(**data)
+        self.evaluator.process(data_samples=[outputs], data_batch=data_batch)
+        self.runner.call_hook(
+            "after_val_iter",
+            batch_idx=idx,
+            data_batch=data_batch,
+            outputs=outputs,
+        )
 
 
 @LOOPS.register_module()

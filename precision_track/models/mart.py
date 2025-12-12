@@ -115,10 +115,8 @@ class MART(BaseModel):
             return self.predict((features, poses, dynamics), data_samples)
         elif mode == "pretrain":
             return self.pretrain(features, poses, dynamics)
-        elif mode == "tensor":
-            return self._forward(features, poses, dynamics)
         else:
-            raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss, predict, pretrain and tensor mode.")
+            raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss, predict and pretrain mode.")
 
     def train_step(self, data: Union[dict, tuple, list], optim_wrapper: OptimWrapper) -> Dict[str, torch.Tensor]:
         with optim_wrapper.optim_context(self):
@@ -149,7 +147,7 @@ class MART(BaseModel):
 
         recon = self.reconstruction_head(x)
         loss = F.mse_loss(recon[mask], target[mask])
-        return dict(mae_loss=loss)
+        return dict(mse_loss=loss)
 
     def loss(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, labels: torch.Tensor) -> dict:
         x = self._get_projections(

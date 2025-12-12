@@ -2,7 +2,7 @@ _base_ = "./training_action_recognition.py"
 
 
 # Settings
-base_lr = 3e-4
+base_lr = 1e-5
 weight_decay = 0.1
 warmup_iter = _base_.action_recognition_warmup_iter
 
@@ -19,9 +19,8 @@ init_thr = _base_.init_thr
 
 # train_sequences = "../../analyse_longitudinale/clips/"
 
-train_sequences = [
-    "../assets/20mice_sanity_check.avi",
-]
+train_sequences = ["../assets/20mice_sanity_check.avi"]
+val_sequences = ["../assets/20mice_sanity_check.avi"]
 
 # /Settings
 
@@ -115,15 +114,44 @@ train_dataloader = dict(
     ),
 )
 
-val_dataloader = None
+val_dataloader = dict(
+    batch_size=1,
+    num_workers=0,
+    # num_workers=2,
+    # persistent_workers=True,
+    pin_memory=True,
+    sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
+    dataset=dict(
+        type="MAEDataset",
+        detector=_base_.detector,
+        assigner=assigner,
+        outputs=outputs,
+        tracking_batch_size=_base_.tracking_batch_size,
+        from_file=_base_.metainfo,
+        n_feats=_base_.n_embd_features,
+        n_velocities=2,
+        keypoints_gt_format=_base_.keypoints_gt_format,
+        bboxes_gt_format=_base_.bboxes_gt_format,
+        data_prefix=dict(
+            sequences=val_sequences,
+        ),
+        block_size=_base_.block_size,
+        pipeline=_base_.load_img + _base_.resize + _base_.transforms + _base_.load_anns,
+        inference_resolution=_base_.inference_resolution,
+        training=False,
+        nb_simulteneous_seq=1,
+        supervized=False,
+        _delete_=True,
+    ),
+)
 # /Dataloaders
 
 # Loops
-val_cfg = None
+val_cfg = dict(type="SequenceValidationLoop", mode="pretrain")
 # /Loops
 
 # Evaluation
-val_evaluator = None
+val_evaluator = [dict(type="MSEMetric")]
 # /Evaluation
 
 # Hooks

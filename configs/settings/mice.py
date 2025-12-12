@@ -252,8 +252,9 @@ action_recognition_base_lr = 3e-5
 action_recognition_weight_decay = 0.01
 action_recognition_dropout = 0
 action_recognition_num_iter = 100000
-action_recognition_warmup_iter = int(0.1 * action_recognition_num_iter)
-action_recognition_val_interval = action_recognition_num_iter // 100
+action_recognition_warmup_iter = 25000
+# action_recognition_val_interval = action_recognition_num_iter // 100
+action_recognition_val_interval = 1
 
 
 action_recognition_data_root = "../../datasets/MICE/sequential/"
