@@ -104,6 +104,7 @@ stitching_algorithm = dict(
     beta=0.5,
     match_thr=0.9,
 )
+stitching_algorithm = None
 if with_validation:
     valid_tags = [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 22, 23, 25]
     assert len(valid_tags) == num_mice, f"To ensure a sucessful validation, please make sure that the number of mice match the number of valid tags."

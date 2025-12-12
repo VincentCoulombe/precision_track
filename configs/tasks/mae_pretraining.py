@@ -115,12 +115,6 @@ train_dataloader = dict(
 )
 
 val_dataloader = dict(
-    batch_size=1,
-    num_workers=0,
-    # num_workers=2,
-    # persistent_workers=True,
-    pin_memory=True,
-    sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(
         type="MAEDataset",
         detector=_base_.detector,

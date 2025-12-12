@@ -1202,10 +1202,13 @@ class MAEDataset(OfflineRandomSequenceDataset):
         self.data_prefix = copy.deepcopy(self._all_data_prefix)
         for k, v in self.data_prefix.items():
             v = infer_paths(v)
+            assert len(v) >= self.nb_simulteneous_seq, f"Cannot radonmly select {self.nb_simulteneous_seq} sequences from a pool of only {len(v)} sequences."
             self.data_prefix[k] = np.array(v)[selected_seq_idxs].tolist()
 
     def _maybe_init_all_prefix(self):
         if self._all_data_prefix is None:
+            for key in self.UNSUP_MANDATORY_KEYS:
+                self._init_data_prefix_key(key)
             self._all_data_prefix = copy.deepcopy(self.data_prefix)
             self._nb_sequences = len(self._all_data_prefix["sequences"])
 
@@ -1216,9 +1219,6 @@ class MAEDataset(OfflineRandomSequenceDataset):
 
             self._maybe_init_all_prefix()
             self._pick_random_seqs()
-
-            for key in self.MANDATORY_PREFIX_KEYS:
-                self._init_data_prefix_key(key)
 
             prefix_keys = self.MANDATORY_PREFIX_KEYS
 
@@ -1247,11 +1247,9 @@ class MAEDataset(OfflineRandomSequenceDataset):
         else:
             missing_keys = [k for k in self.UNSUP_MANDATORY_KEYS if k not in self.data_prefix]
             assert not missing_keys, f"Missing mandatory keys: {missing_keys}"
+
             self._maybe_init_all_prefix()
             self._pick_random_seqs()
-
-            for key in self.UNSUP_MANDATORY_KEYS:
-                self._init_data_prefix_key(key)
 
             sequences = []
             for prefix_list in [self.data_prefix[k] for k in self.UNSUP_MANDATORY_KEYS]:
