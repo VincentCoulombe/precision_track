@@ -134,6 +134,7 @@ val_dataloader = dict(
         inference_resolution=_base_.inference_resolution,
         training=False,
         nb_simulteneous_seq=1,
+        custom_length=50000,
         supervized=False,
         _delete_=True,
     ),

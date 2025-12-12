@@ -1106,6 +1106,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
         tracking_batch_size=30,
         assigner=None,
         outputs=None,
+        custom_length=None,
         *args,
         **kwargs,
     ):
@@ -1134,6 +1135,11 @@ class MAEDataset(OfflineRandomSequenceDataset):
         self.assigner = assigner
         self.tracking_outputs = filtered_outputs
         self.tracking_batch_size = int(tracking_batch_size)
+
+        if custom_length is None:
+            custom_length = -1
+        custom_length = int(custom_length)
+        self._custom_length = custom_length
 
         super().__init__(
             from_file=from_file,
@@ -1376,6 +1382,8 @@ class MAEDataset(OfflineRandomSequenceDataset):
         self.data_list = self.load_data_list()
 
     def __len__(self):
+        if self._custom_length > 0:
+            return self._custom_length
         return self._length
 
 
