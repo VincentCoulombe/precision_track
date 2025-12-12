@@ -636,7 +636,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
 
     def _init_data_prefix_key(self, key):
         if isinstance(self.data_prefix[key], str):
-            directory = os.path.join(self.data_root, self.data_prefix[key])
+            directory = os.path.abspath(os.path.join(self.data_root, self.data_prefix[key]))
             assert os.path.isdir(directory), f"{key} is expected to be a list or a directory."
             new_prefix = []
             for file in os.listdir(directory):

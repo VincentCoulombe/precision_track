@@ -17,7 +17,8 @@ low_thr = _base_.low_thr
 high_thr = _base_.high_thr
 init_thr = _base_.init_thr
 
-# train_sequences = "../../analyse_longitudinale/clips/"
+train_sequences = "../../datasets/pretraining/train/"
+val_sequences = "../../datasets/pretraining/val/"
 
 train_sequences = ["../assets/20mice_sanity_check.avi"]
 val_sequences = ["../assets/20mice_sanity_check.avi"]
@@ -150,11 +151,14 @@ val_evaluator = [dict(type="MSEMetric")]
 # /Evaluation
 
 # Hooks
+default_hooks = dict(
+    checkpoint=dict(interval=-1, type="CheckpointHook", save_best="MSEMetric/mean", rule="less", by_epoch=False),
+)
 custom_hooks = [
     dict(
         type="SequencesSwitchHook",
         priority=51,
-        generate_every=1000,
+        generate_every=10000,
     ),
 ]
 # /Hooks
