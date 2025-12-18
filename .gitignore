@@ -169,6 +169,8 @@ cython_debug/
 !/assets/*
 ckpt/*
 ckpts/*
+checkpoints/*
+!checkpoints/README.md
 work_dir/*
 profiles/*
 *.npy
