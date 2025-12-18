@@ -50,7 +50,7 @@ else:
 
 #   1.2) Testing
 testing_work_dir = _base_.work_dir + "testing_runs/" + dataset_name + "/"
-testing_checkpoint = "../work_dir/training_runs/mice/epoch_" + num_epochs + ".pth"
+testing_checkpoint = "../work_dir/training_runs/mice/epoch_" + str(num_epochs) + ".pth"
 
 testing_anns_path = validation_anns_path
 testing_imgs_path = validation_imgs_path
