@@ -70,6 +70,8 @@ cd ./tools
 
 - **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory. A `hyperparams.json` file and `DEPLOYED` checkpoints will be saved in your `<deploying_directory>`. Testing metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
 
+  - Please refer to our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) guide for more details.
+
 - **Examples**
 
   ```bash

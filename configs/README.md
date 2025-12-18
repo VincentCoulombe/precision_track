@@ -44,12 +44,16 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 ---
 
-# 2. Training parameters, directories and paths
-
-### These parameters tell PrecisionTrack where your dataset is located and how training should run.
+# 2. General directories and paths
 
 - **metainfo**  
   A small python file that describes your species: names of keypoints, skeleton shape, etc. Please refer to our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) for more details.
+
+---
+
+# 3. Training parameters, directories and paths
+
+### These parameters tell PrecisionTrack where your dataset is located and how training should run.
 
 - **dataset_name**  
   The label that will appear in logs and created sub-directories under the `precision_track/work_dir/training_runs` and `precision_track/work_dir/testing_runs` directories. Namely, the training logs and testing metrics will be saved there.
@@ -86,6 +90,8 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
   - We also highly recommend creating a **checkpoints directory** (`../checkpoints/`) in order to organize all your model's weights. We recommend your `deploying_directory` to be inside this **checkpoints directory**. For example, you could set your `deploying_directory` as `../checkpoints/v1/` then train your network. This will tell your PrecisionTrack trainer to first create the `../checkpoints/v1/` directory then automatically save your last training checkpoint to this directory.
 
+  - Please refer to our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) guide for more details.
+
 - **deploying_sanity_check_img_path**
   Path (this path is relative to your `data_root` directory, not your `tools` directory) to **any** image from your **COCO-style dataset**. This image will be used to ensure that the `.onnx` and the `.engine` checkpoints are accurate. This is only relevant if the [training tool's](https://github.com/VincentCoulombe/precision_track/tree/main/tools) `deploy` option is set to `true`.
 
@@ -99,7 +105,7 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 ---
 
-# 3. Tracking parameters
+# 4. Tracking parameters
 
 - **saving_directory**
   Specifies where PrecisionTrack will **write all tracking outputs** (e.g., bounding boxes, poses, velocities, actions, etc...). The **visualization tool** also **reads from this directory** when rendering videos.
@@ -125,7 +131,7 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 ---
 
-# 3. Visualization parameters
+# 5. Visualization parameters
 
 - **display_bounding_boxes**: Render the tracked subject's bounding boxes, given that a `bboxes.csv` file exists in the `saving_directory`.
 

@@ -8,11 +8,15 @@ booleans:
   with_pose_estimation: true
 
 # ================================
+# General directories and paths
+# ================================
+general:
+  metainfo: "../configs/metadata/mice.py"
+
+# ================================
 # Training parameters, directories and paths
 # ================================
 training:
-  metainfo: "../configs/metadata/mice.py"
-
   dataset_name: "mice"
   data_root: "../../datasets/MICE/pose-estimation/"
 

@@ -292,14 +292,14 @@ You’ve now configured all the essential inputs:
 
 - **Metadata file**
 - **Annotation files**
-- **Settings file**
+- **User configs file**
 
 …and set up a compatible execution environment:
 
 - **Local Docker Container**
 - **Google COLAB Notebooks**
 
-With these in place, you’re ready to make the most of PrecisionTrack’s features. We recommend either following our [tooling guide](https://github.com/VincentCoulombe/precision_track/tree/main/tools) or using our pre-configured [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab) to train, test, deploy track and visualize your experiments.
+With these in place, you’re ready to make the most of PrecisionTrack’s features. We recommend either following our [tooling guide](https://github.com/VincentCoulombe/precision_track/tree/main/tools) **AND** our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) to understand where to go from here. You can also use our pre-configured [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab) to train, test, deploy, track and visualize your experiments.
 
 ## Tutorials
 
