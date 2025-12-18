@@ -184,6 +184,14 @@ def xywh_xyxy(bboxes: np.ndarray) -> np.ndarray:
     return bboxes_out
 
 
+@njit
+def xywh_xyxy_1d(bboxes: np.ndarray) -> np.ndarray:
+    bboxes_out = bboxes.copy()
+    bboxes_out[2] = bboxes_out[2] + bboxes_out[0]
+    bboxes_out[3] = bboxes_out[3] + bboxes_out[1]
+    return bboxes_out
+
+
 def xywh_xyxy_torch(bboxes: torch.Tensor) -> torch.Tensor:
     bboxes_out = bboxes.clone()
     bboxes_out[:, 2] = bboxes_out[:, 2] + bboxes_out[:, 0]
@@ -241,6 +249,7 @@ transformation_functions = {
     "xywh_cxcywh": xywh_cxcywh,
     "xywh_cxcywh_torch": xywh_cxcywh,
     "xywh_xyxy": xywh_xyxy,
+    "xywh_xyxy_1d": xywh_xyxy_1d,
     "xywh_xyxy_torch": xywh_xyxy_torch,
     "corner_xyxy_1d": corner_xyxy,
     "corner_xyxy": corner_xyxy,

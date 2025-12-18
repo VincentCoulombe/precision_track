@@ -80,7 +80,7 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 #   1.5) Deployment
 sanity_check_img = data_root + "images/0000003435.jpg"
 deployment_device = "auto"
-deployed_directory = "../tests/configs/"
+deployed_directory = "../checkpoints/mae/"
 deployed_name = "model_mice_clustering_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
@@ -159,7 +159,7 @@ testing_tracking_output_file = testing_work_dir + "CLEAR_metrics.csv"
 
 
 # 3) Action Recognition
-mart_checkpoint = deployed_directory + "mart_DEPLOYED.onnx"
+mart_checkpoint = deployed_directory + "mart_DEPLOYED_v2.pth"
 
 inference_resolution = (2720, 2720)
 block_size = 30
@@ -182,6 +182,7 @@ if with_action_recognition:
     action_recognition_output_names = ["class_logits", "action_embeddings"]
 
     velocity_encoder = dict(type="VelocityNormEncoder")
+    # velocity_encoder = dict(type="BaseVelocityEncoder")
 
     analyzer = dict(
         type="ActionRecognitionBackend",
@@ -194,6 +195,7 @@ if with_action_recognition:
             with_actions=False,
             with_kpts=True,
             with_vels=True,
+            velocity_encoder=velocity_encoder,
         ),
         metainfo=metainfo,
         input_names=action_recognition_input_names,

@@ -50,16 +50,21 @@ assigner = dict(
     nb_frames_retain=_base_.nb_frames_retain,
     num_tentatives=_base_.num_tentatives,
     thresholds_file=hyperparams,
+    # tracking_algorithm=dict(
+    #     type="PrecisionTrack" if _base_.with_pose_estimation else "ByteTrack",
+    #     obj_score_thrs=dict(high=high_thr, low=low_thr),
+    #     weight_iou_with_det_scores=False,
+    #     match_iou_thrs=dict(high=0.9, low=0.75, tentative=0.9),
+    #     init_track_thr=init_thr,
+    #     with_kpt_weights=True,
+    #     with_kpt_sigmas=False,
+    #     dynamic_temporal_scaling=False,
+    #     alpha=0.5,
+    # ),
     tracking_algorithm=dict(
-        type="PrecisionTrack" if _base_.with_pose_estimation else "ByteTrack",
-        obj_score_thrs=dict(high=high_thr, low=low_thr),
-        weight_iou_with_det_scores=False,
-        match_iou_thrs=dict(high=0.9, low=0.75, tentative=0.9),
-        init_track_thr=init_thr,
-        with_kpt_weights=True,
-        with_kpt_sigmas=False,
-        dynamic_temporal_scaling=False,
-        alpha=0.5,
+        type="GroundTruth",
+        gt_bbox_path="../../datasets/MICE/sequential/bboxes/val/14-20-02.csv",
+        gt_kpts_path="../../datasets/MICE/sequential/keypoints/val/14-20-02.csv",
     ),
     motion_algorithm=dict(
         type="DynamicKalmanFilter",
@@ -76,12 +81,12 @@ outputs = [
         instance_data="pred_track_instances",
         precision=64,
     ),
-    dict(
-        type="CsvVelocities",
-        path=_base_.work_dir + "/velocities.csv",
-        instance_data="pred_track_instances",
-        precision=32,
-    ),
+    # dict(
+    #     type="CsvVelocities",
+    #     path=_base_.work_dir + "/velocities.csv",
+    #     instance_data="pred_track_instances",
+    #     precision=32,
+    # ),
     # dict(
     #     type="NpyEmbeddingOutput",
     #     path=_base_.work_dir + "/features.npy",
@@ -98,12 +103,12 @@ if _base_.with_pose_estimation:
     ]
 if _base_.stitching_algorithm is not None:
     outputs += [
-        dict(
-            type="CsvSearchAreas",
-            path=_base_.work_dir + "/search_areas.csv",
-            instance_data="search_areas",
-            precision=64,
-        )
+        # dict(
+        #     type="CsvSearchAreas",
+        #     path=_base_.work_dir + "/search_areas.csv",
+        #     instance_data="search_areas",
+        #     precision=64,
+        # )
     ]
 if _base_.validator is not None:
     outputs += [
@@ -132,7 +137,8 @@ if _base_.analyzer is not None:
         # dict(
         #     type="NpyEmbeddingOutput",
         #     path=_base_.work_dir + "/action_embeddings.npy",
-        #     ids_field="instances_id",
+        #     # ids_field="instances_id",
+        #     ids_field="ids",
         #     embs_field="action_embeddings",
         # ),
     ]
@@ -149,13 +155,13 @@ if _base_.with_pose_estimation:
             joint_radius=8,
             link_thickness=4,
         ),
-        dict(
-            type="VelocityPainter",
-            amplitude=4,
-            anchor=0,
-            thickness=8,
-            color=[31, 31, 31],
-        ),
+        # dict(
+        #     type="VelocityPainter",
+        #     amplitude=4,
+        #     anchor=0,
+        #     thickness=8,
+        #     color=[31, 31, 31],
+        # ),
     ]
 else:
     painters += [
@@ -172,16 +178,16 @@ else:
     ]
 if _base_.stitching_algorithm is not None:
     painters += [
-        dict(
-            type="SearchAreaPainter",
-            annotations=[
-                dict(
-                    type="Box",
-                    thickness=3,
-                )
-            ],
-            color=[255, 0, 0],
-        )
+        # dict(
+        #     type="SearchAreaPainter",
+        #     annotations=[
+        #         dict(
+        #             type="Box",
+        #             thickness=3,
+        #         )
+        #     ],
+        #     color=[255, 0, 0],
+        # )
     ]
 
 if _base_.validator is not None:
@@ -196,7 +202,8 @@ if _base_.validator is not None:
 painters += [
     dict(
         type="LabelPainter",
-        info=["id", "score"],
+        # info=["id", "score"],
+        info=["id"],
         metafile_path=metainfo,
         label_position="TOP_CENTER",
         text_color=[0, 0, 0],

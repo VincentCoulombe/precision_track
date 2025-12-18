@@ -173,7 +173,7 @@ class MART(BaseModel):
         )
         x = self._get_transformations(x)
         class_logits = self.classification_head(x)
-        return F.softmax(class_logits[:, -1, :], dim=-1), x[:, -1, :]
+        return F.softmax(class_logits[:, -1, :], dim=-1), F.normalize(x[:, -1, :], p=2, dim=-1)
 
     def _get_projections(
         self,

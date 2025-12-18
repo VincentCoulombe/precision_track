@@ -106,9 +106,13 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
 
         self.block_features = torch.zeros((self._max_size, self._block_size, self._embd_size), dtype=torch.float32, device=self._device).contiguous()
 
+        self.vel_encoder = None
+        if velocity_encoder is not None:
+            self.vel_encoder = MODELS.build(velocity_encoder)
+
         self.block_vels = None
         if with_vels:
-            self.block_vels = torch.zeros((self._max_size, self._block_size, 2), dtype=torch.float32, device=self._device).contiguous()
+            self.block_vels = torch.zeros((self._max_size, self._block_size, self.vel_encoder.nb_dim), dtype=torch.float32, device=self._device).contiguous()
 
         self.block_poses = None
         if with_kpts:
@@ -132,10 +136,6 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
 
         self.roll = torch.zeros_like(self._head, dtype=bool)
         self.consecutive_hits = torch.zeros_like(self._head)
-
-        self.vel_encoder = None
-        if velocity_encoder is not None:
-            self.vel_encoder = MODELS.build(velocity_encoder)
 
     def _init_graph(self):
         self.skeleton_sources = torch.as_tensor([s for s, _ in self.skeleton_links], device=self._device)
@@ -269,10 +269,11 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         assert self._head.device == block.device
         pos = self._head.index_select(0, rows)
         if data is not None:
+            B = data.shape[0]
             assert rows.dtype == torch.long
             assert rows.device == block.device, "rows/block device mismatch"
-            assert data.shape[0] == rows.shape[0], "batch mismatch"
-            block[rows, pos, ...] = data
+            assert B == rows.shape[0], "batch mismatch"
+            block[rows, pos, ...] = data.view(B, -1)
         else:
             block[rows, pos, ...] = default_data_value
         return block

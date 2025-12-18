@@ -219,9 +219,9 @@ class GroundTruth(BaseAssignationAlgorithm):
         matched_trk_bboxes[:num_matches] = track_bboxes[matched_tracks]
         matched_trk_ids[:num_matches] = frame_gt_instances[matched_tracks]
         matched_features[:num_matches] = det_features[matched_pred_idx_tmp]
-        pred_instances["bboxes"] = track_bboxes[matched_tracks]
+        pred_instances["bboxes"] = track_bboxes[matched_tracks].astype(np.float32)
         if self.gt_kpts is not None:
-            pred_instances["keypoints"] = track_kpts[matched_tracks]
+            pred_instances["keypoints"] = track_kpts[matched_tracks].astype(np.float32)
 
         idx_counter = num_matches
 

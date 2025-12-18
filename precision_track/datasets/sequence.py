@@ -888,6 +888,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         n_velocities: int,
         bboxes_gt_format: Optional[str] = "CsvBoundingBoxes",
         keypoints_gt_format: Optional[str] = "CsvKeypoints",
+        actions_gt_format: Optional[str] = None,
         data_root: Optional[str] = ".",
         data_prefix: dict = dict(
             sequences=["."],
@@ -910,7 +911,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
             detector=detector,
             bboxes_gt_format=bboxes_gt_format,
             keypoints_gt_format=keypoints_gt_format,
-            actions_gt_format=None,
+            actions_gt_format=actions_gt_format,
             data_root=data_root,
             data_prefix=data_prefix,
             pipeline=pipeline,

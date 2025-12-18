@@ -95,6 +95,7 @@ def postprocess_fpv_action_recognition(
     else:
         data_sample = data_samples
     if isinstance(preds, tuple):
+        # TODO EMA smoothing des action embeddings (temporal consistency)!!!
         data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
         preds = preds[0]
 

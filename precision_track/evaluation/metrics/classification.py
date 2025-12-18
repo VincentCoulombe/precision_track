@@ -227,6 +227,8 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         """Process one batch of data samples and predictions."""
         if isinstance(data_samples, list):
             data_samples = data_samples[0]
+        if isinstance(data_samples, tuple):
+            data_samples = data_samples[0]
         for i, probs in enumerate(data_samples):
             gt, action = self._fetch_gt_action(i, probs, data_batch["data_samples"])
             pred = torch.argmax(probs).item()

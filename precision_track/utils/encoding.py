@@ -5,7 +5,20 @@ from precision_track.utils import get_device
 
 
 @MODELS.register_module()
-class VelocityRBFEncoder:
+class BaseVelocityEncoder:
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, velocities):
+        return velocities
+
+    @property
+    def nb_dim(self):
+        return 2
+
+
+@MODELS.register_module()
+class VelocityRBFEncoder(BaseVelocityEncoder):
     def __init__(self, config):
         super().__init__()
         self.num_rbf = int(config.num_rbf)
@@ -23,20 +36,32 @@ class VelocityRBFEncoder:
         velocities = velocities.norm(p=2, dim=-1).clamp(max=self.max_rel_vel)
         return torch.exp(-0.5 * ((velocities.unsqueeze(-1) - self.mu) / self.sigma) ** 2)
 
+    @property
+    def nb_dim(self):
+        return self.num_rbf
+
 
 @MODELS.register_module()
-class VelocityAbsEncoder:
+class VelocityAbsEncoder(BaseVelocityEncoder):
     def __init__(self):
         super().__init__()
 
     def __call__(self, velocities):
         return torch.abs(velocities)
 
+    @property
+    def nb_dim(self):
+        return 2
+
 
 @MODELS.register_module()
-class VelocityNormEncoder:
+class VelocityNormEncoder(BaseVelocityEncoder):
     def __init__(self):
         super().__init__()
 
     def __call__(self, velocities):
         return torch.norm(velocities, p=2, dim=-1)
+
+    @property
+    def nb_dim(self):
+        return 1
