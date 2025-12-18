@@ -60,4 +60,4 @@ if __name__ == "__main__":
     from addict import Dict
 
     # main(Dict({"video": "/home/vincent/Downloads/test_video.mp4"}))
-    main(Dict({"video": "../assets//20mice_sanity_check.avi"}))
+    main(Dict({"video": "../../datasets/MICE/sequential/videos/val/14-20-02.avi"}))
