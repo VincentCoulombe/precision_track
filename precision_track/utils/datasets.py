@@ -232,19 +232,17 @@ def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name
 
         img["width"] = width_target
         img["height"] = height_target
-        img["scale_x"] = scale_x
-        img["scale_y"] = scale_y
 
     for ann in tqdm(coco_data["annotations"], desc="Resizing annotations"):
-        ann["bbox"][0] *= img["scale_x"]
-        ann["bbox"][1] *= img["scale_y"]
-        ann["bbox"][2] *= img["scale_x"]
-        ann["bbox"][3] *= img["scale_y"]
+        ann["bbox"][0] *= scale_x
+        ann["bbox"][1] *= scale_y
+        ann["bbox"][2] *= scale_x
+        ann["bbox"][3] *= scale_y
 
         if "keypoints" in ann and len(ann["keypoints"]) > 0:
             for i in range(0, len(ann["keypoints"]), 3):
-                ann["keypoints"][i] *= img["scale_x"]
-                ann["keypoints"][i + 1] *= img["scale_y"]
+                ann["keypoints"][i] *= scale_x
+                ann["keypoints"][i + 1] *= scale_y
 
     with open(os.path.join(output_path, "annotations", ann_name), "w") as f:
         json.dump(coco_data, f, indent=4)
