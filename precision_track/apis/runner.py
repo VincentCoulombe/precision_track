@@ -9,6 +9,7 @@ from typing import Callable, Dict, List, Optional, Union
 import cv2
 import mmengine
 import torch.multiprocessing as mp
+import torch.nn as nn
 from mmengine.config import Config
 from mmengine.hooks import Hook
 from mmengine.logging import print_log
@@ -158,7 +159,8 @@ class Runner(MMENGINERunner):
         if isinstance(model_config, dict) and data_preprocessor is not None:
             model_config.setdefault("data_preprocessor", data_preprocessor)
         self.model = MODELS.build(model_config)
-        self.model = self.wrap_model(self.cfg.get("model_wrapper_cfg"), self.model)
+        if isinstance(self.model, nn.Module):
+            self.model = self.wrap_model(self.cfg.get("model_wrapper_cfg"), self.model)
 
         if hasattr(self.model, "module"):
             self._model_name = self.model.module.__class__.__name__

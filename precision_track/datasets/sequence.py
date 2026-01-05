@@ -519,6 +519,7 @@ class OfflineRandomSequenceDataset(OnlineRandomSequenceDataset, metaclass=ABCMet
                             light_ds.gt_instances = gt_instances
                             light_ds.img_id = data_sample.img_id
                             light_ds.seq_id = sequence_idx
+                            light_ds.seq_name = os.path.splitext(sequence_name)[0]
 
                             data_list[sequence_idx].append(light_ds)
                             self._length += len(batch)
@@ -611,7 +612,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         inputs_ds.gt_instances = InstanceData()
         inputs_ds.pred_track_instances = InstanceData()
 
-        seq, idx, id_ = self.action_to_sequence_map[random_action][random_action_idx]
+        seq, seq_name, idx, id_ = self.action_to_sequence_map[random_action][random_action_idx]
 
         for block_idx in range(self.block_size):
             data_sample = self.data_list[seq][idx - self.block_size + block_idx + 1]
@@ -641,7 +642,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         inputs_ds.pred_track_instances.kpt_vis = kpt_vis
         inputs_ds.pred_track_instances.dynamics = dynamics
         inputs_ds.img_id = idx
-        inputs_ds.seq_id = seq
+        inputs_ds.seq_name = seq_name
         inputs_ds.instance_id = id_
 
         return dict(inputs=inputs, data_samples=inputs_ds)
@@ -652,6 +653,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
             seq_dynamics = dict()
             for i, data_sample in enumerate(sequence):
                 frame_id = data_sample.img_id
+                seq_name = data_sample.seq_name
                 bboxes = data_sample.pred_track_instances.bboxes
                 del data_sample.pred_track_instances.bboxes
                 actions = data_sample.gt_instance_labels.action_labels
@@ -671,7 +673,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
                         seq_dynamics[id_][-1] = frame_id
                     frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
 
-                    self.action_to_sequence_map[action].append((s, i, id_))
+                    self.action_to_sequence_map[action].append((s, seq_name, i, id_))
                 data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
         return data_list
 

@@ -47,6 +47,6 @@ visualization:
   display_species: true
   display_confidence_scores: true
   display_actions: false
-  display_search_zones: true
+  display_search_zones: false
   display_validations: false
-  display_untracked_detections: true
+  display_untracked_detections: false

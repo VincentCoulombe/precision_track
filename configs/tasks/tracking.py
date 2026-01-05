@@ -104,15 +104,15 @@ if _base_.with_pose_estimation:
             precision=32,
         ),
     ]
-if _base_.stitching_algorithm is not None:
-    outputs += [
-        dict(
-            type="CsvSearchAreas",
-            path=_base_.saving_directory + "/search_areas.csv",
-            instance_data="search_areas",
-            precision=64,
-        )
-    ]
+# if _base_.stitching_algorithm is not None:
+#     outputs += [
+#         dict(
+#             type="CsvSearchAreas",
+#             path=_base_.saving_directory + "/search_areas.csv",
+#             instance_data="search_areas",
+#             precision=64,
+#         )
+#     ]
 if _base_.validator is not None:
     outputs += [
         dict(

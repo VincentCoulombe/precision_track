@@ -166,8 +166,8 @@ class EdgeAnnotator(sv.EdgeAnnotator):
             for class_a, class_b in self.edges:
                 xy_a = xy[class_a]
                 xy_b = xy[class_b]
-                missing_a = np.allclose(xy_a, 0)
-                missing_b = np.allclose(xy_b, 0)
+                missing_a = np.allclose(xy_a, 0) or np.any(np.isnan(xy_a)) or np.any(np.isinf(xy_a))
+                missing_b = np.allclose(xy_b, 0) or np.any(np.isnan(xy_b)) or np.any(np.isinf(xy_b))
                 if missing_a or missing_b:
                     continue
 

@@ -223,10 +223,12 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         """Process one batch of data samples and predictions."""
         if isinstance(data_samples, list):
             data_samples = data_samples[0]
+        if data_samples.ndim == 1:
+            data_samples = data_samples.unsqueeze(0)
         for i, probs in enumerate(data_samples):
             gt, action = self._fetch_gt_action(i, probs, data_batch["data_samples"])
             pred = torch.argmax(probs).item()
-            ce = F.cross_entropy(input=probs.view(1, -1), target=gt.view(-1)).item()
+            ce = F.cross_entropy(input=probs.view(1, -1).to(torch.float32), target=gt.view(-1)).item()
             gt_label = gt.item()
             self.label_to_action[str(gt_label)] = action
             self.results.append((action, gt_label, pred, ce))
