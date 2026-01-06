@@ -2,6 +2,7 @@ from .detection_head import DetectionHead
 from .detection_model import DetectionModel
 from .feature_extraction_head import FeatureExtractionHead
 from .mart import MART
+from .oracles import ActionRecognitionOracle
 from .modules.backbones.csp_darknet import CSPDarknet
 from .modules.backbones.cspnext import CSPNeXt
 from .modules.backbones.hiera import Hiera
@@ -85,4 +86,5 @@ __all__ = [
     "ActionRecognitionTrainingPreprocessor",
     "BasePostProcessor",
     "BaseActionPostProcessor",
+    "ActionRecognitionOracle",
 ]
