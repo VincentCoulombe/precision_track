@@ -154,13 +154,16 @@ def test_init(CsvClass, path):
         obj = CsvClass(path)
         assert obj.path.endswith(path)
         assert obj.precision == 32
-        assert obj.confidence_threshold == 0.5
+        if CsvClass is CsvBoundingBoxes:
+            assert obj.confidence_threshold == 0.1
+        else:
+            assert obj.confidence_threshold == 0.5
         assert os.path.splitext(path)[1] == obj.EXTENSION
         dir_name = os.path.abspath(os.path.dirname(path))
         assert os.path.exists(dir_name)
         assert dir_name == os.path.dirname(obj.path)
         assert os.path.splitext(os.path.basename(path))[0] == os.path.splitext(os.path.basename(obj.path))[0]
-        assert obj._results == []
+        assert obj.results == []
         assert obj.curr_frame_idx == 0
 
 
@@ -274,8 +277,7 @@ def test_getitem(CsvClass, path, dummy_data_samples):
             ]
             assert obj[1] == []
             assert obj[2] == [[2, 5, 0, 30, 30, 40, 40]]
-
-        assert obj[3] == [[]]
+        assert obj[3] == []
 
 
 if __name__ == "__main__":

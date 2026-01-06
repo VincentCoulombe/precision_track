@@ -1,13 +1,13 @@
 import argparse
 import multiprocessing as mp
 from logging import WARNING
-
+import yaml
 import psutil
 from mmengine import Config
 from mmengine.logging import print_log
 
 from precision_track import PipelinedTracker, Tracker
-from precision_track.utils import VideoReader
+from precision_track.utils import VideoReader, load_user_configs
 
 
 def parse_args():
@@ -18,7 +18,13 @@ def parse_args():
 
 
 def main(args):
-    config = Config.fromfile("../configs/tasks/tracking.py")
+
+    system_configs_path = "../configs/tasks/tracking.py"
+    with open("../configs/user_configs.yaml", "r") as f:
+        user_configs = yaml.safe_load(f)
+    load_user_configs(user_configs, system_configs_path)
+
+    config = Config.fromfile(system_configs_path)
     video = VideoReader(args.video)
     nb_cpu_cores = psutil.cpu_count(logical=False)
     pipelined = config.pipelined
@@ -56,8 +62,4 @@ def main(args):
 
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
-    # main(parse_args())
-    from addict import Dict
-
-    # main(Dict({"video": "/home/vincent/Downloads/test_video.mp4"}))
-    main(Dict({"video": "../../datasets/MICE/sequential/videos/val/14-20-02.avi"}))
+    main(parse_args())

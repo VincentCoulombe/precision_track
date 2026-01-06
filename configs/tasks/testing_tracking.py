@@ -1,4 +1,4 @@
-_base_ = "../models/rtmdet-pose.py"
+_base_ = "../models/yolox-pose.py"
 
 # Settings
 testing_checkpoint = _base_.testing_checkpoint
@@ -80,8 +80,8 @@ test_dataloader = dict(
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(
         type="VideoDataset",
-        video_paths=_base_.testing_video_paths,
-        gt_paths=_base_.testing_gt_paths,
+        video_paths=_base_.testing_tracking_data_root + "videos/",
+        gt_paths=_base_.testing_tracking_data_root + "bboxes/",
     ),
 )
 # /Dataloader

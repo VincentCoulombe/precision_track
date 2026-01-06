@@ -11,14 +11,14 @@ Below is a step‑by‑step recipe on how to create your own metadata file. To p
 dataset_info = dict(
     dataset_name="my_dataset",
     paper_info=dict(),              # bibliographic record (optional)
-    keypoint_info={                 # list your keypoints here
-        0: dict(name="", id=0, type="", swap=""),
+    keypoint_info=[                 # list your keypoints here
+        dict(name="", swap=""),
         # …
-    },
-    skeleton_info={                 # links between keypoints, forms the poses
-        0: dict(link=("", ""), id=0),
+    ],
+    skeleton_info=[               # links between keypoints, forms the poses
+        dict(link=("", "")),
         # …
-    },
+    ],
     joint_weights=[],               # 1 float per keypoint
     sigmas=[],                      # 1 σ per keypoint (for OKS)
     classes=[],                     # object categories
@@ -33,28 +33,28 @@ dataset_info = dict(
 
 ## 2. Field‑by‑field cookbook
 
-| Field               | Purpose                                                                                                                                                                                                                                                                                                                                                             | How to fill it                                                                      | Quick example                                                   |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **`dataset_name`**  | Unique short slug used in configs and logs.                                                                                                                                                                                                                                                                                                                         | • Keep it lowercase, no spaces.<br>• Change whenever the annotation schema changes. | `"dogs_running_v1"`                                             |
-| **`paper_info`**    | Auto‑generates citations in reports.                                                                                                                                                                                                                                                                                                                                | Keys accepted by MMEngine: `author`, `title`, `container`, `year`, `homepage`.      | `dict(author="Doe et al.", title="CaninePose 2025", year=2025)` |
-| **`keypoint_info`** | Full specification for _each_ keypoint. Drives:<br>• **The name of the keypoint** (`name`)<br>• **The unique identifier of the keypoint. Must start at 0 and increment continuously without gaps.** (`id`)<br>• **Keypoint symmerical reflection (for the flipping augmentation)** (`swap`)<br>• **Half‑body aug.** (`type`)<br>• Visual colours (optional `color`) |                                                                                     | `dict(name="Right Ear", id=1, type="upper", swap="Left Ear")`   |
-| **`skeleton_info`** | Edge list connecting keypoints for drawing limbs & PAF‑based losses.                                                                                                                                                                                                                                                                                                | Order is arbitrary; use tuples of keypoint `name`s.                                 | `0: dict(link=("Nose", "Left Eye"), id=0)`                      |
-| **`joint_weights`** | Per‑keypoint loss weight. Tip: ↑ weight for small, hard‑to‑see landmarks.                                                                                                                                                                                                                                                                                           | List length == `len(keypoint_info)`; defaults to 1.0.                               | `[1, 1, 2, 2, …]`                                               |
-| **`sigmas`**        | Normalised labelling error (σ) used in **OKS** metric. Smaller σ ⇒ stricter.                                                                                                                                                                                                                                                                                        | Compute `σ = (expected error) / object_size`. Use COCO as rough guide.              | Humans (COCO) ≈ 0.026 – 0.107                                   |
-| **`classes`**       | Object categories present in the annotations.                                                                                                                                                                                                                                                                                                                       | String list; first item becomes default label `id=0`.                               | `["mouse"]`                                                     |
-| **`actions`**       | Optional behaviour/action labels for the action-recognition downstream task.                                                                                                                                                                                                                                                                                        | Provide `"Other"`/`"None"` as the filler class.                                     | `["Other", "Running", "Sleeping"]`                              |
+| Field               | Purpose                                                                                                                                                             | How to fill it                                                                      | Quick example                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **`dataset_name`**  | The name of your dataset.                                                                                                                                           | • Keep it lowercase, no spaces.<br>• Change whenever the annotation schema changes. | `"dogs_running_v1"`                                             |
+| **`paper_info`**    | Auto‑generates citations in reports.                                                                                                                                | Keys accepted by MMEngine: `author`, `title`, `container`, `year`, `homepage`.      | `dict(author="Doe et al.", title="CaninePose 2025", year=2025)` |
+| **`keypoint_info`** | Full specification for _each_ keypoint:<br>• **The name of the keypoint** (`name`)<br>• **Keypoint symmerical reflection (for the flipping augmentation)** (`swap`) |                                                                                     | `dict(name="Right Ear", swap="Left Ear")`                       |
+| **`skeleton_info`** | Edge list connecting keypoints.                                                                                                                                     | Order is arbitrary; use tuples of keypoint `name`s.                                 | `dict(link=("Nose", "Left Eye"))`                               |
+| **`joint_weights`** | Per‑keypoint loss weight. Tip: ↑ weight for small, hard‑to‑see landmarks.                                                                                           | List length == `len(keypoint_info)`; defaults to 1.0.                               | `[1, 1, 2, 2, …]`                                               |
+| **`sigmas`**        | Normalised labelling error (σ) used in **OKS** metric. Smaller σ ⇒ stricter.                                                                                        | Compute `σ = (expected error) / object_size`. Use COCO as rough guide.              | Humans (COCO) ≈ 0.026 – 0.107                                   |
+| **`classes`**       | Object categories present in the annotations.                                                                                                                       | String list; first item becomes default label `id=0`.                               | `["mouse"]`                                                     |
+| **`actions`**       | Optional behaviour/action labels for the action-recognition downstream task.                                                                                        | Provide `"Other"`/`"None"` as the filler class.                                     | `["Other", "Running", "Sleeping"]`                              |
 
 ---
 
 ## 3. Step‑by‑step: Creating your own metadata file.
 
 1. **List keypoints**\
-    Write down every landmark you annotated, decide whether it belongs to the “upper” (head/torso) or “lower” (limbs/tail) group, and set left/right symmerical reflection (swaps).
+    Write down every landmark you annotated and set left/right symmerical reflection (swaps).
 
-   **Important** Make sure that your subject's keypoints order correspond the order with which you labelled the keypoints. For example, if your `keypoint_info` with `id=0` is a snout, then the first labelled keypoint on each of your subjects should be their snouts.
+   **Important** Make sure that your subject's keypoints order correspond the order with which you labelled the keypoints. For example, if your the first keypoint in your `keypoint_info` list is a snout, then the first labelled keypoint on each of your subjects should be their snouts.
 
 1. **Design the skeleton**\
-   Connect adjacent landmarks to make a sensible stick‑figure which we refer to as a pose. Order and colours do **not** affect training; they only influence visualisation and downstream tasks such as action-recognition.
+   Connect adjacent landmarks to make a sensible stick‑figure which we refer to as a pose. The skeletons will influence visualisation and downstream tasks such as action-recognition.
 
 1. **Assign weights**\
    If all keypoints are equally important, keep them at `1.0`. Raise weights for tiny parts (e.g., bird beaks) or for medically critical landmarks.
@@ -80,18 +80,18 @@ dataset_info = dict(
 ```python
 dataset_info = dict(
     dataset_name="birds5k",
-    keypoint_info={
-        0: dict(name="Beak", id=0, type="upper", swap=""),
-        1: dict(name="Left Wing", id=1, type="upper", swap="Right Wing"),
-        2: dict(name="Right Wing", id=2, type="upper", swap="Left Wing"),
-        3: dict(name="Tail Base", id=3, type="lower", swap=""),
-        4: dict(name="Tail Tip", id=4, type="lower", swap=""),
-    },
-    skeleton_info={
-        0: dict(link=("Beak", "Left Wing"), id=0),
-        1: dict(link=("Beak", "Right Wing"), id=1),
-        2: dict(link=("Tail Base", "Tail Tip"), id=2),
-    },
+    keypoint_info=[
+        dict(name="Beak", swap=""),
+        dict(name="Left Wing", swap="Right Wing"),
+        dict(name="Right Wing", swap="Left Wing"),
+        dict(name="Tail Base", swap=""),
+        dict(name="Tail Tip", swap=""),
+    ],
+    skeleton_info=[
+        dict(link=("Beak", "Left Wing")),
+        dict(link=("Beak", "Right Wing")),
+        dict(link=("Tail Base", "Tail Tip")),
+    ],
     joint_weights=[1, 1, 1, 0.5, 0.5],
     sigmas=[0.02] * 5,
     classes=["bird"],
@@ -104,7 +104,7 @@ dataset_info = dict(
 ```python
 dataset_info = dict(
     dataset_name="pets10k",
-    keypoint_info={…},                # shared schema
+    keypoint_info={…},
     skeleton_info={…},
     joint_weights=[1] * 17,
     sigmas=[0.03] * 17,
@@ -116,13 +116,13 @@ dataset_info = dict(
 ### 4.3 Human upper‑body only
 
 ```python
-keypoint_info = {
-    0: dict(name="Nose", id=0, type="upper", swap=""),
-    1: dict(name="Left Eye", id=1, type="upper", swap="Right Eye"),
-    2: dict(name="Right Eye", id=2, type="upper", swap="Left Eye"),
-    3: dict(name="Left Shoulder", id=3, type="upper", swap="Right Shoulder"),
-    4: dict(name="Right Shoulder", id=4, type="upper", swap="Left Shoulder"),
-}
+keypoint_info = [
+    dict(name="Nose", swap=""),
+    dict(name="Left Eye", swap="Right Eye"),
+    dict(name="Right Eye", swap="Left Eye"),
+    dict(name="Left Shoulder", swap="Right Shoulder"),
+    dict(name="Right Shoulder", swap="Left Shoulder"),
+]
 sigmas = [0.026, 0.025, 0.025, 0.035, 0.035]  # taken from COCO
 ```
 
@@ -133,8 +133,8 @@ sigmas = [0.026, 0.025, 0.025, 0.035, 0.035]  # taken from COCO
 ```python
 from precision_track.utils import parse_pose_metainfo
 
-info = parse_pose_metainfo(dict(from_file="path_to_your_metadata_file.py"))   # raises KeyError if anything is missing
-print(f"{info.num_keypoints} keypoints loaded ✔︎")
+info = parse_pose_metainfo(dict(from_file="path_to_your_metadata_file.py"))   # Will raise an error if anything is missing or incorectly defined
+print(f"{info["num_keypoints"]} keypoints loaded ✔︎")
 ```
 
 ---
@@ -147,8 +147,6 @@ print(f"{info.num_keypoints} keypoints loaded ✔︎")
   Check that `sigmas` length == `joint_weights` length == `num_keypoints`.
 - **Loss dominated by one landmark?**\
   Scale down its `joint_weights`.
-- **Visual skeleton looks wrong?**\
-  Edge names in `skeleton_info` must match `keypoint_info["name"]`.
 
 ---
 

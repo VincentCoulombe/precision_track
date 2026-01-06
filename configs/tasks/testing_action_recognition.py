@@ -1,7 +1,7 @@
 _base_ = "../models/yolox-pose.py"
 
 # Settings
-balanced = False
+balanced = True
 work_dir = _base_.training_work_dir
 
 block_size = _base_.block_size
@@ -54,7 +54,7 @@ detector = dict(
 model = dict(
     _base_.analyzer.runtime.model,
     data_preprocessor=dict(
-        type="ActionRecognitionTrainingPreprocessor",
+        type="ActionRecognitionPreprocessor",
         metainfo=metainfo,
         _delete_=True,
         block_size=block_size,

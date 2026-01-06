@@ -1,4 +1,4 @@
-_base_ = ["../models/rtmdet-pose.py", "../wandb/keys.py"]
+_base_ = ["../models/yolox-pose.py", "../wandb/keys.py"]
 
 # Settings
 fe_batch_size = _base_.fe_batch_size

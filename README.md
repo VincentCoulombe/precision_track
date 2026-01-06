@@ -84,7 +84,7 @@ The metadata.py file is the first of the three key inputs you'll need in order t
 
 - **Metadata file**
 - **Annotation files**
-- **Settings file**
+- **Configuration file**
 
 The metadata file contains essential information about your subjects. Namely, their classes (We typically classify them by species), skeletons (for pose-estimation), and actions (for action recognition). For a detailed explanation of the metadata's file expected structure (including examples), please refer to our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata). In this section, we will focus on how to create your own `metadata.py` file.
 
@@ -268,83 +268,38 @@ Run the following git command in your terminal:
 
 - The container has read/write access **only** to your `precision_track` directory.
 - Keep everything under `precision_track/`:
-  - Datasets → `precision_track/datasets/`
-  - Settings → `precision_track/configs/settings/`
-  - Metadata → `precision_track/configs/metadata/`
+  - Datasets → `precision_track/datasets/<your datasets>/`
+  - User Configs → `precision_track/configs/user_configs.yaml`
+  - Metadata → `precision_track/configs/metadata/<your metadata file>.py`
 
-### 5) Define your `settings.py` (settings file)
+### 5) Define your `user_configs.yaml` (configuration file)
 
-The `settings.py` file centralizes all configuration parameters required to run PrecisionTrack. In it, you will define:
+The `user_configs.yaml` allow you to customize your own PrecisionTracker. In it, you will define:
+
+- what features you want to enable and/or disable.
 
 - Paths to your annotations and metadata files.
-
-- Directories for saving training and testing logs.
-
-- Directories for storing model checkpoints.
 
 - The number of tracked subjects.
 
 - And much more...
 
-For a detailed breakdown of the file’s structure and all available options, consult our [settings guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs). Below, we outline how to create and adapt your own `settings.py` file.
+For a detailed breakdown of the file’s structure and all available options, consult our [user configuration guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs).
 
-#### 5.1) Start from an existing settings file
-
-In the `./configs/settings/` subfolder, you will find ready-to-use configuration files for the **MICE**, **Animal Pose (AP)**, and **Microsoft COCO** datasets.
-We recommend starting by copying one of these files and modifying it to match the requirements of your experiment.
-
-#### 5.2) Modify the existing settings file
-
-Using the [settings guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs) as reference, update the relevant fields in your copied file. In most cases, you will only need to adjust around a dozen or so entries (e.g., dataset paths, output directories, subject counts).
-
-Avoid modifying other parameters unless you are familiar with PrecisionTrack’s configuration system, as incorrect changes may lead to unexpected behavior.
-
-### 6) Register your `settings.py` file
-
-This step ensures PrecisionTrack uses your configuration going forward.
-
-#### 6.1) Pick a model
-
-Choose one of the available models in the `./configs/models/` directory. Inside the chosen model’s config file, update the `_base_` field so it extends your custom settings file rather than the default one (which most probably will be `"../settings/mice.py"`).
-
-For example:
-
-**Before**
-
-```python
-  _base_ = "../settings/mice.py"
-```
-
-**After**
-
-```python
-  _base_ = "path/to/your/settings.py"
-```
-
-#### 6.2) Ensure relevant tasks uses your model
-
-Check the all the configuration files in the `./configs/tasks/` directory and make sure they reference the model you selected.
-
-For exemple, if you chose the `rtmdet-pose` model, the `_base_` setting from all the files should point to `"../models/rtmdet-pose.py"`.
-
-- `./configs/tasks/testing_detection.py` → `_base_ = "../models/rtmdet-pose.py"`
-
-- `./configs/tasks/training_detection.py` → `_base_ = ["../models/rtmdet-pose.py", "../wandb/keys.py"]`
-
-### 7) Get started with PrecisionTrack’s Toolkit
+### 6) Get started with PrecisionTrack’s Toolkit
 
 You’ve now configured all the essential inputs:
 
 - **Metadata file**
 - **Annotation files**
-- **Settings file**
+- **User configs file**
 
 …and set up a compatible execution environment:
 
 - **Local Docker Container**
 - **Google COLAB Notebooks**
 
-With these in place, you’re ready to make the most of PrecisionTrack’s features. We recommend either following our [tooling guide](https://github.com/VincentCoulombe/precision_track/tree/main/tools) or using our pre-configured [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab) to train, test, deploy track and visualize your experiments.
+With these in place, you’re ready to make the most of PrecisionTrack’s features. We recommend either following our [tooling guide](https://github.com/VincentCoulombe/precision_track/tree/main/tools) **AND** our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) to understand where to go from here. You can also use our pre-configured [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab) to train, test, deploy, track and visualize your experiments.
 
 ## Tutorials
 

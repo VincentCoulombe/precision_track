@@ -1,175 +1,165 @@
-# PrecisionTrack Configuration – Parameter Guide ✨
+# PrecisionTrack – User Configuration Guide
 
-This guide helps you **parametrize PrecisionTrack for any custom animal‑tracking project**.
-Follow the step‑by‑step checklist, then consult each section for detailed explanations of every flag.
-
----
-
-## 📦 Step‑by‑step guide 🚶‍♂️🛠️📁
-
-1. **Create a folder** under `./settings/` to hold your dataset‑specific config and metadata.
-1. **Copy an existing settings file** (e.g. `mice.py` or `ap.py`) into your the same folder and rename it `path_to_your_custom_dataset_settings.py`.
-   - Copy‑pasting saves time: you only tweak what differs from the template.
-   - Parameters marked **Keep, but do not change unless you know what you are doing** should stay at their default values – they’re universal.
+Welcome! 👋  
+This guide explains **how to configure PrecisionTrack** by editing a single file:
+👉`./user_configs.yaml/`
 
 ---
 
----
+# Overview
 
-## 🗂 Base configuration
+### The **`./user_configs.yaml/` file** have three section:
 
-| Parameter | Meaning                                                                                                        |
-| --------- | -------------------------------------------------------------------------------------------------------------- |
-| `_base_`  | Path to the **parent** config inherited by this file. Keeps shared defaults in one place – just keep it as is. |
+1. **booleans** → Enable or disable functionalities
+2. **training** → Training parameters, directories and paths
+3. **tracking** → Tracking parameters
 
----
+**⚠️IMPORTANT⚠️** Unless explicitely specified, make sure the your **paths** are **relative** to the `tools` directory from your **precision_track** GitHub directory.
 
-## ⚙️ 1. Common
-
-### Metadata & experiment tracking
-
-- **`metainfo`**: Python file holding your dataset meta‑information (keypoint names, skeleton, class labels). Please refer to our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) for setupping instructions
-- **`wandb_logging`**: `True/False` – Toggles Weights & Biases experiment tracking. OPTIONAL, please refer to our [Weight & Biases guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/wandb) for setupping instructions
+**⚠️IMPORTANT⚠️** For Windows and WSL users. Paths **outside** of your precision_track's directory will not exists within your docker container. Ensure that all the provided paths are **inside** your precision_track's directory.
 
 ---
 
-## 🔍 2. Detection Configuration
+# 1. Booleans – Enable or disable functionalities
 
-- **`with_pose_estimation`**: If `True`, automatically configure the model to train, test, deploy, track and visualize with keypoints. Without considering keypoints if `False`.
+- **pipelined**  
+  Runs processes in parallel to make tracking _faster_.
 
-### 2.0 Architecture
+  - Recommended for real-time use.
 
-- **`widen_factor`** / **`deepen_factor`**: Multipliers that scale the width (channels) and depth (layers) of the detection model's architecture. **Keep, but do not change unless you know what you are doing.**
+- **with_validation**  
+  Enables **Tailtag/ArUco tag re-identification**.
 
-### 2.1 Training
+  - Set as `true` only if your animals wear Tailtags.
 
-- **`data_root`**: The root folder of your COCO styled dataset. This directory should include training and validation annotations (.json files) as well as images.
-- **`data_mode`**: A MMPose artifact. **Keep, but do not change unless you know what you are doing.**
-- **`training_work_dir`**: Where training logs, checkpoints, and visualisations will be written.
-- **`resume`**: Resume training from the last checkpoint if it exists. If you want to resume training, flag it as True and change the default **training_checkpoint** value for the one you wish to resume at.
-- **`training_checkpoint`**: Path to a starting weight file (pre‑training or previous run).
+- **with_action_recognition**  
+  Enables the MART model to recognize animal actions.
 
-#### Data & augmentation
+  - Set as `true` only if you have trained a MART model (Guides and tutorials on how to do it coming out soon).
 
-- **`input_size`**: `(H, W)` pixels after resize. All images are letter‑boxed to this shape. **Keep, but do not change unless you know what you are doing.**
-- **`pad_value`**: Pixel value used when padding (114 ≈ ImageNet mean × 255). **Keep, but do not change unless you know what you are doing.**
-
-#### Optimiser & schedule
-
-| Parameter              | Purpose                    | Keep default?                                                    |
-| ---------------------- | -------------------------- | ---------------------------------------------------------------- |
-| `base_lr`              | Initial learning rate      | ✅                                                               |
-| `batch_size`           | Global batch size          | Adjust as high as you can without being Out Of Memory (OOM).     |
-| `weight_decay`         | L2 regularisation          | ✅                                                               |
-| `ema_momentum`         | EMA decay                  | ✅                                                               |
-| `num_epochs`           | Total epochs               | ✅                                                               |
-| `num_epochs_pipeline1` | Epochs of stage‑1 training | ✅                                                               |
-| `warmup_epochs`        | LR warm‑up length          | ✅                                                               |
-| `val_interval`         | Eval every _N_ epochs      | Adjust regarding your preference. The default value is adequate. |
-
-#### Split paths
-
-- **`training_anns_path`** / **`training_imgs_path`**: The path to your COCO training .json file and folder containing training images.
-- **`validation_anns_path`** / **`validation_imgs_path`**: The path to your COCO validation .json file and folder containing training images.
-
-### 2.2 Testing
-
-- **`testing_work_dir`**: Where testing logs and metrics will be written.
-- **`testing_checkpoint`**: The model weights you wish to use for testing.
-- **`half_precision`**: Activates FP16/AMP for faster inference. **Keep, but do not change unless you know what you are doing.**
-- **`testing_anns_path`** / **`testing_imgs_path`**: The path to your COCO testing .json file and folder containing training images.
-- **`testing_output_file`**: A summary of the detection testing metrics will be written there.
-
-### 2.3 Calibration
-
-- **`calibration_output_dir`**: Where calibration logs and metrics will be written.
-
-### 2.4 Feature Extraction
-
-| Parameter                | Purpose                                  | Keep default?                                                |
-| ------------------------ | ---------------------------------------- | ------------------------------------------------------------ |
-| `fe_base_lr`             | Feature‑extractor LR                     | ✅                                                           |
-| `fe_batch_size`          | Batch size                               | Adjust as high as you can without being Out Of Memory (OOM). |
-| `fe_weight_decay`        | Regularisation                           | ✅                                                           |
-| `fe_num_epochs`          | Training epochs                          | ✅                                                           |
-| `fe_val_interval`        | Eval every _N_ epochs                    | ✅                                                           |
-| `fe_training_checkpoint` | Auto‑fills with last detector checkpoint | n/a (ajusts dynamically)                                     |
-
-### 2.5 Deployment
-
-- **`sanity_check_img`**: Quick smoke‑test image. Pick any image from your dataset.
-- **`deployment_device`**: Target hardware (`"cuda"`, `"cpu"`). **Keep, but do not change unless you know what you are doing.**
-- **`deployed_directory`** / **`deployed_name`**: Folder & filename of the exported detection model (ONNX, TensorRT, etc.).
+- **with_pose_estimation**  
+  Enables full pose (keypoints + skeleton).
+  - Set as `false` if you want box-only tracking.
+  - Set as `true` only if your COCO formatted dataset (`data_root`) contain keypoints.
 
 ---
 
-## 🎯 3. Tracking
+# 2. General directories and paths
 
-### 3.0 Runtime setup
-
-- **`tracking_checkpoint`**: Detection's model (either deployed or not) that will actually be used _inside_ the tracker.
-- **`pipelined`**: If `True`, detection & association run asynchronously. Speedup the inference.
-- **`tracking_batch_size`**: Frames processed per batch. Speedup the inference.
-- **`num_tentatives`**: Consecutive hits before a new track is confirmed.
-- **`nb_frames_retain`**: Frames to keep a _lost_ track before deletion.
-- **`with_validation`**: Enables Tailtag system re-identification. **Requires Tailtags on the frame.**
-- **`with_action_recognition`**: Adds an action‑recognition pass to every track.
-
-### 3.1 Stitching & identity management
-
-- **`stitching_algorithm`**: Dict that selects and configures the multi‑view stitching backend.
-  - `capped_classes` A dictionnary containing the classes you want to cap and their corresponding values.
-  - `beta`, `match_thr` etc. fine‑tune matching cost and thresholds. Can be adjusted for better performances. You can actually visualize the search-zones with the visualization tool.
-
-### 3.2 Validation (optional)
-
-When `with_validation = True`:
-
-- **`validator`**: Dictionary describing ArUco detection hyper‑parameters. They can be tuned for better performances. Please refer to the [Tailtag publication](https://www.biorxiv.org/content/10.1101/2024.11.07.622536v1) for details.
-  - `valid_tags`: the list of the ArUco tag ids visible in the recordings.
-  - `timeout_after`: Max seconds per frame before giving up tag detection. **Keep, but do not change unless you know what you are doing.**
-
-### 3.3 Threshold tuning utility
-
-- **`low_thr_range`**, **`high_thr_range`**, **`init_thr_range`**: Candidate grids scanned during tracking hyper‑parameter search. **Keep, but do not change unless you know what you are doing.**
-
-### 3.4 Benchmark testing
-
-- **`hyperparams`**: JSON file storing the tuned thresholds. The file is generated during the ./tools.deploy.py script execution.
-- **`low_thr`**, **`high_thr`**, **`init_thr`**: Thresholds used for testing the tracking system. **Keep, but do not change unless you know what you are doing.**
-- **`testing_video_paths`** / **`testing_gt_paths`**: Lists of paths to test videos and their corresponding MOT-formatted ground-truth files. Keep both lists the same length and order so each video aligns with its ground truth. **Note** Quantitative evaluation is helpful but not required. For many use cases, a quick qualitative review of tracker outputs on separate/held-out footage is sufficient.
+- **metainfo**  
+  A small python file that describes your species: names of keypoints, skeleton shape, etc. Please refer to our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) for more details.
 
 ---
 
-## 🎬 4. Action Recognition
+# 3. Training parameters, directories and paths
 
-### 4.0 Runtime (inference)
+### These parameters tell PrecisionTrack where your dataset is located and how training should run.
 
-- **`mart_checkpoint`**: Path to your MART checkpoint.
-- **`inference_resolution`**: `(H, W)` The expected resolution of the inference's recordings. You can inspect your video files properties to find this information. **Note:** A video's dimension (in pixels) correspond to its resolution.
-- **`block_size`**: Number of frames per temporal block. **Keep, but do not change unless you know what you are doing.**
-- **`n_embd_*`**: Embedding dimensions for dynamics, pose, and fused features. **Keep, but do not change unless you know what you are doing.**
-- **`assigner`**: Controls track memory length for feature blocks. **Keep, but do not change unless you know what you are doing.**
+- **dataset_name**  
+  The label that will appear in logs and created sub-directories under the `precision_track/work_dir/training_runs` and `precision_track/work_dir/testing_runs` directories. Namely, the training logs and testing metrics will be saved there.
 
-If `with_action_recognition = True` additional keys are required:
+- **data_root**  
+  Root directory of your **COCO-style dataset**. Expected structure:
 
-- **`action_recognition_input_names`** / **`action_recognition_output_names`**: ONNX IO tensor names. **Keep, but do not change unless you know what you are doing.**
-- **`analyzer`**: Full backend description (pre/post‑processors, runtime, labels). **Keep, but do not change unless you know what you are doing.**
+```text
+  <data_root>/
+  ├── annotations/
+  │ ├── train.json/
+  │ ├── val.json/
+  ├── images/
+  │ ├── image_1.jpg   NOTE: Images may have any filename.
+  │ ├── image_2.jpg
+  │ ├── ...
+```
 
-### 4.1 Training flags
+**⚠️IMPORTANT⚠️** For Windows and WSL users. Paths **outside** of your precision_track's directory will not exists within your docker container. Ensure that all the provided paths are **inside** your precision_track's directory.
 
-- **Learning schedule**: `action_recognition_base_lr`, `weight_decay`, `dropout`, `num_iter`, `warmup_iter`, `val_interval`. **Keep, but do not change unless you know what you are doing.**
-- **Dataset root**: `action_recognition_data_root`. The root folder of your MOT styled dataset. This directory should include MOT training and validation annotations (.csv files) as well as videos.
-- **Train split lists**: `*_train_sequences`, `*_train_bboxes_gt_paths`, `*_train_keypoints_gt_paths`, `*_train_actions_gt_paths`. Path to your MOT training videos, bounding boxes, keypoints and actions.
-- **Val split lists**: `*_val_sequences`, etc. . Path to your MOT validation videos, bounding boxes, keypoints and actions.
+- **resume**  
+  Turn ON if you want to continue a stopped training.
 
-### 4.2 Testing
+- **training_checkpoint**  
+  Path to a `.pth` file used to initialize training with transfer learning. Using a checkpoint strongly improves performance.
 
-- **`mart_testing_checkpoint`**: Path to the MART's checkpoint you wish to test.
-- **Test split lists**: `*_test_sequences`, etc. . Path to your MOT testing videos, bounding boxes, keypoints and actions.
+  - Can be either a model you already pretrained or our available **AP Checkpoint** (recommended):  
+    [Download here](https://drive.google.com/drive/folders/1_U9fDDAW7UYm_xelod9ehrSNFdpYUz0o).
+  - For better organization, create a dedicated **checkpoints directory** (e.g., `../checkpoints/`). You may store the AP Checkpoint locally as:  
+    `../checkpoints/ap/model_ap.pth`.
 
-### 4.3 Deployment
+- **deploying_directory**  
+  Directory where all deployment artifacts are saved after a successful training run. At minimum, a `_DEPLOYED.pth` (which is a lighter copy of the last checkpoint of your training run (`../work_dir/training_runs/<dataset_name>/epoch_300.pth`)) will be saved here. Also, a `_DEPLOYED.onnx` file will be saved if your machine supports FP16 conversion (it should). For more informations about **ONNX** please visit [The following](https://onnx.ai/). Finally, a `.engine` checkpoint will be saved if your machine is **CUDA accelerated**. This last checkpoint is the absolute fastest version of your model. As such, it will be the system's preferred **runtime** whenever it is available. For more informations about **TensorRT Engines** please visit [The following](https://docs.nvidia.com/tensorrt/index.html).
 
-- **`mart_deployed_directory`** / **`mart_deployed_name`**: MART's final exported model location.
+  - We also highly recommend creating a **checkpoints directory** (`../checkpoints/`) in order to organize all your model's weights. We recommend your `deploying_directory` to be inside this **checkpoints directory**. For example, you could set your `deploying_directory` as `../checkpoints/v1/` then train your network. This will tell your PrecisionTrack trainer to first create the `../checkpoints/v1/` directory then automatically save your last training checkpoint to this directory.
+
+  - Please refer to our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) guide for more details.
+
+- **deploying_sanity_check_img_path**
+  Path (this path is relative to your `data_root` directory, not your `tools` directory) to **any** image from your **COCO-style dataset**. This image will be used to ensure that the `.onnx` and the `.engine` checkpoints are accurate. This is only relevant if the [training tool's](https://github.com/VincentCoulombe/precision_track/tree/main/tools) `deploy` option is set to `true`.
+
+- **batch_size**  
+  How many images are processed at once.
+
+  - Bigger = faster but requires more VRAM. For example, 24GB GPUs can load batches of 38 images each.
+
+- **wandb_logging**  
+  Enables training visualization through Weight & Biases. Please refer to our [Weight & Biases guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/wandb) for setupping instructions.
 
 ---
+
+# 4. Tracking parameters
+
+- **saving_directory**
+  Specifies where PrecisionTrack will **write all tracking outputs** (e.g., bounding boxes, poses, velocities, actions, etc...). The **visualization tool** also **reads from this directory** when rendering videos.
+
+  **⚠️IMPORTANT⚠️**: The **visualization tool** assumes every file in the `saving_directory` belongs to the **same tracking run**. If the `saving_directory` contains **leftovers from older runs**, you may get **incorrect or mixed visualizations**.
+
+  **Best practice**: use a **fresh** or automatically cleaned **directory** for **each run**.
+
+- **num_subjects**
+  Tell PrecisionTrack **how many subjects of each classes are in the scene**.
+
+  - If animals **can enter or leave the scene**, set it to **-1**.
+  - Ensure that the classes set here are coherent with those in your **metadata file**.
+
+- **tracking_checkpoint_name**  
+  This config allow you to select, by name, a specific checkpoint, from inside your `deploying_directory`, to track with. This checkpoint could be:
+
+  - Your `_DEPLOYED.pth`
+  - Your `_DEPLOYED.onnx`
+  - Your `.engine`
+
+  If left empty (""), PrecisionTrack will automatically select a tracking checkpoint from your **deploying_directory**. The selection is performed **following this priority** : `.engine` -> `_DEPLOYED.onnx` -> `_DEPLOYED.pth`.
+
+---
+
+# 5. Visualization parameters
+
+- **display_bounding_boxes**: Render the tracked subject's bounding boxes, given that a `bboxes.csv` file exists in the `saving_directory`.
+
+- **display_poses**: Render the tracked subject's poses, given that a `kpts.csv` file exists in the `saving_directory`.
+
+- **display_velocities**: Render the tracked subject's velocities, (in the form of an arrow) given that a `velocities.csv` file exists in the `saving_directory`.
+
+- **display_species**: Add the tracked subject's predicted species to the subject's label bars, given that a `bboxes.csv` file exists in the `saving_directory`.
+
+- **display_confidence_scores**: Add the tracked subject's confidence score (which means how confident the subject's detections are) to the subject's label bars, given that a `bboxes.csv` file exists in the `saving_directory`.
+
+- **display_actions**: Add the tracked subject's predicted actions to the subject's label bars, given that a `actions.csv` file exists in the `saving_directory`.
+
+- **display_search_zones**: Render the tracked subject's search zones (as described in the manuscript), given that a `search_areas.csv` file exists in the `saving_directory`.
+
+- **display_validations**: Render the tracked subject's validations (Tailtag detections), given that a `validations.csv` file exists in the `saving_directory`.
+
+- **display_untracked_detections**: Render detected bounding boxes (will be bright white), given that a `detections.csv` file exists in the `saving_directory`.
+
+---
+
+# 🧪 Tips
+
+- If something breaks:
+
+  1. Read the log, it is pretty verbose, it should tell you exactly what went wrong.
+  2. Check the configs (mainly the paths) linked to the process that failed.
+  3. Ensure you have understood and formatted your dataset correctly.
+  4. If nothing is working, you can contact us directly for help, or open an issue in the repository.
+
+- YAML files are sensitive to indentation — avoid using tabs.
