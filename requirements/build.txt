@@ -15,3 +15,4 @@ seaborn==0.13.2
 opencv-contrib-python==4.6.0.66
 turbojpeg==0.0.2
 PyYAML==6.0.3
+ffmpeg-python==0.2.0

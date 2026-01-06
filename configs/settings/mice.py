@@ -1,7 +1,7 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../configs/metadata/mice.py'
+metainfo = "../configs/metadata/mice.py"
 wandb_logging = False
 # /Common
 
@@ -13,11 +13,11 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
-dataset_name = 'mice'
+data_root = "../../datasets/MICE/pose-estimation/"
+dataset_name = "mice"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
-training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
+training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
 
 input_size = (640, 640)
 pad_value = 114
@@ -72,28 +72,28 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 #   1.4) /Feature Extraction
 
 #   1.5) Deployment
-deploying_sanity_check_img_path = 'images/0000003435.jpg'
+deploying_sanity_check_img_path = "images/0000003435.jpg"
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = '../checkpoints/mice/'
+deploying_directory = "../checkpoints/mice/"
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
 
 
 # 2) Tracking
-tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
+tracking_checkpoint_name = "model_mice_DEPLOYED.pth"
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
-saving_directory = '../work_dir/'
+saving_directory = "../work_dir/"
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = True
 with_action_recognition = True
 
-num_subjects = {'mouse': 20}
+num_subjects = {"mouse": 20}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
@@ -156,6 +156,7 @@ mart_checkpoint = deploying_directory + "mart_DEPLOYED.onnx"
 inference_resolution = (2720, 2720)
 block_size = 30
 
+n_encoded_dynamics = 1
 n_embd_dynamics = 32
 n_embd_pose = 96
 n_embd_features = 128
@@ -172,13 +173,20 @@ if with_action_recognition:
     action_recognition_input_names = ["features", "poses", "dynamics"]
     action_recognition_output_names = ["class_logits", "action_embeddings"]
 
+    velocity_encoder = dict(type="VelocityNormEncoder")
+
     analyzer = dict(
         type="ActionRecognitionBackend",
         data_preprocessor=dict(
             type="ActionRecognitionPreprocessor",
+            embd_size=n_embd_features,
             metainfo=metainfo,
             _delete_=True,
             block_size=block_size,
+            with_actions=False,
+            with_kpts=True,
+            with_vels=True,
+            velocity_encoder=velocity_encoder,
         ),
         metainfo=metainfo,
         input_names=action_recognition_input_names,
@@ -203,6 +211,7 @@ if with_action_recognition:
                 config=dict(
                     n_embd=n_embd_features,
                     block_size=block_size,
+                    n_encoded_dynamics=n_encoded_dynamics,
                     n_embd_dynamics=n_embd_dynamics,
                     n_embd_pose=n_embd_pose,
                     n_block=4,
@@ -222,7 +231,7 @@ if with_action_recognition:
             input_shapes=[
                 dict(type="FeaturesShape", block_size=block_size, n_embd=n_embd_features),
                 dict(type="PosesShape", block_size=block_size, metainfo=metainfo),
-                dict(type="VelocityShape", block_size=block_size),
+                dict(type="VelocityShape", block_size=block_size, n_encoding=n_encoded_dynamics),
             ],
         ),
     )
@@ -237,8 +246,8 @@ action_recognition_base_lr = 3e-5
 action_recognition_weight_decay = 0.01
 action_recognition_dropout = 0
 action_recognition_num_iter = 100000
-action_recognition_warmup_iter = int(0.1 * action_recognition_num_iter)
-action_recognition_val_interval = action_recognition_num_iter // 100
+action_recognition_warmup_iter = 25000
+action_recognition_val_interval = 1000
 
 action_recognition_data_root = "../../datasets/MICE/sequential/"
 

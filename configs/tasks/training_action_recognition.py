@@ -125,9 +125,17 @@ optim_wrapper = dict(
 
 # Dataloaders
 codec = dict(type="SequenceAnnotationProcessor", input_size=_base_.input_size, convert_cats=True)
-load_img = [dict(type="LoadImage"), dict(type="BottomupResize", input_size=_base_.input_size, pad_val=_base_.pad_value)]
+load_img = [dict(type="LoadImage")]
+crop = [dict(type="SequenceRandomCrop", crop_size=(0.85, 1.0))]
+resize = [dict(type="BottomupResize", input_size=_base_.input_size, pad_val=(_base_.pad_value, _base_.pad_value, _base_.pad_value))]
+transforms = [
+    dict(type="SequenceYOLOXHSVRandomAug", value_delta=15, hue_delta=0, saturation_delta=0),
+    dict(type="SequenceRandomContrastAug"),
+    dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
+    # dict(type="SequenceRandomOcclusion"),
+]
 load_anns = [
-    dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False),
+    dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False, min_kpt_vis=3),
     dict(type="GenerateTarget", encoder=codec),
     dict(type="PackPoseInputs"),
 ]
@@ -156,7 +164,7 @@ train_dataloader = dict(
             actions_gt_paths=train_actions_gt_paths,
         ),
         block_size=block_size,
-        pipeline=load_img + load_anns,
+        pipeline=load_img + resize + transforms + load_anns,
         inference_resolution=_base_.inference_resolution,
         training=True,
     ),
@@ -185,7 +193,7 @@ val_dataloader = dict(
             actions_gt_paths=val_actions_gt_paths,
         ),
         block_size=block_size,
-        pipeline=load_img + load_anns,
+        pipeline=load_img + resize + load_anns,
         inference_resolution=_base_.inference_resolution,
         training=False,
     ),
@@ -193,7 +201,10 @@ val_dataloader = dict(
 # /Dataloaders
 
 # Evaluation
-val_evaluator = [dict(type="MultiClassActionRecognitionMetrics", metainfo=metainfo, confusion_matrix_save_dir=work_dir, label_index_mode="last")]
+val_evaluator = dict(
+    type="MultiClassActionRecognitionMetrics", metainfo=metainfo, confusion_matrix_save_dir=work_dir, metric_save_dir=work_dir, label_index_mode="last"
+)
+
 # /Evaluation
 
 
@@ -215,6 +226,11 @@ custom_hooks = [
     #     type="SequencePreprocessingHook",
     #     priority=50,
     # ),
+    dict(
+        type="ActionRecognitionRegenerationSwitchHook",
+        priority=51,
+        generate_every=1000,
+    ),
 ]
 # /Hooks
 
@@ -230,6 +246,9 @@ if _base_.wandb_logging:
                 project=_base_.project,
                 entity=_base_.entity,
             ),
+            define_metric_cfg={
+                "ActionRecognition/Macro F1": "max",
+            },
             save_dir=work_dir + "wandb/",
         ),
     )

@@ -8,7 +8,7 @@ import torch
 from mmengine.model import BaseDataPreprocessor
 
 from precision_track.registry import MODELS
-from precision_track.utils import get_device, kpts_to_poses, parse_pose_metainfo
+from precision_track.utils import get_device, kpts_to_poses, parse_pose_metainfo, BaseVelocityEncoder
 
 
 class IdIndexMap:
@@ -112,6 +112,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
 
         self.block_vels = None
         if with_vels:
+            assert isinstance(self.vel_encoder, BaseVelocityEncoder), f"Expected a velocity encoder, but got {self.vel_encoder}."
             self.block_vels = torch.zeros((self._max_size, self._block_size, self.vel_encoder.nb_dim), dtype=torch.float32, device=self._device).contiguous()
 
         self.block_poses = None
@@ -268,7 +269,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         """Insert new data at the correct rolling position."""
         assert self._head.device == block.device
         pos = self._head.index_select(0, rows)
-        if data is not None:
+        if isinstance(data, torch.Tensor) and data.numel() > 0:
             B = data.shape[0]
             assert rows.dtype == torch.long
             assert rows.device == block.device, "rows/block device mismatch"

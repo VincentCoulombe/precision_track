@@ -1,0 +1,164 @@
+_base_ = "./training_action_recognition.py"
+
+
+# Settings
+base_lr = 1e-5
+weight_decay = 0.1
+warmup_iter = _base_.action_recognition_warmup_iter
+
+hyperparams = _base_.hyperparams
+
+input_size = _base_.input_size
+pad_value = _base_.pad_value
+
+metainfo = _base_.metainfo
+
+low_thr = _base_.low_thr
+high_thr = _base_.high_thr
+init_thr = _base_.init_thr
+
+train_sequences = "../../datasets/pretraining/train/"
+val_sequences = "../../datasets/pretraining/val/"
+
+train_sequences = ["../assets/20mice_sanity_check.avi"]
+val_sequences = ["../assets/20mice_sanity_check.avi"]
+
+# /Settings
+
+# Model
+assigner = dict(
+    metafile=_base_.metainfo,
+    nb_frames_retain=_base_.nb_frames_retain,
+    num_tentatives=_base_.num_tentatives,
+    thresholds_file=hyperparams,
+    tracking_algorithm=dict(
+        type="PrecisionTrack" if _base_.with_pose_estimation else "ByteTrack",
+        obj_score_thrs=dict(high=high_thr, low=low_thr),
+        weight_iou_with_det_scores=False,
+        match_iou_thrs=dict(high=0.9, low=0.75, tentative=0.9),
+        init_track_thr=init_thr,
+        with_kpt_weights=True,
+        with_kpt_sigmas=False,
+        dynamic_temporal_scaling=False,
+        alpha=0.5,
+    ),
+    motion_algorithm=dict(
+        type="DynamicKalmanFilter",
+    ),
+    stitching_algorithm=_base_.stitching_algorithm,
+)
+
+model = dict(
+    mode="pretrain",
+    data_preprocessor=dict(
+        mode="pretrain",
+    ),
+)
+# /Model
+
+# Outputs
+outputs = [
+    dict(
+        type="CsvBoundingBoxes",
+        path=_base_.work_dir + "/bboxes.csv",
+        instance_data="pred_track_instances",
+        precision=64,
+    ),
+    dict(
+        type="CsvVelocities",
+        path=_base_.work_dir + "/velocities.csv",
+        instance_data="pred_track_instances",
+        precision=32,
+    ),
+    dict(type="OnlinePthEmbeddingOutput"),
+]
+if _base_.with_pose_estimation:
+    outputs += [
+        dict(
+            type="CsvKeypoints",
+            path=_base_.work_dir + "/kpts.csv",
+            instance_data="pred_track_instances",
+            precision=32,
+        ),
+    ]
+# /Outputs
+
+# Optimization
+optim_wrapper = dict(
+    optimizer=dict(lr=base_lr, weight_decay=weight_decay),
+)
+# /Optimization
+
+# Dataloaders
+train_dataloader = dict(
+    dataset=dict(
+        type="MAEDataset",
+        detector=_base_.detector,
+        assigner=assigner,
+        outputs=outputs,
+        tracking_batch_size=_base_.tracking_batch_size,
+        from_file=_base_.metainfo,
+        n_feats=_base_.n_embd_features,
+        n_velocities=2,
+        keypoints_gt_format=_base_.keypoints_gt_format,
+        bboxes_gt_format=_base_.bboxes_gt_format,
+        data_prefix=dict(
+            sequences=train_sequences,
+        ),
+        block_size=_base_.block_size,
+        pipeline=_base_.load_img + _base_.resize + _base_.transforms + _base_.load_anns,
+        inference_resolution=_base_.inference_resolution,
+        training=True,
+        nb_simulteneous_seq=1,
+        supervized=False,
+        _delete_=True,
+    ),
+)
+
+val_dataloader = dict(
+    dataset=dict(
+        type="MAEDataset",
+        detector=_base_.detector,
+        assigner=assigner,
+        outputs=outputs,
+        tracking_batch_size=_base_.tracking_batch_size,
+        from_file=_base_.metainfo,
+        n_feats=_base_.n_embd_features,
+        n_velocities=2,
+        keypoints_gt_format=_base_.keypoints_gt_format,
+        bboxes_gt_format=_base_.bboxes_gt_format,
+        data_prefix=dict(
+            sequences=val_sequences,
+        ),
+        block_size=_base_.block_size,
+        pipeline=_base_.load_img + _base_.resize + _base_.transforms + _base_.load_anns,
+        inference_resolution=_base_.inference_resolution,
+        training=False,
+        nb_simulteneous_seq=1,
+        custom_length=50000,
+        supervized=False,
+        _delete_=True,
+    ),
+)
+# /Dataloaders
+
+# Loops
+val_cfg = dict(type="SequenceValidationLoop", mode="pretrain")
+# /Loops
+
+# Evaluation
+val_evaluator = [dict(type="MSEMetric")]
+# /Evaluation
+
+# Hooks
+default_hooks = dict(
+    checkpoint=dict(interval=-1, type="CheckpointHook", save_best="MSEMetric/mean", rule="less", by_epoch=False),
+)
+custom_hooks = [
+    dict(
+        type="SequencesSwitchHook",
+        priority=51,
+        generate_every=10000,
+    ),
+]
+# /Hooks

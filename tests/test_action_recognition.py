@@ -121,36 +121,43 @@ def test_inference(checkpoints, config):
         ),
     ],
 )
-def test_preprocessing(predict_inputs, loss_sequence_input, config):
-    ar_preprocessing = MODELS.build(Config.fromfile(config)["analyzer"]["data_preprocessor"])
+def test_training_preprocessing(predict_inputs, loss_sequence_input, config):
+    ar_preprocessing = MODELS.build(Config.fromfile(config)["training_data_preprocessor"])
     ar_preprocessing.block_size = 4
+
+    inf_ar_pre_cfg = Config.fromfile(config)["analyzer"]["data_preprocessor"]
+    inf_ar_pre_cfg.block_size = 3
+    inf_ar_preprocessing = MODELS.build(inf_ar_pre_cfg)
 
     map_location = "cuda" if cuda_available() else "cpu"
 
     for predict_input in predict_inputs:
-        predict_output = ar_preprocessing.predict(torch.load(predict_input, weights_only=False, map_location=torch.device(map_location)))
+        loaded_ds = torch.load(predict_input, weights_only=False, map_location=torch.device(map_location))
+        predict_output = inf_ar_preprocessing(loaded_ds)
 
     loss_sequence_input = torch.load(loss_sequence_input, weights_only=False, map_location=torch.device(map_location))
+    for ds in loss_sequence_input["data_samples"]:
+        ds.pred_track_instances.velocities = ds.pred_track_instances.dynamics
     loss_output = ar_preprocessing.loss(loss_sequence_input)
 
-    assert torch.allclose(loss_output["features"][-1].to(torch.float16), predict_output["features"][-1].to(torch.float16))
-    assert torch.allclose(loss_output["poses"][-1].to(torch.float16), predict_output["poses"][-1].to(torch.float16))
-    assert torch.allclose(loss_output["dynamics"][-1].to(torch.float16), predict_output["dynamics"][-1].to(torch.float16))
+    assert torch.allclose(loss_output["features"][-1][1:].to(torch.float16), predict_output["features"][-1].to(torch.float16))
+    assert torch.allclose(loss_output["poses"][-1][1:].to(torch.float16), predict_output["poses"][-1].to(torch.float16))
+    assert torch.allclose(loss_output["dynamics"][-1][1:].to(torch.float16), predict_output["dynamics"][-1].to(torch.float16))
 
     loss_sequence_input["inputs"][0] = loss_sequence_input["inputs"][0].view(1, 4, 128)
 
     pred_track_instances = InstanceData()
 
-    pred_track_instances.dynamics = loss_sequence_input["data_samples"][0].pred_track_instances.dynamics.view(1, 4, 2)
+    pred_track_instances.velocities = loss_sequence_input["data_samples"][0].pred_track_instances.dynamics.view(1, 4, 2)
     pred_track_instances.kpts = loss_sequence_input["data_samples"][0].pred_track_instances.kpts.view(1, 4, 8, 2)
     pred_track_instances.kpt_vis = loss_sequence_input["data_samples"][0].pred_track_instances.kpt_vis.view(1, 4, 8)
     loss_sequence_input["data_samples"][0].pred_track_instances = pred_track_instances
     sequence_output = ar_preprocessing.sequence(loss_sequence_input)
 
-    assert torch.allclose(sequence_output["features"][-1].to(torch.float16), predict_output["features"][-1].to(torch.float16))
-    assert torch.allclose(sequence_output["poses"][-1].to(torch.float16), predict_output["poses"][-1].to(torch.float16))
-    assert torch.allclose(sequence_output["dynamics"][-1].to(torch.float16), predict_output["dynamics"][-1].to(torch.float16))
+    assert torch.allclose(sequence_output["features"][-1][1:].to(torch.float16), predict_output["features"][-1].to(torch.float16))
+    assert torch.allclose(sequence_output["poses"][-1][1:].to(torch.float16), predict_output["poses"][-1].to(torch.float16))
+    assert torch.allclose(sequence_output["dynamics"][-1][1:].to(torch.float16), predict_output["dynamics"][-1].to(torch.float16))
 
 
 if __name__ == "__main__":
-    pytest.main()
+    pytest.main(["-x", os.path.realpath(__file__), "-s"])

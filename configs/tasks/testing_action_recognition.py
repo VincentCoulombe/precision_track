@@ -54,7 +54,7 @@ detector = dict(
 model = dict(
     _base_.analyzer.runtime.model,
     data_preprocessor=dict(
-        type="ActionRecognitionPreprocessor",
+        type="ActionRecognitionTrainingPreprocessor",
         metainfo=metainfo,
         _delete_=True,
         block_size=block_size,

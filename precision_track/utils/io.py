@@ -15,15 +15,10 @@ import pkgutil
 import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
-<<<<<<< HEAD
-from typing import Callable, Dict, List, Union, Optional
+from typing import Callable, Dict, List, Union, Optional, Set, Any
 import ffmpeg
 import numpy as np
-
-=======
-from typing import Callable, Dict, List, Union, Set, Any
 from pathlib import Path
->>>>>>> hotfixes
 import cv2
 import mmengine
 import torch
@@ -914,6 +909,8 @@ def _extract_trailing_index(filename: str) -> Optional[int]:
     if i == len(stem) - 1:
         return None
     return int(stem[i + 1 :])
+
+
 def load_system_config_dict(system_configs_path: str, final_base: str = "./_base_.py") -> Dict[str, Any]:
     start_path = Path(system_configs_path).resolve()
     visited: Set[Path] = set()
