@@ -528,23 +528,48 @@ ONNX_CKPT_EXTS = [".onnx"]
 TRT_CKPT_EXTS = [".engine"]
 
 
-def get_runtime_type(checkpoint: Optional[str] = None):
+def set_runtime_attributes(checkpoint: Optional[str] = None):
     if checkpoint is None:
-        return "PytorchRuntime"
-    elif isinstance(checkpoint, str) and os.path.exists(checkpoint) and os.path.isfile(checkpoint):
+        return "PytorchRuntime", None
+
+    if not (isinstance(checkpoint, str) and os.path.exists(checkpoint)):
+        raise ValueError(f"The runtime's checkpoint: {os.path.abspath(checkpoint)} is not a valid checkpoint path.")
+
+    if os.path.isfile(checkpoint):
         _, ext = os.path.splitext(checkpoint)
+
         if ext in PYTHON_CKPT_EXTS:
-            return "PytorchRuntime"
+            return "PytorchRuntime", checkpoint
         elif ext in ONNX_CKPT_EXTS:
-            return "ONNXRuntime"
+            return "ONNXRuntime", checkpoint
         elif ext in TRT_CKPT_EXTS:
-            return "TensorRTRuntime"
+            return "TensorRTRuntime", checkpoint
         else:
             raise ValueError(
-                (
-                    f"The runtime's checkpoint's extension ({ext}) is not supported."
-                    "The supported checkpoint extensions are {PYTHON_CKPT_EXTS+ONNX_CKPT_EXTS+TRT_CKPT_EXTS}."
-                )
+                (f"The runtime's checkpoint extension ({ext}) is not supported. " f"Supported: {PYTHON_CKPT_EXTS + ONNX_CKPT_EXTS + TRT_CKPT_EXTS}")
             )
-    else:
-        raise ValueError(f"The runtime's checkpoint: {os.path.abspath(checkpoint)} is not a valid checkpoint path.")
+
+    if os.path.isdir(checkpoint):
+        files = [os.path.join(checkpoint, f) for f in os.listdir(checkpoint) if os.path.isfile(os.path.join(checkpoint, f))]
+
+        def find_by_ext(ext_list):
+            for file in files:
+                if os.path.splitext(file)[1] in ext_list:
+                    return file
+            return None
+
+        trt_file = find_by_ext(TRT_CKPT_EXTS)
+        if trt_file is not None:
+            return "TensorRTRuntime", trt_file
+
+        onnx_file = find_by_ext(ONNX_CKPT_EXTS)
+        if onnx_file is not None:
+            return "ONNXRuntime", onnx_file
+
+        pt_files = find_by_ext(PYTHON_CKPT_EXTS)
+        if pt_files is not None:
+            return "PytorchRuntime", pt_files
+
+        raise ValueError(
+            f"No supported checkpoint was found in directory '{checkpoint}'. " f"Supported extensions: {PYTHON_CKPT_EXTS + ONNX_CKPT_EXTS + TRT_CKPT_EXTS}"
+        )

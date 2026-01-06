@@ -10,7 +10,7 @@ from mmengine.optim import OptimWrapper
 from mmengine.runner.amp import autocast
 
 from precision_track.registry import RUNTIMES
-from precision_track.utils import PoseDataSample, get_device, get_runtime_type
+from precision_track.utils import PoseDataSample, get_device, set_runtime_attributes
 
 
 class BaseBackend(BaseModel, metaclass=ABCMeta):
@@ -20,8 +20,10 @@ class BaseBackend(BaseModel, metaclass=ABCMeta):
 
     def __init__(self, runtime: Config, *args, **kwargs):
         super(BaseBackend, self).__init__()
-        checkpoint = runtime.get("checkpoint")
-        runtime["type"] = get_runtime_type(checkpoint)
+        checkpoint = runtime.get("checkpoint", "")
+        if not checkpoint:
+            checkpoint = runtime.get("deploying_directory")
+        runtime["type"], runtime["checkpoint"] = set_runtime_attributes(checkpoint)
         self._runtime_type = runtime["type"]
         self._runtime = RUNTIMES.build(runtime)
         self.device = getattr(runtime, "device", get_device())

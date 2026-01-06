@@ -44,7 +44,7 @@ class DetectionBackend(BaseBackend):
             logger="current",
             level=logging.INFO,
         )
-        super(DetectionBackend, self).__init__(runtime)
+        super(DetectionBackend, self).__init__(runtime, **kwargs)
         self.post_processor = data_postprocessor
         if data_postprocessor is not None:
             self.post_processor = PostProcessingSteps(data_postprocessor)

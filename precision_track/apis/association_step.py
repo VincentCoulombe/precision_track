@@ -78,6 +78,8 @@ class AssociationStep(nn.Module):
                 if self.verbose and len(stitching_hyperparams) > 0:
                     print_log(f"Dynamically updating stitching hyperparameters to: {stitching_hyperparams}.", logger="current")
             stitching_algorithm["classes"] = self.classes
+            stitching_algorithm["metafile"] = metafile
+            stitching_algorithm["verbose"] = self.verbose
             self.stitching_algorithm = TRACKING.build(stitching_algorithm)
         else:
             self.stitching_algorithm = None

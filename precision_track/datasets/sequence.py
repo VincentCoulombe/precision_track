@@ -1497,7 +1497,7 @@ class VideoDataset:
         gt_r_map = []
         base_v_paths = [os.path.splitext(os.path.basename(v))[0] for v in self.video_paths]
         for i, gt in enumerate(self.gt_paths):
-            assert os.path.exists(gt)
+            assert os.path.exists(gt), f"Expected the file: {gt}, to exist."
             gt_name = os.path.splitext(os.path.basename(gt))[0].replace("gt_", "")
             gt_idx = find_path_in_dir(gt_name, base_v_paths)
             if gt_idx == -1:

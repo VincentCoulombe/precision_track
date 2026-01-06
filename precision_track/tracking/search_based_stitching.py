@@ -1,10 +1,11 @@
 from collections import Counter, deque
 from typing import Dict, List, Optional, Tuple
-
+from mmengine.logging import print_log
 import numpy as np
 
 from precision_track.registry import TRACKING
-from precision_track.utils import iou_batch, linear_assignment, reformat
+from precision_track.utils import iou_batch, linear_assignment, reformat, parse_pose_metainfo
+
 
 from .base import BaseStitchingAlgorithm
 
@@ -14,10 +15,12 @@ class SearchBasedStitching(BaseStitchingAlgorithm):
 
     def __init__(
         self,
+        metafile: str,
         capped_classes: Dict[str, int],
         beta: Optional[float] = 1.0,
         match_thr: Optional[float] = 0.9,
         eps: Optional[float] = 1e-2,
+        verbose: Optional[bool] = True,
         **kwargs,
     ):
         """This search-based stitching algorithm aims to piece together
@@ -27,6 +30,7 @@ class SearchBasedStitching(BaseStitchingAlgorithm):
         tracks will always remain within a predefined limit.
 
         Args:
+            metafile (str): The metainfo for the skeletons of the tracks.
             capped_classes (Dict[str, int]): The classes whose tracks will be stitched. the
             instance IDs of these tracks will never exceed the integers given as values.
             beta (float, optional): The expension's decay rate for the search zones. Defaults to 1.0.
@@ -34,10 +38,28 @@ class SearchBasedStitching(BaseStitchingAlgorithm):
             eps (float, optional): The relevancy of the lost track last seen direction in the search zone calculation. Defaults to 1e-2.
         """
         super().__init__(**kwargs)
+        self.verbose = verbose
+        metadata = parse_pose_metainfo({"from_file": metafile})
+        assert "classes" in metadata, "The metadata must contain a list of the tracked classes."
+        classes = metadata["classes"]
         assert isinstance(capped_classes, dict)
+        self.capped_classes = dict()
         for capped_cls, cap in capped_classes.items():
-            assert isinstance(capped_cls, str) and 0 <= cap
-        self.capped_classes = {cls: np.zeros(capped_classes[cls], dtype=bool) for cls in capped_classes}
+            if capped_cls in classes:
+                if 0 <= cap:
+                    self.capped_classes[capped_cls] = np.zeros(cap, dtype=bool)
+                    if self.verbose:
+                        print_log(f"The system will be tracking a maximum of {cap} {capped_cls}.", logger="current")
+                elif self.verbose:
+                    print_log(
+                        f"Subjects classified as: '{capped_cls}' will be tracked without a cap, since you registered {cap} subjects in your config.",
+                        logger="current",
+                    )
+            elif self.verbose:
+                print_log(
+                    f"Subjects classified as: '{capped_cls}' will be tracked without a cap, since it is not in the metainfo's list of classes: {classes}.",
+                    logger="current",
+                )
         self.search_zones = {cls: {} for cls in self.capped_classes}
         assert eps <= 1e-1, "A high epsilon could cause search zone update instability."
         self.eps = eps

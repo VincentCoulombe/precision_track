@@ -6,6 +6,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import ast
 import io
 import logging
 import os
@@ -14,10 +15,15 @@ import pkgutil
 import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
+<<<<<<< HEAD
 from typing import Callable, Dict, List, Union, Optional
 import ffmpeg
 import numpy as np
 
+=======
+from typing import Callable, Dict, List, Union, Set, Any
+from pathlib import Path
+>>>>>>> hotfixes
 import cv2
 import mmengine
 import torch
@@ -31,6 +37,7 @@ from mmengine.utils import check_file_exist, digit_version, mkdir_or_exist, trac
 from mmengine.utils.dl_utils import load_url
 
 SUPPORTED_IMG_BACKEND = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".pgm", ".pbm", ".ppm", ".ras"]
+SUPPORTED_VIDEO_BACKEND = [".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg"]
 ENV_MMENGINE_HOME = "MMENGINE_HOME"
 ENV_XDG_CACHE_HOME = "XDG_CACHE_HOME"
 DEFAULT_CACHE_DIR = "~/.cache"
@@ -68,7 +75,7 @@ class VideoReader:
     def __init__(self, filename, cache_capacity=10):
         # Check whether the video path is a url
         if not filename.startswith(("https://", "http://")):
-            check_file_exist(filename, "Video file not found: " + filename)
+            check_file_exist(filename, "Video file not found: " + os.path.abspath(filename))
         self.filename = filename
         self._vcap = cv2.VideoCapture(filename)
         assert cache_capacity > 0
@@ -293,7 +300,7 @@ def infer_paths(path_or_dir: Union[List[str], str]) -> Union[List[str], str]:
         return path_or_dir
     assert osp.exists(path_or_dir), f"{path_or_dir} does not exists."
     if osp.isdir(path_or_dir):
-        root = osp.abspath(osp.dirname(path_or_dir))
+        root = osp.abspath(osp.normpath(path_or_dir))
         paths = []
         for file in os.listdir(path_or_dir):
             paths.append(osp.join(root, file))
@@ -907,3 +914,74 @@ def _extract_trailing_index(filename: str) -> Optional[int]:
     if i == len(stem) - 1:
         return None
     return int(stem[i + 1 :])
+def load_system_config_dict(system_configs_path: str, final_base: str = "./_base_.py") -> Dict[str, Any]:
+    start_path = Path(system_configs_path).resolve()
+    visited: Set[Path] = set()
+    BASE_PATTERN = re.compile(r"^_base_\s*=\s*(.+)$", re.MULTILINE)
+
+    def _find_settings(path: Path) -> str:
+        assert path.exists(), f"The '{path}' path does not exist."
+        if path in visited:
+            raise RuntimeError(f"Cyclic _base_ include detected at {path}")
+        visited.add(path)
+
+        text = path.read_text(encoding="utf-8")
+
+        m = BASE_PATTERN.search(text)
+        if not m:
+            raise ValueError(f"Reached a leaf node of the configuration graph that is not a settings file: {text}.")
+
+        rhs = m.group(1).strip()
+        try:
+            base_value = ast.literal_eval(rhs)
+        except Exception as e:
+            print(f"Encountered the following error when trying to infer the settings files of the '{path}' file: {e}.")
+
+        if base_value == final_base:
+            return path, text
+
+        if isinstance(base_value, str):
+            base_files = [base_value]
+        elif isinstance(base_value, (list, tuple)):
+            base_files = list(base_value)
+        else:
+            raise ValueError(f"Unexpected _base_ encountered when parsing the '{path}' config file.")
+
+        # Is multiple bases, follow the first one. Please enforce this convention in your config files.
+        base_file = base_files[0]
+        base_path = (path.parent / base_file).resolve()
+
+        return _find_settings(base_path)
+
+    return _find_settings(start_path)
+
+
+def load_user_configs(user_configs: dict, system_configs_path: str) -> None:
+    system_configs_path, system_configs = load_system_config_dict(system_configs_path)
+
+    # 2) Apply all user overrides
+    for section_dict in user_configs.values():
+        for user_config_k, user_config_v in section_dict.items():
+            # Python representation of the value (adds quotes for strings, etc.)
+            value_repr = repr(user_config_v)
+
+            pattern = rf"^{re.escape(user_config_k)}\s*=.*$"
+            replacement_line = f"{user_config_k} = {value_repr}"
+
+            if re.search(pattern, system_configs, flags=re.MULTILINE):
+                # Replace existing assignment
+                system_configs = re.sub(
+                    pattern,
+                    replacement_line,
+                    system_configs,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+            else:
+                # Append new assignment at the end
+                if system_configs and not system_configs.endswith("\n"):
+                    system_configs += "\n"
+                system_configs += f"{user_config_k} = {value_repr}\n"
+
+    # 3) Write back to disk once, after all modifications
+    system_configs_path.write_text(system_configs, encoding="utf-8")

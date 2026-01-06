@@ -138,7 +138,7 @@ class TensorRTRuntime(InferenceOnlyRuntime):
 
     def _set_input(self, name: str, tensor: torch.Tensor) -> None:
         prof_min, _, prof_max = self.input_profiles[name]
-        assert prof_min[0] <= tensor.size(0) <= prof_max[0], f"Batch {tensor.size(0)} outside [{prof_min[0]}, {prof_max[0]}] for {name}"
+        assert prof_min[0] <= tensor.size(0) <= prof_max[0], f"Batch size of {tensor.size(0)} outside [{prof_min[0]}, {prof_max[0]}] for {name}"
 
         self.context.set_input_shape(name, tuple(tensor.shape))
         self.context.set_tensor_address(name, int(tensor.data_ptr()))

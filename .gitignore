@@ -169,11 +169,13 @@ cython_debug/
 !/assets/*
 ckpt/*
 ckpts/*
+checkpoints/*
+!checkpoints/README.md
 work_dir/*
 profiles/*
 *.npy
 *.prof
-precision_track/evaluation/comparisons/ckpts/*
+precision_track/evaluation/comparisons/*
 precision_track/.mim
 *.egg-info
 *.h5
