@@ -32,7 +32,9 @@ def main(args):
     system_configs_path = "../configs/tasks/training_action_recognition.py"
     with open("../configs/user_configs.yaml", "r") as f:
         user_configs = yaml.safe_load(f)
+    user_configs["booleans"]["with_action_recognition"] = True
     load_user_configs(user_configs, system_configs_path)
+
     runner = Runner(system_configs_path, args.launcher, mode="train")
     runner()
 

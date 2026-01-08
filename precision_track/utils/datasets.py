@@ -232,6 +232,8 @@ def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name
 
     width_target, height_target = target_size
 
+    scales = dict()
+
     for img in tqdm(coco_data["images"], desc="Resizing images"):
         img_path = os.path.join(coco_path, "images", img["file_name"])
         new_img_path = os.path.join(output_path, "images", img["file_name"])
@@ -244,6 +246,8 @@ def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name
         scale_x = width_target / width_orig
         scale_y = height_target / height_orig
 
+        scales[int(img["id"])] = (scale_x, scale_y)
+
         resized_image = cv2.resize(image, target_size, interpolation=cv2.INTER_LINEAR)
         cv2.imwrite(new_img_path, resized_image)
 
@@ -251,6 +255,9 @@ def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name
         img["height"] = height_target
 
     for ann in tqdm(coco_data["annotations"], desc="Resizing annotations"):
+        image_scale = scales.get(int(ann["image_id"]))
+        assert image_scale is not None
+        scale_x, scale_y = image_scale
         ann["bbox"][0] *= scale_x
         ann["bbox"][1] *= scale_y
         ann["bbox"][2] *= scale_x

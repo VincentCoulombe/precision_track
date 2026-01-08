@@ -11,14 +11,16 @@ booleans:
 # General directories and paths
 # ================================
 general:
-  metainfo: "../configs/metadata/mice.py"
+  # metainfo: "../configs/metadata/mice.py"
+  metainfo: "../../datasets//camille/stripedmice_corrected_without_tail.py"
 
 # ================================
 # Training parameters, directories and paths
 # ================================
 training:
   dataset_name: "mice"
-  data_root: "../../datasets/MICE/pose-estimation/"
+  # data_root: "../../datasets/MICE/pose-estimation/"
+  data_root: "../../datasets/camille/multi_size_data/"
 
   resume: false
   training_checkpoint: "../checkpoints/model_ap/model_ap.pth"

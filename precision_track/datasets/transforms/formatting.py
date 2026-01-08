@@ -368,7 +368,118 @@ class PackPoseInputs(BaseTransform):
         packed_results["inputs"] = inputs_tensor
         packed_results["data_samples"] = data_sample
 
+        # Uncomment to debug transforms
+        # self._save_debug_visualization(packed_results)
+
         return packed_results
+
+    def _save_debug_visualization(self, packed_results: dict, output_dir: str = "../work_dir/debug_transforms"):
+        """Debug function to visualize transformed images with keypoints and bboxes.
+
+        Args:
+            packed_results: Dict with 'inputs' (tensor) and 'data_samples' (PoseDataSample)
+            output_dir: Directory to save debug images
+        """
+        import os
+        from pathlib import Path
+
+        # Create output directory
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        # Convert tensor to numpy image
+        img_tensor = packed_results["inputs"]
+        data_sample = packed_results["data_samples"]
+
+        # Handle single image (C, H, W) or batch (B, C, H, W)
+        if img_tensor.ndim == 3:
+            img_tensor = img_tensor.unsqueeze(0)
+
+        batch_size = img_tensor.shape[0]
+
+        for b in range(batch_size):
+            # Convert tensor to image (C, H, W) -> (H, W, C)
+            img = img_tensor[b].permute(1, 2, 0).cpu().numpy()
+
+            # Denormalize if needed (assuming image is in range [0, 1] or normalized)
+            if img.max() <= 1.0:
+                img = (img * 255).astype(np.uint8)
+            else:
+                img = img.astype(np.uint8)
+
+            # Make sure it's BGR for cv2
+            if img.shape[2] == 3:
+                img_vis = img.copy()
+            else:
+                img_vis = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+            # Draw bounding boxes if available
+            if hasattr(data_sample, "gt_instances") and hasattr(data_sample.gt_instances, "bboxes"):
+                bboxes = data_sample.gt_instances.bboxes
+                if isinstance(bboxes, torch.Tensor):
+                    bboxes = bboxes.cpu().numpy()
+
+                for bbox in bboxes:
+                    x1, y1, x2, y2 = bbox.astype(int)
+                    cv2.rectangle(img_vis, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            # Draw keypoints if available
+            if hasattr(data_sample, "gt_instances") and hasattr(data_sample.gt_instances, "keypoints"):
+                keypoints = data_sample.gt_instances.keypoints
+                if isinstance(keypoints, torch.Tensor):
+                    keypoints = keypoints.cpu().numpy()
+
+                # keypoints shape: (N, K, 2) where N is number of instances, K is number of keypoints
+                colors = [
+                    (255, 0, 0),  # Blue
+                    (0, 255, 0),  # Green
+                    (0, 0, 255),  # Red
+                    (255, 255, 0),  # Cyan
+                    (255, 0, 255),  # Magenta
+                    (0, 255, 255),  # Yellow
+                    (128, 0, 128),  # Purple
+                    (255, 165, 0),  # Orange
+                ]
+
+                for inst_idx, inst_kpts in enumerate(keypoints):
+                    for kpt_idx, kpt in enumerate(inst_kpts):
+                        x, y = kpt
+                        if x > 0 and y > 0:  # Only draw valid keypoints
+                            color = colors[kpt_idx % len(colors)]
+                            cv2.circle(img_vis, (int(x), int(y)), 3, color, -1)
+                            cv2.putText(img_vis, str(kpt_idx), (int(x) + 5, int(y) - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+
+            # Also check gt_instance_labels for keypoints (as mentioned in the TODO)
+            elif hasattr(data_sample, "gt_instance_labels") and hasattr(data_sample.gt_instance_labels, "keypoints"):
+                keypoints = data_sample.gt_instance_labels.keypoints
+                if isinstance(keypoints, torch.Tensor):
+                    keypoints = keypoints.cpu().numpy()
+
+                colors = [
+                    (255, 0, 0),
+                    (0, 255, 0),
+                    (0, 0, 255),
+                    (255, 255, 0),
+                    (255, 0, 255),
+                    (0, 255, 255),
+                    (128, 0, 128),
+                    (255, 165, 0),
+                ]
+
+                # Handle shape (N, K, 2)
+                if keypoints.ndim == 3:
+                    for inst_idx, inst_kpts in enumerate(keypoints):
+                        for kpt_idx, kpt in enumerate(inst_kpts):
+                            x, y = kpt
+                            if x > 0 and y > 0:
+                                color = colors[kpt_idx % len(colors)]
+                                cv2.circle(img_vis, (int(x), int(y)), 3, color, -1)
+                                cv2.putText(img_vis, str(kpt_idx), (int(x) + 5, int(y) - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+
+            img_path = data_sample.get("img_path")
+            filename = os.path.basename(img_path).replace(".jpg", "").replace(".png", "")
+            save_path = os.path.join(output_dir, f"{filename}.jpg")
+            cv2.imwrite(save_path, img_vis)
+            print(f"[DEBUG] Saved visualization to: {save_path}")
 
     def __repr__(self) -> str:
         """print the basic information of the transform.
