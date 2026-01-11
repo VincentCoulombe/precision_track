@@ -74,21 +74,25 @@ assigner = dict(
 outputs = [
     dict(
         type="CsvBoundingBoxes",
-        path=_base_.saving_directory + "/detections.csv",
+        path=_base_.saving_directory + "/detected_bboxes.csv",
         instance_data="pred_instances",
         precision=64,
     ),
     dict(
         type="CsvBoundingBoxes",
-        path=_base_.saving_directory + "/bboxes.csv",
+        path=_base_.saving_directory + "/tracked_bboxes.csv",
         instance_data="pred_track_instances",
         precision=64,
     ),
     dict(
         type="CsvVelocities",
-        path=_base_.saving_directory + "/velocities.csv",
+        path=_base_.saving_directory + "/tracked_velocities.csv",
         instance_data="pred_track_instances",
         precision=32,
+    ),
+    dict(
+        type="CsvTimestamps",
+        path=_base_.saving_directory + "/timestamps.csv",
     ),
     # dict(
     #     type="NpyEmbeddingOutput",
@@ -99,31 +103,31 @@ if _base_.with_pose_estimation:
     outputs += [
         dict(
             type="CsvKeypoints",
-            path=_base_.saving_directory + "/kpts.csv",
+            path=_base_.saving_directory + "/tracked_kpts.csv",
             instance_data="pred_track_instances",
             precision=32,
         ),
     ]
-# if _base_.stitching_algorithm is not None:
-#     outputs += [
-#         dict(
-#             type="CsvSearchAreas",
-#             path=_base_.saving_directory + "/search_areas.csv",
-#             instance_data="search_areas",
-#             precision=64,
-#         )
-#     ]
+if _base_.stitching_algorithm is not None:
+    outputs += [
+        dict(
+            type="CsvSearchAreas",
+            path=_base_.saving_directory + "/stitching_search_areas.csv",
+            instance_data="search_areas",
+            precision=64,
+        )
+    ]
 if _base_.validator is not None:
     outputs += [
         dict(
             type="CsvValidations",
-            path=_base_.saving_directory + "validations.csv",
+            path=_base_.saving_directory + "tracked_validations.csv",
             instance_data="validation_instances",
             precision=64,
         ),
         dict(
             type="CsvCorrections",
-            path=_base_.saving_directory + "corrections.csv",
+            path=_base_.saving_directory + "tracked_corrections.csv",
             instance_data="correction_instances",
             precision=32,
         ),
@@ -132,7 +136,7 @@ if _base_.analyzer is not None:
     outputs += [
         dict(
             type="CsvActions",
-            path=_base_.saving_directory + "actions.csv",
+            path=_base_.saving_directory + "tracked_actions.csv",
             instance_data="pred_track_instances",
             metainfo=metainfo,
             precision=64,

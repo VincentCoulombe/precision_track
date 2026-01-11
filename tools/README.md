@@ -6,7 +6,7 @@ PrecisionTrack's toolkit is composed of a series of configurable tools that you 
 
 ## Overview
 
-**⚠️IMPORTANT⚠️** Make sure to run each tool from the precision_track's `tools` directory.
+**⚠️IMPORTANT⚠️** Make sure to run each tool from within precision_track's `tools` directory.
 
 ```bash
 cd ./tools
@@ -146,13 +146,15 @@ cd ./tools
 - **Purpose:** run detector/pose/action heads + association on pre‑recorded media.
 - **Inputs:** `video` (path to the recording file)
 - **Outputs:** All the available outputs will be saved at the defined `work_dir` from the settings. Heres a list of all the possible outputs:
-  - `bboxes.csv`: Contains the MOT formatted bounding boxes of all the tracked subjects over the whole recording.
-  - `kpts.csv`: Contains the MOT formatted keypoints of all the tracked subjects over the whole recording.
-  - `velocities.csv`: Contains the MOT formatted velocities of all the tracked subjects over the whole recording.
-  - `search_areas.csv`: Contains the MOT formatted search areas over the whole recording. Only available when a stitching algorithm is used when tracking.
-  - `validations.csv`: Contains the MOT formatted validations over the whole recording. Only available when a validation/ReID algorithm is used when tracking.
-  - `corrections.csv`: Contains the MOT formatted corrections over the whole recording. Only available when a validation/ReID algorithm is used when tracking.
-  - `actions.csv`: Contains the MOT formatted actions over the whole recording. Only available when an action recognition algorithm is used when tracking.
+  - `tracked_bboxes.csv`: Contains the MOT formatted bounding boxes of all the tracked subjects over the whole recording.
+  - `detected_bboxes.csv`: Contains the MOT formatted bounding boxes of all the detected subjects for every frame of the recording.
+  - `tracked_kpts.csv`: Contains the MOT formatted keypoints of all the tracked subjects over the whole recording.
+  - `tracked_velocities.csv`: Contains the MOT formatted velocities of all the tracked subjects over the whole recording.
+  - `stitching_search_areas.csv`: Contains the MOT formatted search areas over the whole recording. Only available when a stitching algorithm is used.
+  - `tracked_validations.csv`: Contains the MOT formatted validations over the whole recording. Only available when a validation/ReID algorithm is used.
+  - `tracked_corrections.csv`: Contains the MOT formatted corrections over the whole recording. Only available when a validation/ReID algorithm is used.
+  - `tracked_actions.csv`: Contains the MOT formatted actions over the whole recording. Only available when an action recognition algorithm is used.
+  - `timestamps.csv`: Contains a mapping between the frame ids and the actual time the video has been running (in seconds).
 - **Examples**
   ```bash
   python track.py video data/sample.mp4

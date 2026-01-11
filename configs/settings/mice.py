@@ -13,7 +13,7 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
+data_root = '../../datasets/MICE/pose-estimation_640x640/'
 dataset_name = 'mice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -23,7 +23,7 @@ input_size = (640, 640)
 pad_value = 114
 
 base_lr = 0.004
-batch_size = 38
+batch_size = 10
 weight_decay = 0.05
 
 ema_momentum = 0.0003
@@ -32,7 +32,7 @@ num_epochs = 300
 num_epochs_pipeline1 = 280
 warmup_epochs = 5
 
-val_interval = 100
+val_interval = 50
 
 training_anns_path = data_root + "annotations/train.json"
 training_imgs_path = data_root + "images/"
@@ -85,13 +85,13 @@ deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
-pipelined = False
+pipelined = True
 saving_directory = '../work_dir/'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
-with_validation = True
-with_action_recognition = True
+with_validation = False
+with_action_recognition = False
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -286,12 +286,12 @@ mart_deployed_name = "mart_DEPLOYED.pth"
 
 
 # 4) Visualization
-display_bounding_boxes = False
-display_poses = False
-display_velocities = False
-display_species = False
-display_confidence_scores = False
-display_actions = True
+display_bounding_boxes = True
+display_poses = True
+display_velocities = True
+display_species = True
+display_confidence_scores = True
+display_actions = False
 display_search_zones = False
 display_validations = False
 display_untracked_detections = False

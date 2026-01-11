@@ -1,4 +1,4 @@
-from .csv import CsvActions, CsvBoundingBoxes, CsvCorrections, CsvKeypoints, CsvSearchAreas, CsvValidations, CsvVelocities
+from .csv import CsvActions, CsvBoundingBoxes, CsvCorrections, CsvKeypoints, CsvSearchAreas, CsvTimestamps, CsvValidations, CsvVelocities
 from .npy import NpyEmbeddingOutput
 
 __all__ = [
@@ -10,4 +10,5 @@ __all__ = [
     "CsvCorrections",
     "CsvActions",
     "NpyEmbeddingOutput",
+    "CsvTimestamps",
 ]

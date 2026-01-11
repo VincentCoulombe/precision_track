@@ -1,8 +1,9 @@
 import argparse
 import multiprocessing as mp
 from logging import WARNING
-import yaml
+
 import psutil
+import yaml
 from mmengine import Config
 from mmengine.logging import print_log
 

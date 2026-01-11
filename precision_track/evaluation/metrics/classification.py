@@ -192,6 +192,8 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         label_index_mode: str = "last",
         collect_device: str = "cpu",
         prefix: Optional[str] = None,
+        *args,
+        **kwargs,
     ) -> None:
         self.metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.confusion_matrix_save_dir = confusion_matrix_save_dir
@@ -222,6 +224,8 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
     def process(self, data_batch: Any, data_samples: Any) -> None:
         """Process one batch of data samples and predictions."""
         if isinstance(data_samples, list):
+            data_samples = data_samples[0]
+        if isinstance(data_samples, tuple):
             data_samples = data_samples[0]
         if data_samples.ndim == 1:
             data_samples = data_samples.unsqueeze(0)

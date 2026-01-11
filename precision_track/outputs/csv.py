@@ -530,3 +530,51 @@ class CsvActions(BaseCsvOutput):
             print_log(f"{self.path} is empty.", level=logging.WARNING)
         else:
             self.curr_frame_idx = self.frame_id_mapping[self.__len__() - 1][1] + 1
+
+
+@OUTPUTS.register_module()
+class CsvTimestamps(BaseCsvOutput):
+    def __init__(
+        self,
+        path: str,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            path=path,
+            precision=32,
+            columns=["timestamps(s)"],
+            instance_data=None,
+            ids_field=None,
+        )
+
+    def __call__(self, det_data_sample: dict):
+        _, frame_id = self._get_ds_info(det_data_sample)
+
+        fps = det_data_sample.get("fps", 1)
+        self._add_row(frame_id, frame_id / fps)
+        self._update_frame_id_mapping(frame_id, 1)
+
+    def _get_ds_info(self, data_sample: dict):
+        return None, data_sample["img_id"]
+
+    def read(self) -> None:
+        assert os.path.exists(self.path), f"{self.path} does not exist."
+        self.results = pd.read_csv(self.path)
+        self.columns = self.results.columns[1:].tolist()
+        self.results = self.results.values.tolist()
+        if os.path.exists(self.mapping_path):
+            self.frame_id_mapping = np.load(self.mapping_path, allow_pickle=True).item()
+        else:
+            self._infer_mapping()
+        if not self.results or not self.frame_id_mapping:
+            print_log(f"{self.path} is empty.", level=logging.WARNING)
+        else:
+            self.curr_frame_idx = self.frame_id_mapping[self.__len__() - 1][1] + 1
+
+    def to_dataframe(self) -> pd.DataFrame:
+        df = pd.DataFrame(self.results, columns=["frame_id"] + self.columns)
+        df["frame_id"] = df["frame_id"].astype("uint32")
+        for col in self.columns:
+            df[col] = df[col].astype(self.SUPPORTED_PRECISION[self.precision])
+        return df

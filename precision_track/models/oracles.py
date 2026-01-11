@@ -1,10 +1,11 @@
+import os
 from typing import List, Tuple, Union
 
-import os
-from torch import Tensor
-import torch
 import numpy as np
-from precision_track.registry import OUTPUTS, MODELS
+import torch
+from torch import Tensor
+
+from precision_track.registry import MODELS, OUTPUTS
 from precision_track.utils import PoseDataSample, parse_pose_metainfo
 
 

@@ -15,8 +15,9 @@ import pkgutil
 import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
-from typing import Callable, Dict, List, Union, Set, Any
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Set, Union
+
 import cv2
 import mmengine
 import torch

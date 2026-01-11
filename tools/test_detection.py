@@ -1,9 +1,8 @@
 import yaml
+from test_tracking import parse_args
 
 from precision_track import Runner
 from precision_track.utils import load_user_configs
-
-from test_tracking import parse_args
 
 
 def main(args):

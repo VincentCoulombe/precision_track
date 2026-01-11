@@ -1,18 +1,18 @@
-import yaml
-from collections import defaultdict
-import os
-import logging
-from mmengine.logging import MMLogger
 import argparse
+import logging
+import os
+from collections import defaultdict
 
-from precision_track import Runner, AssociationStep
-from precision_track.utils import load_user_configs
+import yaml
+from mmengine.logging import MMLogger
+from test_action_recognition import main as test_ar_main
+from train_detection import deploy, get_device, load_config, parse_device_id, str2bool
+
+from precision_track import AssociationStep, Runner
 from precision_track.deploy.to_onnx import mart_to_onnx
 from precision_track.deploy.to_tensorrt import to_tensorrt
 from precision_track.models.backends import DetectionBackend
-
-from train_detection import str2bool, deploy, load_config, parse_device_id, get_device
-from test_action_recognition import main as test_ar_main
+from precision_track.utils import load_user_configs
 
 
 def parse_args():

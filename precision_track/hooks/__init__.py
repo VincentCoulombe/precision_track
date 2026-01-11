@@ -1,4 +1,5 @@
 from .action_sequence_preprocessing import SequencePreprocessingHook
+from .colab import ColabCheckpointHook
 from .ema_hook import ExpMomentumEMA
 from .evaluation import ValidateBeforeTrainingHook
 from .module_freeze_hook import ModuleFreezingHook
@@ -15,4 +16,5 @@ __all__ = [
     "ValidateBeforeTrainingHook",
     "ModuleFreezingHook",
     "SequencePreprocessingHook",
+    "ColabCheckpointHook",
 ]
