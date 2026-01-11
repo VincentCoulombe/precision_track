@@ -2,7 +2,7 @@
 # General on/off options
 # ================================
 booleans:
-  pipelined: false
+  pipelined: true
   with_validation: false
   with_action_recognition: false
   with_pose_estimation: true
@@ -28,7 +28,7 @@ training:
 
   deploying_sanity_check_img_path: "images/0000003435.jpg"
 
-  batch_size: 38
+  batch_size: 10
   wandb_logging: false
 
 # ================================

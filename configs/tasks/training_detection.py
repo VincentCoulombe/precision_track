@@ -59,6 +59,7 @@ optim_wrapper = dict(
         bypass_duplicate=True,
     ),
     clip_grad=dict(max_norm=1.0, norm_type=2),
+    accumulative_counts=1,
 )
 # /Optimization
 

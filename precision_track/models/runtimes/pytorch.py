@@ -1,11 +1,11 @@
+import logging
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from mmengine import Config
-from mmengine.runner.amp import autocast
 from mmengine.logging import print_log
-import logging
+from mmengine.runner.amp import autocast
 
 from precision_track.registry import MODELS, RUNTIMES
 from precision_track.utils import PoseDataSample, load_checkpoint

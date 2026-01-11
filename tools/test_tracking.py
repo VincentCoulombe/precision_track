@@ -1,8 +1,10 @@
-import yaml
 import argparse
 import os
+
+import yaml
+
 from precision_track import Runner
-from precision_track.utils import load_user_configs, check_if_mot_dataset_is_ok, load_config
+from precision_track.utils import check_if_mot_dataset_is_ok, load_config, load_user_configs
 
 
 def parse_args():

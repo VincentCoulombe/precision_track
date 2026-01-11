@@ -8,18 +8,20 @@
 
 
 from typing import Any, Mapping, Sequence
-import os
 import json
+import os
+import os.path as osp
+import textwrap
+
 import cv2
 import numpy as np
-from tqdm import tqdm
-import textwrap
-import os.path as osp
 import torch
 from mmengine import Config
+from mmengine.logging import print_log
+from tqdm import tqdm
 
 from mmengine.registry import FUNCTIONS
-from .io import SUPPORTED_VIDEO_BACKEND
+from .io import SUPPORTED_IMG_BACKEND, SUPPORTED_VIDEO_BACKEND
 
 
 def parse_pose_metainfo(metainfo: dict):
@@ -212,14 +214,147 @@ def assert_coco_dataset_directory(coco_path):
     train_json = os.path.join(ann_dir, "train.json")
     val_json = os.path.join(ann_dir, "val.json")
 
+    combined_json = os.path.join(ann_dir, "combined.json")
+
     if not os.path.isfile(train_json):
-        raise FileNotFoundError(
-            f"Missing 'train.json' in: {ann_dir}. " f"For reference, your COCO-style dataset must take the following form:\n{directory_tree}"
-        )
+        if os.path.isfile(combined_json):
+            print_log(
+                logger="current",
+                msg=(
+                    f"Missing 'train.json' in: {ann_dir}, but a 'combined.json' file is found. "
+                    f"Therefore, the system will create new 'train.json' and 'val.json' files "
+                    f"by splitting the found 'combined.json' file."
+                ),
+            )
+            split_combined_ann_file(ann_dir)
+        else:
+            raise FileNotFoundError(
+                f"Missing 'train.json' in: {ann_dir}. " f"For reference, your COCO-style dataset must take the following form:\n{directory_tree}"
+            )
     if not os.path.isfile(val_json):
-        raise FileNotFoundError(
-            f"Missing 'val.json' in: {ann_dir}. " f"For reference, your COCO-style dataset must take the following form:\n{directory_tree}"
+        if os.path.isfile(combined_json):
+            print_log(
+                logger="current",
+                msg=(
+                    f"Missing 'val.json' in: {ann_dir}, but a 'combined.json' file is found. "
+                    f"Therefore, the system will create new 'train.json' and 'val.json' files "
+                    f"by splitting the found 'combined.json' file."
+                ),
+            )
+            split_combined_ann_file(ann_dir)
+        else:
+            raise FileNotFoundError(
+                f"Missing 'val.json' in: {ann_dir}. " f"For reference, your COCO-style dataset must take the following form:\n{directory_tree}"
+            )
+
+    # Check if the number of images in img_dir matches the number in annotation files
+    image_files = set()
+    for file in os.listdir(img_dir):
+        extension = os.path.splitext(file)[1].lower()
+        if extension in SUPPORTED_IMG_BACKEND:
+            image_files.add(file)
+
+    num_images_in_dir = len(image_files)
+
+    with open(train_json, "r") as f:
+        train_data = json.load(f)
+    with open(val_json, "r") as f:
+        val_data = json.load(f)
+
+    train_image_filenames = set(img["file_name"] for img in train_data.get("images", []))
+    val_image_filenames = set(img["file_name"] for img in val_data.get("images", []))
+
+    overlapping_images = train_image_filenames.intersection(val_image_filenames)
+    assert len(overlapping_images) == 0, f"Found {len(overlapping_images)} image(s) in both train and validation files: " f"{list(overlapping_images)}"
+
+    num_images_in_train = len(train_image_filenames)
+    num_images_in_val = len(val_image_filenames)
+    num_images_in_annotations = len(train_image_filenames.union(val_image_filenames))
+
+    if num_images_in_dir != num_images_in_annotations:
+        print_log(
+            logger="current",
+            msg=(
+                f"Mismatch between the number of images in the {img_dir} directory "
+                f"and the number of images in the annotation files in the {ann_dir} directory:\n"
+                f"  - Images in the {img_dir} directory: {num_images_in_dir}\n"
+                f"  - Images in {ann_dir}/train.json file: {num_images_in_train}\n"
+                f"  - Images in {ann_dir}/val.json file: {num_images_in_val}\n"
+                f"  - Total unique images in annotations: {num_images_in_annotations}"
+            ),
+            level="WARNING",
         )
+
+        # Check for images in directory but not in annotations
+        missing_in_annotations = image_files - train_image_filenames - val_image_filenames
+        if missing_in_annotations:
+            print_log(
+                logger="current",
+                msg=f"These images are in the {img_dir} directory, but not in any of the annotation files: {sorted(missing_in_annotations)}",
+                level="WARNING",
+            )
+
+        # Check for images in annotations but not in directory
+        missing_in_directory = (train_image_filenames.union(val_image_filenames)) - image_files
+        if missing_in_directory:
+            print_log(
+                logger="current",
+                msg=f"These images are in the annotation files, but not in the {img_dir} image directory: {sorted(missing_in_directory)}",
+                level="WARNING",
+            )
+
+
+def split_combined_ann_file(ann_dir, val_split=0.2):
+    combined_path = os.path.join(ann_dir, "combined.json")
+
+    with open(combined_path, "r") as f:
+        combined_data = json.load(f)
+
+    images = combined_data.get("images", [])
+    annotations = combined_data.get("annotations", [])
+
+    image_ids = [img["id"] for img in images]
+
+    np.random.seed(42)
+    np.random.shuffle(image_ids)
+
+    val_count = int(len(image_ids) * val_split)
+    val_image_ids = set(image_ids[:val_count])
+    train_image_ids = set(image_ids[val_count:])
+
+    train_images = [img for img in images if img["id"] in train_image_ids]
+    val_images = [img for img in images if img["id"] in val_image_ids]
+
+    train_annotations = [ann for ann in annotations if ann["image_id"] in train_image_ids]
+    val_annotations = [ann for ann in annotations if ann["image_id"] in val_image_ids]
+
+    train_data = {
+        "images": train_images,
+        "annotations": train_annotations,
+        "categories": combined_data.get("categories", []),
+        "info": combined_data.get("info", []),
+        "licenses": combined_data.get("licenses", []),
+    }
+
+    val_data = {
+        "images": val_images,
+        "annotations": val_annotations,
+        "categories": combined_data.get("categories", []),
+        "info": combined_data.get("info", []),
+        "licenses": combined_data.get("licenses", []),
+    }
+
+    train_path = os.path.join(ann_dir, "train.json")
+    val_path = os.path.join(ann_dir, "val.json")
+
+    with open(train_path, "w") as f:
+        json.dump(train_data, f, indent=4)
+
+    with open(val_path, "w") as f:
+        json.dump(val_data, f, indent=4)
+
+    print_log(f"Split complete: {len(train_images)} train images, {len(val_images)} val images")
+    print_log(f"Created {train_path} and {val_path}")
 
 
 def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name="train.json"):

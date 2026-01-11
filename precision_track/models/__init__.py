@@ -2,7 +2,6 @@ from .detection_head import DetectionHead
 from .detection_model import DetectionModel
 from .feature_extraction_head import FeatureExtractionHead
 from .mart import MART
-from .oracles import ActionRecognitionOracle
 from .modules.backbones.csp_darknet import CSPDarknet
 from .modules.backbones.cspnext import CSPNeXt
 from .modules.backbones.hiera import Hiera
@@ -20,6 +19,7 @@ from .modules.necks.yolox import YOLOXPAFPN
 from .optimization.assigners import BBoxOverlaps2D, DynamicSoftLabelAssigner, PoseOKS, SimOTAAssigner, TaskAlignedAssigner
 from .optimization.losses import ArcFaceLoss, BCELoss, CircleLoss, IoULoss, L1Loss, OKSLoss, TripletLoss
 from .optimization.schedulers import QuadraticWarmupLR, QuadraticWarmupParamScheduler
+from .oracles import ActionRecognitionOracle
 from .postprocessing.filtering import LowScoresFiltering, NearnessBasedActionFiltering
 from .postprocessing.nms import NMSPostProcessor
 from .postprocessing.refinement import KeypointBasedActionRefinement

@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from precision_track.models.backends import DetectionBackend
 from precision_track.outputs.display import display_latency
-from precision_track.registry import MODELS, TRACKING
+from precision_track.registry import MODELS, TRACKING, OUTPUTS
 from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking
 
 from .association_step import AssociationStep
@@ -380,6 +380,18 @@ class PipelinedTracker:
 
         self.shared_batch = SharedFrameBatch(shape, self.input_is_loaded)
 
+        timestamps_output = None
+        if outputs is not None:
+            filtered_outputs = []
+            for output_cfg in outputs:
+                if output_cfg.get("type") == "CsvTimestamps":
+                    timestamps_output = output_cfg
+                else:
+                    filtered_outputs.append(output_cfg)
+            outputs = filtered_outputs if filtered_outputs else None
+
+        self.timestamps_output = OUTPUTS.build(timestamps_output) if timestamps_output else None
+
         self.tracking = mp.Process(
             target=tracking_process,
             args=(
@@ -416,11 +428,16 @@ class PipelinedTracker:
         self.analyzer_ready.wait()
 
     def __call__(self, video: VideoReader) -> None:
+        fps = video.fps
         try:
             for i, frame in tqdm(enumerate(video)):
                 assert frame.shape == self.expected_resolution
+                if self.timestamps_output is not None:
+                    self.timestamps_output(dict(img_id=i, fps=fps))
                 self.shared_batch.update(i, frame, self.main_connexion)
             self.shared_batch.send_remaining(self.main_connexion)
+            if self.timestamps_output is not None:
+                self.timestamps_output.save()
         except Exception:
             error_trace = traceback.format_exc()  # TODO log
             print(error_trace)

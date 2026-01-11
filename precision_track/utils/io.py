@@ -19,6 +19,8 @@ from typing import Callable, Dict, List, Union, Optional, Set, Any
 import ffmpeg
 import numpy as np
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Set, Union
+
 import cv2
 import mmengine
 import torch
