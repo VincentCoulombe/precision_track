@@ -11,6 +11,7 @@ def batch_tracking(video, detector, batch_size, result, association_step, valida
     empty = False
     switches = None
     total_frames = len(video)
+    fps = video.fps
     while True:
         frame = video.read()
         if len(b_frames) == batch_size or (empty and b_frames):
@@ -36,7 +37,7 @@ def batch_tracking(video, detector, batch_size, result, association_step, valida
                 output, switches = validator(frame, output)
             if analyzer is not None:
                 output = analyzer.predict(output)
-
+            output["fps"] = fps
             result(output)
         elif empty and not b_frames:
             break
