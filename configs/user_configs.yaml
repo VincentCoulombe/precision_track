@@ -4,7 +4,7 @@
 booleans:
   pipelined: false
   with_validation: false
-  with_action_recognition: true
+  with_action_recognition: false
   with_pose_estimation: true
 
 # ================================
@@ -27,7 +27,7 @@ training:
   deploying_sanity_check_img_path: "images/0000003435.jpg"
 
   batch_size: 38 # Warning: The training is unstable with batch sizes < 16.
-  wandb_logging: true
+  wandb_logging: false
 
 # ================================
 # Tracking parameters, directories and paths

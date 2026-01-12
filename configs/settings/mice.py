@@ -1,8 +1,8 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../configs/metadata/mice.py'
-wandb_logging = True
+metainfo = "../configs/metadata/mice.py"
+wandb_logging = False
 # /Common
 
 # 1) Detection
@@ -13,11 +13,11 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
-dataset_name = 'mice'
+data_root = "../../datasets/MICE/pose-estimation_640x640/"
+dataset_name = "mice"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
-training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
+training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
 
 input_size = (640, 640)
 pad_value = 114
@@ -32,7 +32,7 @@ num_epochs = 300
 num_epochs_pipeline1 = 280
 warmup_epochs = 5
 
-val_interval = 2
+val_interval = 10
 
 training_anns_path = data_root + "annotations/train.json"
 training_imgs_path = data_root + "images/"
@@ -72,28 +72,28 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 #   1.4) /Feature Extraction
 
 #   1.5) Deployment
-deploying_sanity_check_img_path = 'images/0000003435.jpg'
+deploying_sanity_check_img_path = "images/0000003435.jpg"
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = '../checkpoints/mice/'
+deploying_directory = "../checkpoints/mice/"
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
 
 
 # 2) Tracking
-tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
+tracking_checkpoint_name = "model_mice_DEPLOYED.pth"
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
-saving_directory = '../work_dir/'
+saving_directory = "../work_dir/"
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = True
+with_action_recognition = False
 
-num_subjects = {'mouse': 20}
+num_subjects = {"mouse": 20}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
