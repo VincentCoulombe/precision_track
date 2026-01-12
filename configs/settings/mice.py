@@ -1,8 +1,8 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = "../../datasets//camille/stripedmice_corrected_without_tail.py"
-wandb_logging = False
+metainfo = '../configs/metadata/mice.py'
+wandb_logging = True
 # /Common
 
 # 1) Detection
@@ -13,17 +13,17 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = "../../datasets/MICE/pose-estimation_640x640/"
-dataset_name = "mice"
+data_root = '../../datasets/MICE/pose-estimation/'
+dataset_name = 'mice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
-training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
+training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
 
 input_size = (640, 640)
 pad_value = 114
 
 base_lr = 0.004
-batch_size = 10
+batch_size = 38
 weight_decay = 0.05
 
 ema_momentum = 0.0003
@@ -32,7 +32,7 @@ num_epochs = 300
 num_epochs_pipeline1 = 280
 warmup_epochs = 5
 
-val_interval = 50
+val_interval = 2
 
 training_anns_path = data_root + "annotations/train.json"
 training_imgs_path = data_root + "images/"
@@ -72,28 +72,28 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 #   1.4) /Feature Extraction
 
 #   1.5) Deployment
-deploying_sanity_check_img_path = "images/0000003435.jpg"
+deploying_sanity_check_img_path = 'images/0000003435.jpg'
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = "../checkpoints/mice/"
+deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
 
 
 # 2) Tracking
-tracking_checkpoint_name = "model_mice_DEPLOYED.pth"
+tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
-pipelined = True
-saving_directory = "../work_dir/"
+pipelined = False
+saving_directory = '../work_dir/'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = False
+with_action_recognition = True
 
-num_subjects = {"mouse": 20}
+num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
@@ -151,12 +151,12 @@ testing_tracking_output_file = testing_work_dir + "CLEAR_metrics.csv"
 
 
 # 3) Action Recognition
-mart_checkpoint = deploying_directory + "mart_DEPLOYED.onnx"
+mart_checkpoint = deploying_directory + "mart_DEPLOYED.pth"
 
 inference_resolution = (2720, 2720)
 block_size = 30
 
-n_encoded_dynamics = 1
+n_encoded_dynamics = 2
 n_embd_dynamics = 32
 n_embd_pose = 96
 n_embd_features = 128
@@ -173,7 +173,8 @@ if with_action_recognition:
     action_recognition_input_names = ["features", "poses", "dynamics"]
     action_recognition_output_names = ["class_logits", "action_embeddings"]
 
-    velocity_encoder = dict(type="VelocityNormEncoder")
+    velocity_encoder = dict(type="BaseVelocityEncoder")
+    # velocity_encoder = dict(type="VelocityNormEncoder")
 
     analyzer = dict(
         type="ActionRecognitionBackend",
@@ -253,23 +254,23 @@ action_recognition_data_root = "../../datasets/MICE/sequential/"
 
 action_recognition_train_sequences = [
     "videos/train/13-10-02.avi",
-    "videos/train/13-20-02.avi",
-    "videos/train/13-40-02.avi",
+    # "videos/train/13-20-02.avi",
+    # "videos/train/13-40-02.avi",
 ]
 action_recognition_train_bboxes_gt_paths = [
     "bboxes/train/13-10-02.csv",
-    "bboxes/train/13-20-02.csv",
-    "bboxes/train/13-40-02.csv",
+    # "bboxes/train/13-20-02.csv",
+    # "bboxes/train/13-40-02.csv",
 ]
 action_recognition_train_keypoints_gt_paths = [
     "keypoints/train/13-10-02.csv",
-    "keypoints/train/13-20-02.csv",
-    "keypoints/train/13-40-02.csv",
+    # "keypoints/train/13-20-02.csv",
+    # "keypoints/train/13-40-02.csv",
 ]
 action_recognition_train_actions_gt_paths = [
     "actions/train/13-10-02.csv",
-    "actions/train/13-20-02.csv",
-    "actions/train/13-40-02.csv",
+    # "actions/train/13-20-02.csv",
+    # "actions/train/13-40-02.csv",
 ]
 
 action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
@@ -295,12 +296,12 @@ mart_deployed_name = "mart_DEPLOYED.pth"
 
 
 # 4) Visualization
-display_bounding_boxes = True
-display_poses = True
-display_velocities = True
-display_species = True
-display_confidence_scores = True
-display_actions = False
+display_bounding_boxes = False
+display_poses = False
+display_velocities = False
+display_species = False
+display_confidence_scores = False
+display_actions = True
 display_search_zones = False
 display_validations = False
 display_untracked_detections = False

@@ -200,9 +200,12 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         self.confusion_matrix_save_dir = confusion_matrix_save_dir
         if isinstance(self.confusion_matrix_save_dir, str):
             os.makedirs(self.confusion_matrix_save_dir, exist_ok=True)
+
+        if isinstance(metric_save_dir, str):
+            os.makedirs(metric_save_dir, exist_ok=True)
+        else:
+            metric_save_dir = ""
         self.metric_save_dir = metric_save_dir
-        if isinstance(self.metric_save_dir, str):
-            os.makedirs(self.metric_save_dir, exist_ok=True)
         super().__init__(collect_device=collect_device, prefix=prefix)
         self.label_to_action = defaultdict(str)
         for i, acc in enumerate(self.metainfo.get("actions", [])):

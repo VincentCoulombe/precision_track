@@ -70,13 +70,11 @@ class NearnessBasedActionFiltering(BaseActionPostProcessor):
 
         action_mask = np.isin(actions, self.concerned_labels)
         relevant_bboxes = bboxes[action_mask]
+        isolated = data_sample["pred_track_instances"]["isolated"][action_mask]
 
-        if relevant_bboxes.size > 0:
-            bious = biou_batch(relevant_bboxes, bboxes.copy(), 0.25)
-            isolated = (bious.sum(1) - bious.max(1)) == 0
-            if any(isolated):
-                update_indices = np.flatnonzero(action_mask)[isolated]
-                actions[update_indices] = self.fallback_label
-                data_sample["pred_track_instances"]["actions"] = actions
+        if relevant_bboxes.size > 0 and any(isolated):
+            update_indices = np.flatnonzero(action_mask)[isolated]
+            actions[update_indices] = self.fallback_label
+            data_sample["pred_track_instances"]["actions"] = actions
 
         return data_sample

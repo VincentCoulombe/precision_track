@@ -26,12 +26,13 @@ from .postprocessing.refinement import KeypointBasedActionRefinement
 from .postprocessing.steps import ActionPostProcessingSteps, PostProcessingSteps
 from .postprocessing.base import BasePostProcessor, BaseActionPostProcessor
 from .preprocessing.action_recognition_preprocessor import ActionRecognitionPreprocessor, ActionRecognitionTrainingPreprocessor
-from .preprocessing.inference_preprocessor import InferencePreprocessor
+from .preprocessing.inference_preprocessor import InferencePreprocessor, WildLifeReIDPreprocessor
 from .preprocessing.training_preprocessor import BatchSyncRandomResize, PoseDataPreprocessor
 
 __all__ = [
     "RTMDetPoseHead",
     "InferencePreprocessor",
+    "WildLifeReIDPreprocessor",
     "RTMDetPose",
     "RTMDetPoseHeadModule",
     "YOLOXPoseHeadModule",

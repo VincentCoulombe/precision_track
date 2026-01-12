@@ -12,7 +12,7 @@ from mmengine.config import Config
 from mmengine.logging import print_log
 
 from precision_track.registry import TRACKING
-from precision_track.utils import parse_pose_metainfo, PoseDataSample
+from precision_track.utils import parse_pose_metainfo, PoseDataSample, biou_batch
 
 
 class AssociationStep(nn.Module):
@@ -27,6 +27,7 @@ class AssociationStep(nn.Module):
         nb_frames_retain: Optional[int] = 10,
         num_tentatives: Optional[int] = 3,
         memory_length: Optional[int] = 30,
+        return_isolations: Optional[bool] = True,
         verbose: Optional[bool] = True,
         **kwargs,
     ) -> None:
@@ -88,6 +89,12 @@ class AssociationStep(nn.Module):
         self.num_tentatives = num_tentatives
         assert 0 < memory_length
         self.memory_length = memory_length
+
+        self.return_isolations = False
+        assert isinstance(return_isolations, bool)
+        if return_isolations:
+            self.return_isolations = True
+
         self.reset()
 
     @property
@@ -314,6 +321,19 @@ class AssociationStep(nn.Module):
                 *args,
                 **kwargs,
             )
+
+        if self.return_isolations:
+            relevant_bboxes = data_sample["pred_track_instances"]["bboxes"]
+            search_areas = data_sample.get("search_areas", dict()).get("bboxes", [])
+
+            if len(search_areas) > 0:
+                bboxes = np.concatenate([relevant_bboxes, search_areas])
+            else:
+                bboxes = relevant_bboxes
+
+            bious = biou_batch(relevant_bboxes, bboxes.copy(), 0.25)
+            isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
+            data_sample["pred_track_instances"]["isolated"] = isolated
 
         return data_sample
 

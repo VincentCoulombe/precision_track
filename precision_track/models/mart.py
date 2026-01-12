@@ -34,58 +34,73 @@ class MART(BaseModel):
         **kwargs,
     ):
         super().__init__(data_preprocessor=data_preprocessor)
+
+        assert mode in self.SUPPORTED_MODES, f"Invalid mode '{mode}'. Must be one of {self.SUPPORTED_MODES}"
+        assert 0.0 <= mask_ratio <= 1.0, f"mask_ratio must be between 0 and 1, got {mask_ratio}"
+        assert hasattr(config, "block_size") and config.block_size > 0, "config.block_size must be positive"
+        assert hasattr(config, "n_output") and config.n_output > 0, "config.n_output must be positive"
+        assert hasattr(config, "n_embd") and config.n_embd > 0, "config.n_embd must be positive"
+        assert hasattr(config, "n_embd_dynamics"), "config must have n_embd_dynamics attribute"
+        assert hasattr(config, "n_embd_pose"), "config must have n_embd_pose attribute"
+        assert hasattr(config, "n_block"), "config must have n_block attribute"
+
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.n_pose = len(metainfo.get("skeleton_links", []))
         self.n_kpts = metainfo.get("num_keypoints", 0)
         self.n_embd_feats = config.n_embd
         self.block_size = config.block_size
 
+        # Create separate config copies to avoid mutation
         n_embd_dynamics = config.n_embd_dynamics
-        config.n_embd = n_embd_dynamics
+        dynamics_config = config.copy()
+        dynamics_config.n_embd = n_embd_dynamics
         self.n_encoded_dynamics = config.get("n_encoded_dynamics", 2)
         self.velocity_encoder = nn.Sequential(
-            ProjLN(self.n_encoded_dynamics, config.n_embd, bias=config.bias),
-            TransformerMLP(config),
-            nn.LayerNorm(config.n_embd, bias=config.bias),
+            ProjLN(self.n_encoded_dynamics, dynamics_config.n_embd, bias=dynamics_config.bias),
+            TransformerMLP(dynamics_config),
+            nn.LayerNorm(dynamics_config.n_embd, bias=dynamics_config.bias),
         )
 
         n_embd_pose = config.n_embd_pose
-        config.n_embd = n_embd_pose
+        pose_config = config.copy()
+        pose_config.n_embd = n_embd_pose
         self.pose_encoder = nn.Sequential(
-            ProjLN(self.n_pose * 2, config.n_embd, bias=config.bias),
-            TransformerMLP(config),
-            nn.LayerNorm(config.n_embd, bias=config.bias),
+            ProjLN(self.n_pose * 2, pose_config.n_embd, bias=pose_config.bias),
+            TransformerMLP(pose_config),
+            nn.LayerNorm(pose_config.n_embd, bias=pose_config.bias),
         )
 
-        config.n_embd = self.n_embd_feats
+        feature_config = config.copy()
+        feature_config.n_embd = self.n_embd_feats
         self.feature_encoder = nn.Sequential(
-            TransformerMLP(config),
-            nn.LayerNorm(config.n_embd, bias=config.bias),
+            TransformerMLP(feature_config),
+            nn.LayerNorm(feature_config.n_embd, bias=feature_config.bias),
         )
 
-        config.n_embd = self.n_embd_feats + n_embd_dynamics + n_embd_pose
+        decoder_config = config.copy()
+        decoder_config.n_embd = self.n_embd_feats + n_embd_dynamics + n_embd_pose
 
-        self.decoder = nn.ModuleList([TransformerBlock(config) for _ in range(config.n_block)])
-        self.pe = nn.Embedding(self.block_size, config.n_embd)
+        self.decoder = nn.ModuleList([TransformerBlock(decoder_config) for _ in range(decoder_config.n_block)])
+        self.pe = nn.Embedding(self.block_size, decoder_config.n_embd)
+        self.register_buffer("pe_indices", torch.arange(0, self.block_size, dtype=torch.long))
 
-        self.register_buffer("mask_token", torch.zeros(1, 1, config.n_embd))
+        self.register_buffer("mask_token", torch.zeros(1, 1, decoder_config.n_embd))
         self.mask_ratio = mask_ratio
-        self.reconstruction_head = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.reconstruction_head = nn.Linear(decoder_config.n_embd, decoder_config.n_embd, bias=decoder_config.bias)
 
         self.n_class = config.n_output
         self.classification_head = nn.Sequential(
-            TransformerMLP(config),
-            nn.Linear(config.n_embd, self.n_class, bias=config.bias),
+            TransformerMLP(decoder_config),
+            nn.Linear(decoder_config.n_embd, self.n_class, bias=decoder_config.bias),
         )
 
-        self.proj = TransformerMLP(config)
+        self.proj = TransformerMLP(decoder_config)
 
         self.loss_actions = loss_actions
         if loss_actions is not None:
             self.loss_actions = MODELS.build(loss_actions)
         self.dropout = nn.Dropout(config.dropout)
 
-        assert mode in self.SUPPORTED_MODES
         self._mode = mode
 
     def _init_weights(self, module):
@@ -128,9 +143,9 @@ class MART(BaseModel):
 
     def pretrain(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor):
         x = self._get_projections(
-            features=features.reshape(-1, self.block_size, self.n_embd_feats),
-            poses=poses.reshape(-1, self.block_size, self.n_pose * 2),
-            dynamics=dynamics.reshape(-1, self.block_size, self.n_encoded_dynamics),
+            features=features,
+            poses=poses,
+            dynamics=dynamics,
         )
         target = x.detach()
         B, T, E = x.shape
@@ -146,14 +161,17 @@ class MART(BaseModel):
         x = self._get_transformations(x_masked)
 
         recon = self.reconstruction_head(x)
-        loss = F.mse_loss(recon[mask], target[mask])
+        if mask.any():
+            loss = F.mse_loss(recon[mask], target[mask])
+        else:
+            loss = torch.tensor(0.0, device=x.device, requires_grad=True)
         return dict(mse_loss=loss)
 
     def loss(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, labels: torch.Tensor) -> dict:
         x = self._get_projections(
-            features=features.reshape(-1, self.block_size, self.n_embd_feats),
-            poses=poses.reshape(-1, self.block_size, self.n_pose * 2),
-            dynamics=dynamics.reshape(-1, self.block_size, self.n_encoded_dynamics),
+            features=features,
+            poses=poses,
+            dynamics=dynamics,
         )
 
         x = self._get_transformations(x)
@@ -167,9 +185,9 @@ class MART(BaseModel):
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
         features, poses, dynamics = inputs
         x = self._get_projections(
-            features=features.reshape(-1, self.block_size, self.n_embd_feats),
-            poses=poses.reshape(-1, self.block_size, self.n_pose * 2),
-            dynamics=dynamics.reshape(-1, self.block_size, self.n_encoded_dynamics),
+            features=features,
+            poses=poses,
+            dynamics=dynamics,
         )
         x = self._get_transformations(x)
         class_logits = self.classification_head(x)
@@ -181,9 +199,9 @@ class MART(BaseModel):
         poses: torch.Tensor,
         dynamics: torch.Tensor,
     ):
-        features = self.dropout(features)
-        dynamics = self.dropout(dynamics)
-        poses = self.dropout(poses)
+        features = self.dropout(features.reshape(-1, self.block_size, self.n_embd_feats))
+        dynamics = self.dropout(dynamics.reshape(-1, self.block_size, self.n_encoded_dynamics))
+        poses = self.dropout(poses.reshape(-1, self.block_size, self.n_pose * 2))
 
         pose_embs = self.pose_encoder(poses)
         dyns_embs = self.velocity_encoder(dynamics)
@@ -195,7 +213,7 @@ class MART(BaseModel):
         self,
         x: Tensor,
     ):
-        x = x + self.pe(torch.arange(0, self.block_size, device=x.device, dtype=torch.long))
+        x = x + self.pe(self.pe_indices)
         for block in self.decoder:
             x = block(x)
         return x

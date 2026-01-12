@@ -43,7 +43,7 @@ train_cfg = dict(
 )
 val_cfg = dict(
     type="ValidationLossLoop",
-    val_cfg=_base_.model.test_cfg,
+    val_cfg=dict(data_preprocessor=_base_.inference_data_preprocessor),
 )
 # /Loops
 

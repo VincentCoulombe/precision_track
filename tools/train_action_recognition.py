@@ -19,6 +19,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--test", type=str2bool, default=True, help="True to test the trained model, False otherwise")
     parser.add_argument("--deploy", type=str2bool, default=True, help="True to deploy the trained model, False otherwise")
+    parser.add_argument("--config", type=str, default="../configs/tasks/training_action_recognition.py", help="Path to the training config")
     parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
     parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
     args = parser.parse_args()
@@ -29,7 +30,7 @@ def parse_args():
 
 def main(args):
     logger = MMLogger.get_instance("mmengine", log_level=logging.INFO, file_mode="w")
-    system_configs_path = "../configs/tasks/training_action_recognition.py"
+    system_configs_path = args.config
     with open("../configs/user_configs.yaml", "r") as f:
         user_configs = yaml.safe_load(f)
     user_configs["booleans"]["with_action_recognition"] = True

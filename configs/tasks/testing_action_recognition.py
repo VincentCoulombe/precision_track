@@ -109,7 +109,13 @@ test_dataloader = dict(
 
 # Evaluation
 test_evaluator = [
-    dict(type="MultiClassActionRecognitionMetrics", metainfo=metainfo, confusion_matrix_save_dir=work_dir, label_index_mode="last" if balanced else "spacial"),
+    dict(
+        type="MultiClassActionRecognitionMetrics",
+        metainfo=metainfo,
+        confusion_matrix_save_dir=work_dir,
+        metric_save_dir=work_dir,
+        label_index_mode="last" if balanced else "spacial",
+    ),
 ]
 # /Evaluation
 

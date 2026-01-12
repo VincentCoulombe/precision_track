@@ -620,7 +620,7 @@ class CsvTimestamps(BaseCsvOutput):
 
     def read(self) -> None:
         assert os.path.exists(self.path), f"{self.path} does not exist."
-        self.results = pd.read_csv(self.path)
+        self._results = pd.read_csv(self.path)
         self.columns = self.results.columns[1:].tolist()
         self.results = self.results.values.tolist()
         if os.path.exists(self.mapping_path):

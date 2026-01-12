@@ -18,13 +18,7 @@ init_thr = _base_.init_thr
 # /Settings
 
 # Model
-data_preprocessor = dict(
-    type="InferencePreprocessor",
-    mean=[0, 0, 0],
-    std=[1, 1, 1],
-    input_size=input_size,
-    pad_val=(pad_value, pad_value, pad_value),
-)
+data_preprocessor = _base_.inference_data_preprocessor
 detector = dict(
     runtime=dict(
         model=_base_.model,
