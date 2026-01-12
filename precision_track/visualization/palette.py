@@ -12,6 +12,7 @@ class ColorPalette(sv.ColorPalette):
         size: Optional[int] = 20,
         names: Optional[List[Any]] = None,
         nan_color: Optional[List[int]] = None,
+        normalized_colors: Optional[bool] = False,
     ):
         """A color palette based on seaborn's. For more palette options, you can visit:
         https://seaborn.pydata.org/tutorial/color_palettes.html
@@ -31,8 +32,9 @@ class ColorPalette(sv.ColorPalette):
             for color in sns_palette:
                 palette[i, ...] = np.array(color)
                 i += 1
-        palette *= 255
-        palette = palette.astype(int)
+        if not normalized_colors:
+            palette *= 255
+            palette = palette.astype(int)
         np.random.shuffle(palette)
         self.colors = []
         for color in palette.tolist():

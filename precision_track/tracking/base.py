@@ -17,7 +17,7 @@ class BaseAlgorithm(metaclass=ABCMeta):
         if hasattr(self, "return_masks") and self.return_masks:
             self.fields_to_remove = ["_data_fields", "_metainfo_fields"]
         else:
-            self.fields_to_remove = ["_data_fields", "_metainfo_fields", "masks"]
+            self.fields_to_remove = ["_data_fields", "_metainfo_fields", "masks", "feature_maps"]
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> Any:
@@ -95,6 +95,7 @@ class BaseAssignationAlgorithm(BaseAlgorithm):
             )
         if features is not None:
             data_samples["pred_track_instances"].update({"features": features})
+        data_samples["pred_track_instances"]["feature_maps"] = detections.get("feature_maps", torch.empty(0))
 
     def init_call(self, data_sample: dict, tracks: dict):
         for k, v in data_sample["pred_instances"].items():

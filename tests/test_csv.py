@@ -163,7 +163,7 @@ def test_init(CsvClass, path):
         assert os.path.exists(dir_name)
         assert dir_name == os.path.dirname(obj.path)
         assert os.path.splitext(os.path.basename(path))[0] == os.path.splitext(os.path.basename(obj.path))[0]
-        assert obj.results == []
+        assert obj._results == []
         assert obj.curr_frame_idx == 0
 
 
@@ -277,8 +277,9 @@ def test_getitem(CsvClass, path, dummy_data_samples):
             ]
             assert obj[1] == []
             assert obj[2] == [[2, 5, 0, 30, 30, 40, 40]]
-        assert obj[3] == []
+
+        assert obj[3] == [[]]
 
 
 if __name__ == "__main__":
-    pytest.main()
+    pytest.main(["-x", os.path.realpath(__file__), "-v", "-s"])

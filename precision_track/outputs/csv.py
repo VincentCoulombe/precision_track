@@ -2,7 +2,7 @@ import abc
 import logging
 import os
 from collections import OrderedDict
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,7 @@ from precision_track.utils import parse_pose_metainfo, reformat, to_numpy
 from .base import BaseOutput
 
 
-class BaseCsvOutput(BaseOutput):
+class BaseCsvOutput(BaseOutput, metaclass=abc.ABCMeta):
     SUPPORTED_PRECISION = {32: "float32", 64: "float64"}
     EXTENSION = ".csv"
     MAPPING_EXTENSION = ".npy"
@@ -50,6 +50,19 @@ class BaseCsvOutput(BaseOutput):
         self._setup_path(path)
         self.ids_field = ids_field
         self.save_mapping = save_mapping
+
+    @property
+    def results(self):
+        return self._results
+
+    @results.setter
+    def results(self, value: Union[list, np.ndarray]):
+        if isinstance(value, list):
+            self._results = value
+        elif isinstance(value, np.ndarray):
+            self._results = value.tolist()
+        else:
+            raise ValueError(f"Must either be a numpy array or a python list, not: {type(value)}.")
 
     def _setup_path(self, path: str):
         raw_path, _ = os.path.splitext(path)
@@ -87,15 +100,15 @@ class BaseCsvOutput(BaseOutput):
         else:
             idx_range = self.frame_id_mapping.get(idx)
             if idx_range is None:
-                return []
+                return [[]]
             return self.get_result_slice(idx_range[0], idx_range[1])
 
     def get_result_slice(self, start: int, end: int) -> List[Any]:
-        return self.results[start:end]
+        return self._results[start:end]
 
     def reset(self) -> None:
         self.frame_id_mapping = OrderedDict()
-        self.results = []
+        self._results = []
         self.curr_frame_idx = 0
 
     def save(self) -> None:
@@ -111,7 +124,7 @@ class BaseCsvOutput(BaseOutput):
             np.save(self.mapping_path, self.frame_id_mapping, allow_pickle=True)
 
     def to_dataframe(self) -> pd.DataFrame:
-        df = pd.DataFrame(self.results, columns=["frame_id", "class_id", "instance_id"] + self.columns)
+        df = pd.DataFrame(self._results, columns=["frame_id", "class_id", "instance_id"] + self.columns)
         df["frame_id"] = df["frame_id"].astype("uint32")
         df["class_id"] = df["class_id"].astype("uint16")
         df["instance_id"] = df["instance_id"].astype("int16")
@@ -119,17 +132,22 @@ class BaseCsvOutput(BaseOutput):
             df[col] = df[col].astype(self.SUPPORTED_PRECISION[self.precision])
         return df
 
+    def valid(self) -> bool:
+        """Return True if the output's path is valid, else False."""
+        return os.path.isfile(self.path) and self.path.endswith(self.EXTENSION)
+
     def read(self) -> None:
         """Load a csv and a mapping (for faster __getitem__)"""
         assert os.path.exists(self.path), f"{self.path} does not exist."
-        self.results = pd.read_csv(self.path)
-        self.columns = self.results.columns[3:].tolist()
-        self.results = self.results.values.tolist()
+        self._results = pd.read_csv(self.path)
+        self._results.fillna(0, inplace=True)
+        self.columns = self._results.columns[3:].tolist()
+        self._results = self._results.values.tolist()
         if os.path.exists(self.mapping_path):
             self.frame_id_mapping = np.load(self.mapping_path, allow_pickle=True).item()
         else:
             self._infer_mapping()
-        if not self.results or not self.frame_id_mapping:
+        if not self._results or not self.frame_id_mapping:
             print_log(f"{self.path} is empty.", level=logging.WARNING)
         else:
             self.curr_frame_idx = self.frame_id_mapping[self.__len__() - 1][1] + 1
@@ -138,7 +156,7 @@ class BaseCsvOutput(BaseOutput):
         current_frame = None
         start_index = 0
 
-        for i, row in enumerate(self.results):
+        for i, row in enumerate(self._results):
             frame_id = int(row[0])
 
             if current_frame is None:
@@ -150,12 +168,12 @@ class BaseCsvOutput(BaseOutput):
                 start_index = i
 
         if current_frame is not None:
-            self.frame_id_mapping[current_frame] = (start_index, len(self.results))
+            self.frame_id_mapping[current_frame] = (start_index, len(self._results))
 
         return self.frame_id_mapping
 
     def _add_row(self, *args) -> None:
-        self.results.append(list(args))
+        self._results.append(list(args))
 
     def _update_frame_id_mapping(self, frame_id: int, increment: int):
         if frame_id not in self.frame_id_mapping:
@@ -184,6 +202,11 @@ class BaseCsvOutput(BaseOutput):
         if instance_data is None:
             raise ValueError(f"The provided data sample do not contain the expected instance data ({self.instance_data}).")
         return instance_data, data_sample["img_id"]
+
+    @abc.abstractmethod
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        """Scale the output's annotations."""
+        pass
 
 
 @OUTPUTS.register_module()
@@ -245,6 +268,17 @@ class CsvBoundingBoxes(BaseCsvOutput):
                 i += 1
         self._update_frame_id_mapping(frame_id, i)
 
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        """Scale the output's annotations."""
+        np_results = np.array(self._results, dtype=np.float32)
+        ori_scale_np = np.array(ori_scale, dtype=np.float32)
+        new_scale_np = np.array(new_scale, dtype=np.float32)
+        ratio = new_scale_np / ori_scale_np
+        np_results[:, 3:7:2] *= ratio[0]
+        np_results[:, 4:7:2] *= ratio[1]
+
+        self._results = np_results.tolist()
+
 
 @OUTPUTS.register_module()
 class CsvValidations(BaseCsvOutput):
@@ -291,6 +325,9 @@ class CsvValidations(BaseCsvOutput):
             i += 1
         self._update_frame_id_mapping(frame_id, i)
 
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        raise NotImplementedError
+
 
 @OUTPUTS.register_module()
 class CsvCorrections(BaseCsvOutput):
@@ -328,6 +365,9 @@ class CsvCorrections(BaseCsvOutput):
             self._add_row(frame_id, label, id_, corrected_id)
             i += 1
         self._update_frame_id_mapping(frame_id, i)
+
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        pass
 
 
 @OUTPUTS.register_module()
@@ -372,6 +412,9 @@ class CsvSearchAreas(BaseCsvOutput):
             self._add_row(frame_id, label, id_, *bbox)
             i += 1
         self._update_frame_id_mapping(frame_id, i)
+
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        raise NotImplementedError
 
 
 @OUTPUTS.register_module()
@@ -435,6 +478,17 @@ class CsvKeypoints(BaseCsvOutput):
         self.columns = []
         super().reset()
 
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        """Scale the output's annotations."""
+        np_results = np.array(self._results, dtype=np.float32)
+        ori_scale_np = np.array(ori_scale, dtype=np.float64)
+        new_scale_np = np.array(new_scale, dtype=np.float64)
+        ratio = new_scale_np / ori_scale_np
+        np_results[:, 3:-1:3] *= ratio[0]
+        np_results[:, 4:-1:3] *= ratio[1]
+
+        self._results = np_results.tolist()
+
 
 @OUTPUTS.register_module()
 class CsvVelocities(BaseCsvOutput):
@@ -472,6 +526,9 @@ class CsvVelocities(BaseCsvOutput):
                 self._add_row(frame_id, label, id_, *vel)
                 i += 1
         self._update_frame_id_mapping(frame_id, i)
+
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        raise NotImplementedError
 
 
 @OUTPUTS.register_module()
@@ -518,9 +575,53 @@ class CsvActions(BaseCsvOutput):
     def read(self) -> None:
         """Load a csv and a mapping (for faster __getitem__)"""
         assert os.path.exists(self.path), f"{self.path} does not exist."
-        self.results = pd.read_csv(self.path, keep_default_na=True)
-        self.results.fillna("", inplace=True)
-        self.columns = self.results.columns.to_list()
+        self._results = pd.read_csv(self.path, keep_default_na=True)
+        self._results.fillna("", inplace=True)
+        self.columns = self._results.columns.to_list()
+        self._results = self._results.values.tolist()
+        if os.path.exists(self.mapping_path):
+            self.frame_id_mapping = np.load(self.mapping_path, allow_pickle=True).item()
+        else:
+            self._infer_mapping()
+        if not self._results or not self.frame_id_mapping:
+            print_log(f"{self.path} is empty.", level=logging.WARNING)
+        else:
+            self.curr_frame_idx = self.frame_id_mapping[self.__len__() - 1][1] + 1
+
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        pass
+
+
+@OUTPUTS.register_module()
+class CsvTimestamps(BaseCsvOutput):
+    def __init__(
+        self,
+        path: str,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            path=path,
+            precision=32,
+            columns=["timestamps(s)"],
+            instance_data=None,
+            ids_field=None,
+        )
+
+    def __call__(self, det_data_sample: dict):
+        _, frame_id = self._get_ds_info(det_data_sample)
+
+        fps = det_data_sample.get("fps", 1)
+        self._add_row(frame_id, frame_id / fps)
+        self._update_frame_id_mapping(frame_id, 1)
+
+    def _get_ds_info(self, data_sample: dict):
+        return None, data_sample["img_id"]
+
+    def read(self) -> None:
+        assert os.path.exists(self.path), f"{self.path} does not exist."
+        self._results = pd.read_csv(self.path)
+        self.columns = self.results.columns[1:].tolist()
         self.results = self.results.values.tolist()
         if os.path.exists(self.mapping_path):
             self.frame_id_mapping = np.load(self.mapping_path, allow_pickle=True).item()
@@ -530,3 +631,13 @@ class CsvActions(BaseCsvOutput):
             print_log(f"{self.path} is empty.", level=logging.WARNING)
         else:
             self.curr_frame_idx = self.frame_id_mapping[self.__len__() - 1][1] + 1
+
+    def to_dataframe(self) -> pd.DataFrame:
+        df = pd.DataFrame(self.results, columns=["frame_id"] + self.columns)
+        df["frame_id"] = df["frame_id"].astype("uint32")
+        for col in self.columns:
+            df[col] = df[col].astype(self.SUPPORTED_PRECISION[self.precision])
+        return df
+
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        pass

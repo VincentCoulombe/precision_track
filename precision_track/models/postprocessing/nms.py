@@ -28,7 +28,7 @@ class NMSPostProcessor(BasePostProcessor):
         self.nms_pre = nms_pre
         self.pool_thr = pool_thr
 
-    def forward(self, bboxes, scores, keypoints, kpt_vis, labels, features, keep_idxs):
+    def forward(self, bboxes, scores, keypoints, kpt_vis, labels, features, priors, keep_idxs):
         valid_mask = scores > self.score_thr
         scores = scores[valid_mask]
         valid_idxs = torch.nonzero(valid_mask)
@@ -39,7 +39,8 @@ class NMSPostProcessor(BasePostProcessor):
         keep_idxs, _ = valid_idxs[idxs[:num_topk]].unbind(dim=1)
 
         bboxes = bboxes[keep_idxs]
-        features = F.normalize(features[keep_idxs], p=2, dim=-1, eps=1e-12)
+        features = features[keep_idxs]
+        features = F.normalize(features, p=2, dim=-1, eps=1e-12)
 
         if bboxes.numel() > 0:
             features_nms = features
@@ -70,5 +71,6 @@ class NMSPostProcessor(BasePostProcessor):
         labels = labels[keep_idxs]
         kpt_vis = kpt_vis[keep_idxs]
         keypoints = keypoints[keep_idxs]
+        priors = priors[keep_idxs]
 
-        return bboxes, scores, keypoints, kpt_vis, labels, features, keep_idxs
+        return bboxes, scores, keypoints, kpt_vis, labels, features, priors, keep_idxs

@@ -1,7 +1,93 @@
 import time
 
 import numpy as np
+import torch
 from numba import njit
+
+
+def calculate_bbox_velocities(curr_bboxes, curr_ids, curr_scores, prev_bboxes, prev_ids, dt, conf_thr: float = 0.0):
+    still_tracked = torch.isin(prev_ids, curr_ids, assume_unique=True)
+    prev_ids = prev_ids[still_tracked]
+    prev_bboxes = prev_bboxes[still_tracked]
+
+    device = curr_bboxes.device
+    dtype = curr_bboxes.dtype
+    Nc = curr_bboxes.shape[0]
+
+    if prev_ids.numel() == 0:
+        return torch.zeros((Nc, 2), device=device, dtype=dtype)
+
+    sort_idx = torch.argsort(prev_ids)
+    prev_ids_sorted = prev_ids[sort_idx]
+    pos = torch.searchsorted(prev_ids_sorted, curr_ids)
+
+    n = prev_ids_sorted.numel()
+    in_range = pos < n
+    eq = torch.zeros(Nc, dtype=torch.bool, device=device)
+    if in_range.any():
+        eq[in_range] = prev_ids_sorted[pos[in_range]] == curr_ids[in_range]
+    valid = in_range & eq
+
+    prev_idx_for_curr = torch.full((Nc,), -1, dtype=torch.long, device=device)
+    prev_idx_for_curr[valid] = sort_idx[pos[valid]]
+    has_prev = prev_idx_for_curr >= 0
+
+    aligned_prev_bboxes = torch.zeros_like(curr_bboxes)
+    if has_prev.any():
+        aligned_prev_bboxes[has_prev] = prev_bboxes[prev_idx_for_curr[has_prev]]
+
+    conf_mask = curr_scores > conf_thr
+
+    use_mask = has_prev & conf_mask
+
+    velocities = torch.zeros((Nc, 2), device=device, dtype=dtype)
+    if use_mask.any():
+        delta_c = curr_bboxes[use_mask, :2] - aligned_prev_bboxes[use_mask, :2]
+        velocities[use_mask] = delta_c / dt[:, None]
+
+    return velocities
+
+
+def calculate_pose_velocities(curr_kpts, curr_vis, curr_ids, prev_kpts, prev_ids, dt, vis_thr: float = 0.5):
+    still_tracked = torch.isin(prev_ids, curr_ids, assume_unique=True)
+    prev_ids = prev_ids[still_tracked]
+    prev_kpts = prev_kpts[still_tracked]
+
+    Nc, K, _ = curr_kpts.shape
+    device = curr_kpts.device
+    dtype = curr_kpts.dtype
+
+    if prev_ids.numel() == 0:
+        return torch.zeros((Nc, K, 2), device=device, dtype=dtype)
+
+    sort_idx = torch.argsort(prev_ids)
+    prev_ids_sorted = prev_ids[sort_idx]
+
+    pos = torch.searchsorted(prev_ids_sorted, curr_ids)
+    n = prev_ids_sorted.numel()
+    in_range = pos < n
+    eq = torch.zeros(Nc, dtype=torch.bool, device=device)
+    if in_range.any():
+        eq[in_range] = prev_ids_sorted[pos[in_range]] == curr_ids[in_range]
+    valid = in_range & eq
+
+    prev_idx_for_curr = torch.full((Nc,), -1, device=device, dtype=torch.long)
+    prev_idx_for_curr[valid] = sort_idx[pos[valid]]
+
+    aligned_prev_kpts = torch.zeros((Nc, K, 2), device=device, dtype=dtype)
+    has_prev = prev_idx_for_curr >= 0
+    if has_prev.any():
+        aligned_prev_kpts[has_prev] = prev_kpts[prev_idx_for_curr[has_prev]]
+
+    vis_mask = (curr_vis > vis_thr).unsqueeze(-1)
+    returning_mask = has_prev.view(Nc, 1, 1)
+    use_mask = returning_mask & vis_mask
+
+    velocities = torch.zeros((Nc, K, 2), device=device, dtype=dtype)
+    delta = curr_kpts - aligned_prev_kpts
+    velocities[use_mask.expand_as(delta)] = (delta / dt[:, None, None])[use_mask.expand_as(delta)]
+
+    return velocities
 
 
 @njit

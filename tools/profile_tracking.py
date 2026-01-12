@@ -34,9 +34,8 @@ if __name__ == "__main__":
     from addict import Dict
 
     main(
-        args={"sink_path": "../profiles/profile_v7_bt.prof"},
+        args={"sink_path": "../profiles/v1.prof"},
         track_args=Dict(
-            config="../configs/mice/tracking.py",
             video="../assets/20mice.avi",
         ),
     )

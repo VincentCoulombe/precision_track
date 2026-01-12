@@ -15,8 +15,12 @@ import pkgutil
 import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
-from typing import Callable, Dict, List, Union, Set, Any
+from typing import Callable, Dict, List, Union, Optional, Set, Any
+import ffmpeg
+import numpy as np
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Set, Union
+
 import cv2
 import mmengine
 import torch
@@ -554,6 +558,7 @@ def load_checkpoint(model, filename, map_location=None, strict=False, logger=Non
 
 
 def load_checkpoint_to_model(model, checkpoint, strict=False, logger=None, revise_keys=[(r"^module\.", "")]):
+    assert isinstance(checkpoint, dict)
 
     # get state_dict from checkpoint
     if "state_dict" in checkpoint:
@@ -750,6 +755,162 @@ def _process_mmcls_checkpoint(checkpoint):
     new_checkpoint = dict(state_dict=new_state_dict)
 
     return new_checkpoint
+
+
+def put_text_with_underbox(
+    img,
+    text,
+    rect_origin=(50, 150),
+    font=cv2.FONT_HERSHEY_SIMPLEX,
+    font_scale=1.0,
+    thickness=2,
+    text_color=(255, 255, 255),
+    rect_color=(0, 0, 0),
+    rect_alpha=0.6,
+    text_pad=(10, 10),
+    gap=6,
+    underline_height_ratio=0.35,
+):
+    """
+    Draw text and a fitted rectangle placed UNDER the text.
+    The rectangle top-left is fixed at rect_origin; text is positioned above it.
+    """
+    x, y = rect_origin
+
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    pad_x, pad_y = text_pad
+
+    rect_w = text_w + 2 * pad_x
+    rect_h = max(2, int(underline_height_ratio * text_h)) + 2 * pad_y
+
+    text_base_x = x + pad_x
+    text_base_y = y - gap
+
+    if text_base_y - (text_h + baseline) < 0:
+        shift = (text_h + baseline) - text_base_y + 5
+        y += shift
+        text_base_y += shift
+
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x, y), (x + rect_w, y + rect_h), rect_color, thickness=-1)
+    cv2.addWeighted(overlay, rect_alpha, img, 1 - rect_alpha, 0, dst=img)
+
+    cv2.putText(img, text, (text_base_x, text_base_y), font, font_scale, text_color, thickness, cv2.LINE_AA)
+
+    return img
+
+
+def read_sequence_fast(
+    path: str, first_frame: int, num_frames: int, width: int | None = None, height: int | None = None, pix_fmt: str = "rgb24"
+) -> np.ndarray:
+    """
+    Frame-accurate extraction of a contiguous sequence.
+
+    Args:
+        path: video path
+        first_frame: 0-based frame index of the first frame to extract
+        num_frames: number of frames to extract
+        width, height: optional resize at decode time (faster than post-resize)
+        pix_fmt: 'rgb24' (3ch) or 'gray' (1ch), etc.
+
+    Returns:
+        np.ndarray [T,H,W,C] where C=3 for rgb24 and C=1 for gray
+    """
+    if first_frame < 0 or num_frames <= 0:
+        raise ValueError("first_frame must be >= 0 and num_frames > 0")
+
+    # Probe dimensions if not provided
+    if width is None or height is None:
+        info = ffmpeg.probe(path)
+        vstreams = [s for s in info["streams"] if s["codec_type"] == "video"]
+        if not vstreams:
+            raise RuntimeError("No video stream found.")
+        width = int(vstreams[0]["width"])
+        height = int(vstreams[0]["height"])
+
+    # Build filtergraph: select exact frame range, reset PTS
+    start_f = int(first_frame)
+    end_f = start_f + int(num_frames)
+    vf = [
+        f"trim=start_frame={start_f}:end_frame={end_f}",
+        "setpts=PTS-STARTPTS",
+    ]
+    if width and height:
+        vf.append(f"scale={width}:{height}")
+
+    out, _ = (
+        ffmpeg.input(path)  # decode from start for exact frame counts
+        .output("pipe:", format="rawvideo", pix_fmt=pix_fmt, vf=",".join(vf))
+        .global_args("-loglevel", "error")  # clean stderr
+        .run(capture_stdout=True, capture_stderr=True)
+    )
+
+    ch = 1 if pix_fmt == "gray" else 3
+    bytes_per_frame = width * height * ch
+    T = len(out) // bytes_per_frame
+    if T != num_frames or len(out) != num_frames * bytes_per_frame:
+        raise RuntimeError(
+            f"Expected {num_frames} frames ({num_frames*bytes_per_frame} bytes) "
+            f"but got {T} frames ({len(out)} bytes). "
+            "Video may be shorter than requested, or filters/pix_fmt/dimensions mismatch."
+        )
+
+    arr = np.frombuffer(out, dtype=np.uint8)
+    return arr.reshape(T, height, width, ch)
+
+
+def get_seq_from_img_folder(start_idx: int, seq_length: int, folder_dir: str) -> List[str]:
+    """
+    Return absolute paths for an image sequence [start_idx, start_idx+seq_length-1]
+    from `folder_dir`, where each file's index is the trailing digits in its basename.
+    E.g., frame_00001.jpg -> index 1. Leading zeros are allowed/ignored.
+
+    Raises:
+        AssertionError: if inputs invalid or folder doesn't exist.
+        FileNotFoundError: if any frame in the requested range is missing.
+    """
+    start_idx = int(start_idx)
+    assert start_idx >= 0
+    seq_length = int(seq_length)
+    assert seq_length > 0
+    assert os.path.isdir(folder_dir)
+
+    end_idx = start_idx + seq_length - 1
+    needed = set(range(start_idx, end_idx + 1))
+
+    by_index = {}
+    with os.scandir(folder_dir) as it:
+        for de in it:
+            if not de.is_file():
+                continue
+            idx = _extract_trailing_index(de.name)
+            if idx is None:
+                continue
+            if idx in needed:
+                by_index[idx] = os.path.join(folder_dir, de.name)
+                if len(by_index) == len(needed):
+                    break
+
+    missing = [i for i in range(start_idx, end_idx + 1) if i not in by_index]
+    if missing:
+        raise FileNotFoundError(f"Missing frames in range [{start_idx}, {end_idx}]: {missing[:10]}{'...' if len(missing)>10 else ''}")
+
+    return [by_index[i] for i in range(start_idx, end_idx + 1)]
+
+
+def _extract_trailing_index(filename: str) -> Optional[int]:
+    """
+    Extract the integer formed by the trailing digits before the extension.
+    Returns None if no trailing digits.
+    Example: 'img_00012.jpg' -> 12 ; '00001.png' -> 1 ; 'foo.jpg' -> None
+    """
+    stem, _ = os.path.splitext(filename)
+    i = len(stem) - 1
+    while i >= 0 and stem[i].isdigit():
+        i -= 1
+    if i == len(stem) - 1:
+        return None
+    return int(stem[i + 1 :])
 
 
 def load_system_config_dict(system_configs_path: str, final_base: str = "./_base_.py") -> Dict[str, Any]:

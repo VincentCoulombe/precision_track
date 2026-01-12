@@ -4,6 +4,7 @@ from .ece import PoseEstimationECEMetric
 from .pt import PoseTrackingMetric
 from .qualitative import QualitativeActionRecognitionMetric
 from .silhouette_score import SilhouetteScore
+from .regression import MSEMetric
 
 __all__ = [
     "PoseTrackingMetric",
@@ -15,4 +16,5 @@ __all__ = [
     "QualitativeActionRecognitionMetric",
     "CLEARMetrics",
     "SearchZoneStitchingMetric",
+    "MSEMetric",
 ]

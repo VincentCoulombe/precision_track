@@ -1,6 +1,6 @@
 import os
 
-from mmengine.registry import DATASETS, HOOKS, LOOPS, METRICS, MODELS, PARAM_SCHEDULERS, TASK_UTILS, TRANSFORMS
+from mmengine.registry import DATASETS, HOOKS, LOOPS, METRICS, MODELS, PARAM_SCHEDULERS, TASK_UTILS, TRANSFORMS, RUNNERS, FUNCTIONS
 from mmengine.registry import VISUALIZERS as MMENGINE_VISUALIZERS
 from mmengine.registry import Registry
 
@@ -11,6 +11,7 @@ VISUALIZERS = Registry("visualizer", parent=MMENGINE_VISUALIZERS, locations=["pr
 CODEBASE = Registry("Codebases", scope="mmengine")
 RUNTIMES = Registry("runtime", locations=["precision_track.models.runtimes"], scope="mmengine")
 BACKENDS = Registry("backend", locations=["precision_track.models.backends"], scope="mmengine")
+COACHES = Registry("coach", locations=["precision_track.models.optimization"], scope="mmengine")
 
 DATASETS._locations.append("precision_track.datasets")
 MODELS._locations.append("precision_track.models")
@@ -22,5 +23,7 @@ HOOKS._locations.append("precision_track.hooks")
 LOOPS._locations.append("precision_track.loops")
 TRANSFORMS._locations.append("precision_track.datasets.transforms")
 PARAM_SCHEDULERS._locations.append("precision_track.models")
+RUNNERS._locations.append("precision_track.apis")
+FUNCTIONS._locations.append("precision_track.utils")
 
 ROOT = os.path.dirname(os.path.abspath(__file__))

@@ -15,9 +15,9 @@ from mmengine.model import BaseModel
 from tqdm import tqdm
 
 from precision_track.models.backends import DetectionBackend
-from precision_track.outputs.display import display_latency, display_progress_bar
-from precision_track.registry import MODELS, TRACKING
-from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear
+from precision_track.outputs.display import display_latency
+from precision_track.registry import MODELS, TRACKING, OUTPUTS
+from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking
 
 from .association_step import AssociationStep
 from .result import Result
@@ -44,10 +44,12 @@ class Tracker(BaseModel):
 
         detector["verbose"] = self.verbose
         self.detector = DetectionBackend(**detector)
-        self._detection_mode = "predict" if detector.runtime.get("freeze", False) else "loss"
+        is_frozen = detector.runtime.get("freeze", False) or detector.runtime.get("type") != "PytorchRuntime"
+        self._detection_mode = "predict" if is_frozen else "loss"
 
         assigner["verbose"] = self.verbose
-        self.association_step = AssociationStep(**assigner)
+        self._assigner = assigner
+        self._init_association_step()
 
         if validator is not None:
             validator = TRACKING.build(validator)
@@ -60,8 +62,13 @@ class Tracker(BaseModel):
         self.result = Result(outputs=outputs)
 
         self.analyzer = analyzer
+        self._analyzing = False
         if self.analyzer is not None:
             self.analyzer = MODELS.build(analyzer)
+            self._analyzing = True
+
+    def _init_association_step(self):
+        self.association_step = AssociationStep(**self._assigner)
 
     def forward(self, mode: Optional[str] = "predict", *args, **kwargs) -> Any:
         if mode == "predict":
@@ -72,81 +79,75 @@ class Tracker(BaseModel):
             raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss and predict mode.")
 
     def train(self, mode: bool = True):
-
         train_detector = self._detection_mode == "loss" and mode
         self.detector.train(train_detector)
         if isinstance(self.association_step.tracking_algorithm, nn.Module):
             self.association_step.tracking_algorithm.train(mode)
+        if isinstance(self.analyzer, nn.Module) and self._analyzing:
+            self.analyzer.train(mode)
         return self
 
     def eval(self):
         return self.train(False)
 
     def loss(self, inputs: List[torch.Tensor], data_samples: List[PoseDataSample]) -> dict:
-        inputs, data_samples = self._flatten_sequences(inputs, data_samples)
         losses = dict()
-        outputs = self.detector(inputs=inputs, data_samples=data_samples, mode="tensor" if self._detection_mode != "loss" else self._detection_mode)
-        if isinstance(outputs, dict):
-            losses.update(outputs.get("losses", dict()))
-            outputs = outputs["outputs"]
-        self._load_predictions(outputs, data_samples)
-        outputs = self.association_step.tracking_algorithm.loss(data_samples=data_samples)
-        losses.update(outputs.get("losses", dict()))
-        outputs = self.analyzer.loss(data_samples=data_samples)
-        losses.update(outputs.get("losses", dict()))
+        batched_outputs = []
+        for seq_inputs, seq_data_samples in zip(inputs, data_samples):
+            seq_outputs = self.detector(inputs=seq_inputs, data_samples=seq_data_samples, mode=self._detection_mode)
+            self._maybe_update_losses(losses, seq_outputs)
+            output = self._process_sequence(
+                seq_outputs,
+                seq_data_samples,
+                losses=losses,
+                remove_gt_instances=True,
+                remove_pred_instances=True,
+            )
+            if self._analyzing:
+                batched_outputs.append(output)
+        if self._analyzing:
+            outputs = self.analyzer.loss(inputs=batched_outputs, data_samples=data_samples)
+            self._maybe_update_losses(losses, outputs)
         return losses
 
     def val_step(self, data_samples: Union[dict, tuple, list], *args, **kwargs) -> list:
         return self.test_step(data_samples=data_samples, *args, **kwargs)
 
     def test_step(self, data_samples: Union[dict, tuple, list], *args, **kwargs) -> list:
-        inputs, data_samples = self._flatten_sequences(**data_samples)
-        outputs = self.detector.test_step(dict(inputs=inputs, data_samples=data_samples, *args, **kwargs))
-        self._load_predictions(outputs, data_samples)
-        return self.association_step.tracking_algorithm.test_step(data_samples=data_samples, *args, **kwargs)
+        batched_outputs = []
+        inputs = data_samples["inputs"]
+        data_samples = data_samples["data_samples"]
+        for seq_inputs, seq_data_samples in zip(inputs, data_samples):
+            outputs = self.detector(inputs=seq_inputs, data_samples=seq_data_samples, mode="predict")
+            output = self._process_sequence(
+                outputs,
+                seq_data_samples,
+                losses=None,
+                remove_gt_instances=True,
+            )
+            if self._analyzing:
+                batched_outputs.append(output)
+        if self._analyzing:
+            action_preds, action_embds = self.analyzer.test_step(batched_outputs)
+            output.pred_track_instances.update(dict(action_preds=action_preds, action_embds=action_embds))
+            return [output]
+        return batched_outputs
 
-    def predict(self, video: VideoReader) -> Result:
+    def predict(self, video: VideoReader, save: bool = True) -> Result:
         assert isinstance(video, VideoReader)
 
-        b_frames = []
-        b_idx = []
-        outputs = deque()
-        frames = deque()
-        frame_id = 0
-        empty = False
-        switches = None
         total_frames = len(video)
         t0 = perf_counter()
-        while True:
-            frame = video.read()
-            if len(b_frames) == self.batch_size or (empty and b_frames):
-                for output in self.detector(inputs=b_frames, data_samples=b_idx):
-                    outputs.appendleft(output)
-                b_frames, b_idx = [], []
-            if frame is not None:
-                b_frames.append(frame)
-                b_idx.append(frame_id)
-                frames.appendleft(frame)
-                frame_id += 1
-                if self.verbose:
-                    display_progress_bar(frame_id, total_frames)
-            else:
-                empty = True
-            if outputs:
-                output = outputs.pop()
-                output = self.association_step(output, switches)
-                frame = frames.pop()
-                if self.validator is not None:
-                    if self.validator._frame_size is None:
-                        self.validator.frame_size = frame.shape[:2]
-                    output, switches = self.validator(frame, output)
-                if self.analyzer is not None:
-                    output = self.analyzer.predict(output)
-
-                self.result(output)
-            elif empty and not b_frames:
-                break
-
+        batch_tracking(
+            video=video,
+            detector=self.detector,
+            batch_size=self.batch_size,
+            result=self.result,
+            association_step=self.association_step,
+            validator=self.validator,
+            analyzer=self.analyzer,
+            verbose=self.verbose,
+        )
         if self.verbose:
             display_latency(
                 np.array([perf_counter() - t0]) / total_frames,
@@ -154,27 +155,55 @@ class Tracker(BaseModel):
                 buffer_size=0,
                 precision=4,
             )
-        self.result.save()
+        if save:
+            self.result.save()
         return self.result
 
+    def _process_sequence(
+        self,
+        detections,
+        data_samples,
+        losses=None,
+        remove_gt_instances=False,
+        remove_pred_instances=False,
+        remove_pred_track_instances=False,
+    ):
+        self._init_association_step()
+        self._load_predictions(detections, data_samples)
+        for seq_data_sample in data_samples:
+            output = self.association_step.associate(data_sample=seq_data_sample)
+            if isinstance(losses, dict):
+                self._maybe_update_losses(losses, output)
+            if self._analyzing:
+                output = self.analyzer.data_preprocessor(dict(data_samples=output))
+            if remove_gt_instances and hasattr(output, "gt_instances"):
+                del output.gt_instances
+                del output.gt_instance_labels
+            if remove_pred_instances:
+                del output.pred_instances
+            if remove_pred_track_instances:
+                del output.pred_track_instances
+        return output
+
     @staticmethod
-    def _flatten_sequences(inputs: List[torch.Tensor], data_samples: List[PoseDataSample]) -> Tuple:
-        sequence_length = inputs[0].shape[0]
-        assert len(data_samples) == sequence_length
-        flatten_inputs = []
-        flatten_ds = []
-        for batch_idx in range(len(inputs)):
-            assert sequence_length == inputs[batch_idx].shape[0]
-            for sequence_idx in range(sequence_length):
-                flatten_inputs.append(inputs[batch_idx][sequence_idx])
-                flatten_ds.append(data_samples[sequence_idx][batch_idx])
-        return flatten_inputs, flatten_ds
+    def _slim_down_output(output: dict):
+        pass  # TODO enlàve TOUTE ce qui ne sert pas dans le analyzer!
+
+    @staticmethod
+    def _maybe_update_losses(losses, outputs):
+        if isinstance(outputs, dict):
+            for k, v in outputs.items():
+                if "loss" in k and isinstance(v, torch.Tensor) and v.requires_grad == True:
+                    if k in losses:
+                        losses[k] = losses[k] + v
+                    else:
+                        losses[k] = v
 
     @staticmethod
     def _load_predictions(outputs: List[dict], data_samples: List[PoseDataSample]) -> Tuple:
         assert len(outputs) == len(data_samples)
         for output, data_sample in zip(outputs, data_samples):
-            assert output["img_id"] == data_sample.img_id
+            assert output["img_id"] == data_sample.img_id and output["seq_id"] == data_sample.seq_id
             data_sample.pred_instances = output["pred_instances"]
 
 
@@ -297,6 +326,7 @@ def analyzing_process(
     analyzer_ready,
     analyzer_cfg=None,
     outout_cfg=None,
+    save=True,
 ):
     analyzer = analyzer_cfg
     if analyzer is not None:
@@ -315,8 +345,8 @@ def analyzing_process(
                 result(output)
             else:
                 break
-
-    result.save()  # TODO refactor the result saving pipeline
+    if save:
+        result.save()  # TODO refactor the result saving pipeline
     analyzer_ready.clear()
 
 
@@ -349,6 +379,18 @@ class PipelinedTracker:
         self.analyzer_ready = mp.Event()
 
         self.shared_batch = SharedFrameBatch(shape, self.input_is_loaded)
+
+        timestamps_output = None
+        if outputs is not None:
+            filtered_outputs = []
+            for output_cfg in outputs:
+                if output_cfg.get("type") == "CsvTimestamps":
+                    timestamps_output = output_cfg
+                else:
+                    filtered_outputs.append(output_cfg)
+            outputs = filtered_outputs if filtered_outputs else None
+
+        self.timestamps_output = OUTPUTS.build(timestamps_output) if timestamps_output else None
 
         self.tracking = mp.Process(
             target=tracking_process,
@@ -386,11 +428,16 @@ class PipelinedTracker:
         self.analyzer_ready.wait()
 
     def __call__(self, video: VideoReader) -> None:
+        fps = video.fps
         try:
             for i, frame in tqdm(enumerate(video)):
                 assert frame.shape == self.expected_resolution
+                if self.timestamps_output is not None:
+                    self.timestamps_output(dict(img_id=i, fps=fps))
                 self.shared_batch.update(i, frame, self.main_connexion)
             self.shared_batch.send_remaining(self.main_connexion)
+            if self.timestamps_output is not None:
+                self.timestamps_output.save()
         except Exception:
             error_trace = traceback.format_exc()  # TODO log
             print(error_trace)

@@ -1,6 +1,7 @@
 import logging
-from typing import List, Optional, Tuple, Union
 import os
+from typing import List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 from mmengine.logging import print_log
@@ -53,6 +54,14 @@ class TensorRTRuntime(InferenceOnlyRuntime):
     def _assert_runtime(self):
         """Load the TensorRT engine."""
         assert "cuda" in self.device, f"TensorRT runtime can only be leveraged on cuda, not {self.device}."
+        current_gpu_name = torch.cuda.get_device_name(self.device_id).replace(" ", "")
+        checkpoint_name = os.path.basename(self.checkpoint)
+        if current_gpu_name not in checkpoint_name:
+            print_log(
+                f"The '{os.path.abspath(self.checkpoint)}' engine was not built for current GPU ('{current_gpu_name}'). This might lead to unexpected errors or performances.",
+                logger="current",
+                level=logging.WARNING,
+            )
         load_tensorrt_plugin()
         with self.trt.Runtime(self.trt_logger) as runtime:
             with open(self.checkpoint, "rb") as f:
@@ -90,14 +99,24 @@ class TensorRTRuntime(InferenceOnlyRuntime):
         assert set(self.output_names) == set(self.output_names_cfg), f"{set(self.output_names)} != {set(self.output_names_cfg)}"
 
         precision = "FP16" if self.nn_is_fp16() else "FP32"
-        if self.half_precision and precision != "FP16":
-            print_log(
-                f"Can not infer with half precision as the {self.checkpoint} TensoRRT engine is compile with {precision} precision.",
-                logger="current",
-                level=logging.WARNING,
-            )
-            self.half_precision = False
-            self._initialize_type()
+        if self.half_precision:
+            if not torch.cuda.is_available() or not torch.cuda.get_device_capability(self.device_id)[0] >= 5:
+                print_log(
+                    f"FP16 inference is not supported on this platform (compute capability {torch.cuda.get_device_capability(self.device_id)}). "
+                    f"Falling back to FP32.",
+                    logger="current",
+                    level=logging.WARNING,
+                )
+                self.half_precision = False
+                self._initialize_type()
+            elif precision != "FP16":
+                print_log(
+                    f"Can not infer with half precision as the {self.checkpoint} TensorRT engine is compile with {precision} precision.",
+                    logger="current",
+                    level=logging.WARNING,
+                )
+                self.half_precision = False
+                self._initialize_type()
 
         self.input_profiles = {n: self.engine.get_tensor_profile_shape(n, 0) for n in self.input_names}
         self.dtypes = {n: self._TORCH_DTYPE[self.engine.get_tensor_dtype(n)] for n in self.engine}

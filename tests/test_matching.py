@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import os
 
 from precision_track.utils import batch_bbox_areas, iou_batch, reformat
 
@@ -98,4 +99,4 @@ def test_batch_bbox_areas():
 
 
 if __name__ == "__main__":
-    pytest.main()
+    pytest.main(["-x", os.path.realpath(__file__), "-v", "-s"])

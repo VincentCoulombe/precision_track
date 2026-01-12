@@ -74,7 +74,7 @@ class BaseBackend(BaseModel, metaclass=ABCMeta):
         with autocast(enabled=self.half_precision):
             data = self.preprocess(inputs, data_samples)
             feats = self._runtime.predict(**data)
-            outputs = self.postprocess(*feats, data["data_samples"])
+            outputs = self.postprocess(*feats, data_samples=data["data_samples"])
         return outputs
 
     @abstractmethod

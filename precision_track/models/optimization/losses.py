@@ -8,7 +8,7 @@
 
 
 from functools import partial
-from typing import Optional
+from typing import Optional, Sequence
 
 import torch
 import torch.nn as nn
@@ -403,3 +403,119 @@ class TripletLoss(nn.Module):
             return 0
         indices_tuple = self.miner(embeddings, y)
         return self.loss(embeddings, y, indices_tuple) * self.loss_weight
+
+
+@MODELS.register_module()
+class LDAMWithDRW(nn.Module):
+    """
+    LDAM (Cao et al., NeurIPS'19) with optional DRW (Cui et al., CVPR'19),
+    """
+
+    def __init__(
+        self,
+        metainfo: str,
+        max_m: float = 0.5,
+        s: float = 30.0,
+        use_drw: bool = True,
+        drw_start_epoch: int = 0,
+        beta: float = 0.9999,
+        label_smoothing: float = 0.0,
+        ignore_index: int = -100,
+    ):
+        super().__init__()
+        metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        self.n_class = len(metainfo.get("actions", []))
+        self.max_m = float(max_m)
+        self.s = float(s)
+        self.use_drw = bool(use_drw)
+        self.drw_start_epoch = int(drw_start_epoch)
+        self.beta = float(beta)
+        self.label_smoothing = float(label_smoothing)
+        self.ignore_index = int(ignore_index)
+
+        self._cached_m_list = torch.tensor([])
+        self._cached_cb_weight = torch.tensor([])
+        self._cached_counts_key = None
+
+    @torch.no_grad()
+    def _maybe_update_cache(self, cls_num_list: Sequence[int], device, dtype):
+        key = (tuple(map(int, cls_num_list)), device, dtype)
+        if key == self._cached_counts_key:
+            return
+
+        counts = torch.tensor(cls_num_list, device=device, dtype=torch.float32).clamp_min(1.0)
+
+        m_list = 1.0 / counts.sqrt().sqrt()
+        m_list = m_list * (self.max_m / m_list.max())
+        self._cached_m_list = m_list.to(device=device, dtype=dtype)
+
+        eff_num = 1.0 - torch.pow(torch.tensor(self.beta, device=device, dtype=torch.float32), counts)
+        cb_w = (1.0 - self.beta) / eff_num
+        cb_w = cb_w / cb_w.mean()
+        self._cached_cb_weight = cb_w.to(device=device, dtype=dtype)
+
+        self._cached_counts_key = key
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        target: torch.Tensor,
+        epoch: Optional[int] = None,
+        *args,
+        **kwargs,
+    ) -> torch.Tensor:
+        if logits.ndim != 2:
+            raise ValueError(f"logits must be [B, C], got {tuple(logits.shape)}")
+        if target.ndim != 1:
+            raise ValueError(f"target must be [B], got {tuple(target.shape)}")
+
+        B, C = logits.shape
+        device, dtype = logits.device, logits.dtype
+
+        cls_num_list = torch.zeros(self.n_class, dtype=torch.long)
+        cls_idx, cls_counts = torch.unique(target, return_counts=True)
+        acknowledged = cls_idx != self.ignore_index
+        cls_num_list[cls_idx[acknowledged].long().detach().cpu()] = cls_counts[acknowledged].long().detach().cpu()
+        cls_num_list = cls_num_list.tolist()
+
+        if not cls_num_list:
+            return F.cross_entropy(
+                logits,
+                target,
+                reduction="mean",
+                label_smoothing=self.label_smoothing,
+                ignore_index=self.ignore_index,
+            )
+
+        self._maybe_update_cache(cls_num_list, device, dtype)
+
+        valid = target != self.ignore_index
+        if not torch.any(valid):
+            return logits.sum() * 0.0
+
+        t_valid = target[valid]
+        if not (t_valid.dtype == torch.long and t_valid.numel() > 0):
+            raise ValueError("target must be torch.long indices (with possible ignore_index).")
+        if t_valid.min() < 0 or t_valid.max() >= self._cached_m_list.numel():
+            raise ValueError("target out of range for number of classes.")
+
+        adjusted = logits.clone()
+        margins = torch.zeros(B, device=device, dtype=dtype)
+        margins_valid = self._cached_m_list.gather(0, t_valid.to(torch.long))
+        margins[valid] = margins_valid
+        rows = torch.arange(B, device=device)[valid]
+        adjusted[rows, t_valid] -= margins_valid
+        adjusted = self.s * adjusted
+
+        weight = None
+        if self.use_drw and (epoch is not None) and (epoch >= self.drw_start_epoch):
+            weight = self._cached_cb_weight
+
+        return F.cross_entropy(
+            adjusted,
+            target,
+            weight=weight,
+            reduction="mean",
+            label_smoothing=self.label_smoothing,
+            ignore_index=self.ignore_index,
+        )

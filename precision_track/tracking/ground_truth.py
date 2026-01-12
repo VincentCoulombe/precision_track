@@ -1,16 +1,17 @@
 import os
 from logging import WARNING
 from typing import List, Optional, Tuple
-
+from collections import defaultdict
 import numpy as np
 import pandas as pd
 import torch
 from addict import Dict
 from mmengine import Config
-from mmengine.logging import MMLogger
+from mmengine.logging import MMLogger, print_log
+import logging
 
 from precision_track.registry import MODELS, TRACKING
-from precision_track.utils import iou_batch, linear_assignment, reformat
+from precision_track.utils import iou_batch, bbox_overlaps, linear_assignment, reformat, PoseDataSample, calculate_pose_velocities, calculate_bbox_velocities
 
 from .base import BaseAssignationAlgorithm
 
@@ -209,8 +210,6 @@ class GroundTruth(BaseAssignationAlgorithm):
                     f"None of the labelled tracks where matched at the frame #{frame_id}."
                     "Either the labels are incorrect, the model is badly optimized or this is an edge case."
                 ),
-                logger="current",
-                level=WARNING,
             )
 
         matched_pred_idx_tmp = np.where(all_preds)[0][matched_dets]
@@ -220,9 +219,9 @@ class GroundTruth(BaseAssignationAlgorithm):
         matched_trk_bboxes[:num_matches] = track_bboxes[matched_tracks]
         matched_trk_ids[:num_matches] = frame_gt_instances[matched_tracks]
         matched_features[:num_matches] = det_features[matched_pred_idx_tmp]
-        pred_instances["bboxes"] = track_bboxes[matched_tracks]
+        pred_instances["bboxes"] = track_bboxes[matched_tracks].astype(np.float32)
         if self.gt_kpts is not None:
-            pred_instances["keypoints"] = track_kpts[matched_tracks]
+            pred_instances["keypoints"] = track_kpts[matched_tracks].astype(np.float32)
 
         idx_counter = num_matches
 
@@ -295,3 +294,226 @@ class GroundTruth(BaseAssignationAlgorithm):
                     "representations": representations,
                 }
             )
+
+
+@TRACKING.register_module()
+class OnlineGroundTruth(BaseAssignationAlgorithm):
+    def __init__(
+        self,
+        match_iou_thr: float = 0.99,
+        weight_iou_with_det_scores: bool = False,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        assert 0.0 <= match_iou_thr <= 1.0
+        self.match_iou_thrs = match_iou_thr
+        assert isinstance(weight_iou_with_det_scores, bool)
+        self.weight_iou_with_det_scores = weight_iou_with_det_scores
+        self.logger = MMLogger.get_current_instance()
+        self.fields_to_remove.extend(["bboxes", "keypoints", "actions"])
+        self.gt_kpts = False
+        self.gt_actions = False
+
+    def init_call(self, data_sample: dict, tracks: dict):
+        for k, v in data_sample.pred_instances.items():
+            if k not in ["features", "keypoints", "actions"]:
+                data_sample.pred_instances[k] = v
+        self.kf.frame_id = data_sample.img_id
+        num_tracks = len(tracks)
+        num_dets = data_sample.pred_instances["scores"].shape[0]
+        max_size = num_tracks + num_dets
+        prior_features = data_sample.pred_instances.get("features", torch.empty(0))
+        if not self.prior_feature_size:
+            self.prior_feature_size = prior_features.size(1)
+        self.feature_device = prior_features.device
+        return (
+            data_sample.pred_instances,
+            torch.zeros(max_size, dtype=torch.int, device=self.feature_device),
+            torch.zeros((max_size, 4), dtype=torch.float32, device=self.feature_device),
+            torch.zeros((max_size, self.prior_feature_size), dtype=torch.float32, device=self.feature_device),
+            torch.zeros(max_size, dtype=torch.int, device=self.feature_device),
+            0,
+        )
+
+    def __call__(self, *args, **kwargs) -> None:
+        self.loss(*args, **kwargs)
+
+    def loss(
+        self,
+        data_sample: PoseDataSample,
+        tracks: dict,
+        confirmed_ids: List[int],
+        unconfirmed_ids: List[int],
+        *args,
+        **kwargs,
+    ) -> None:
+        (
+            pred_instances,
+            matched_trk_ids,
+            matched_trk_bboxes,
+            matched_features,
+            matched_pred_idx,
+            idx_counter,
+        ) = self.init_call(data_sample, tracks)
+
+        det_features = pred_instances["features"]
+        gt_instances = data_sample.gt_instances.to(self.feature_device).to(torch.float32)
+
+        if hasattr(gt_instances, "keypoints"):
+            self.gt_kpts = True
+            track_kpts = gt_instances.keypoints
+
+        if hasattr(gt_instances, "actions"):
+            self.gt_actions = True
+            track_actions = gt_instances.actions
+
+        frame_gt_classes = gt_instances.labels
+        frame_gt_instances = gt_instances.instances_id
+        frame_gt_bboxes = gt_instances.bboxes
+
+        if frame_gt_instances.numel() == 0:
+            pred_instances = Dict({k: torch.empty((0), device=self.feature_device) for k in pred_instances})
+            pred_instances["bboxes"] = torch.empty((0, 4), device=self.feature_device)
+            pred_instances["keypoints"] = torch.empty((0, 0, 3), device=self.feature_device)
+            pred_instances["features"] = torch.empty((0, 1), device=self.feature_device)
+            pred_instances["actions"] = torch.empty((0), device=self.feature_device)
+            self.save_to_ds(
+                data_sample=data_sample,
+                detections=pred_instances,
+                track_ids=torch.empty((0), device=self.feature_device),
+                pred_idx=torch.empty((0), dtype=torch.bool, device=self.feature_device),
+                predicted_bboxes=pred_instances["bboxes"],
+            )
+            assert "keypoints" in data_sample.pred_track_instances
+            return
+        self.kf.multi_predict(tracks, confirmed_ids)
+
+        # Remove duplicate labels (in case of labelling errors)
+        unique_gt, counts = torch.unique(frame_gt_instances, return_counts=True)
+        duplicates = unique_gt[counts > 1]
+        for dup in duplicates:
+            dup_idx = torch.where(frame_gt_instances == dup)[0]
+            if dup_idx.numel() > 1:
+                mask = torch.ones_like(frame_gt_instances, dtype=torch.bool)
+                mask[dup_idx[1:]] = False
+                frame_gt_instances = frame_gt_instances[mask]
+                frame_gt_classes = frame_gt_classes[mask]
+                frame_gt_bboxes = frame_gt_bboxes[mask]
+                if self.gt_kpts:
+                    track_kpts = track_kpts[mask]
+                if self.gt_actions:
+                    track_actions = track_actions[mask]
+
+        all_preds = torch.ones_like(pred_instances["labels"], dtype=torch.bool)
+        frame_gt = Dict()
+        for cls_id, inst_id, bbox in zip(frame_gt_classes, frame_gt_instances, frame_gt_bboxes):
+            inst_id = inst_id.item()
+            cls_id = cls_id.item()
+            frame_gt[inst_id].labels = cls_id
+            frame_gt[inst_id].instances_id = inst_id
+            frame_gt[inst_id].bboxes = [bbox]
+
+        ious = self.get_tracks_preds_ious(frame_gt_bboxes, pred_instances, all_preds)
+        matched_tracks, matched_dets = self.assign_ids(
+            dists=ious,
+            tracks=frame_gt,
+            track_ids=frame_gt_instances.tolist(),
+            pred_instances=pred_instances,
+            pred_idx=all_preds,
+            weight_iou_with_det_scores=self.weight_iou_with_det_scores,
+            match_iou_thr=self.match_iou_thrs,
+        )
+        matched_pred_idx_tmp = torch.where(all_preds)[0][matched_dets]
+        num_matches = len(matched_dets)
+
+        matched_pred_idx[:num_matches] = matched_dets
+        matched_trk_bboxes[:num_matches] = frame_gt_bboxes[matched_tracks]
+        matched_trk_ids[:num_matches] = frame_gt_instances[matched_tracks]
+        matched_features[:num_matches] = det_features[matched_pred_idx_tmp]
+        pred_instances["bboxes"] = frame_gt_bboxes[matched_tracks]
+        if self.gt_kpts:
+            pred_instances["keypoints"] = track_kpts[matched_tracks]
+        if self.gt_actions:
+            pred_instances["actions"] = track_actions[matched_tracks]
+
+        idx_counter = num_matches
+
+        self.save_to_ds(
+            data_sample=data_sample,
+            detections=pred_instances,
+            track_ids=matched_trk_ids[:idx_counter].detach().cpu().numpy(),
+            pred_idx=matched_pred_idx[:idx_counter],
+            predicted_bboxes=matched_trk_bboxes[:idx_counter],
+            features=matched_features[:idx_counter],
+        )
+
+    def save_to_ds(
+        self,
+        data_sample: PoseDataSample,
+        detections: dict,
+        track_ids: np.ndarray,
+        pred_idx: np.ndarray,
+        predicted_bboxes: Optional[np.ndarray] = None,
+        velocities: Optional[np.ndarray] = None,
+        features: Optional[np.ndarray] = None,
+    ):
+        data_sample.pred_track_instances = {"ids": track_ids, "bboxes": detections["bboxes"]}
+        if self.gt_kpts:
+            data_sample.pred_track_instances["keypoints"] = detections["keypoints"]
+        if self.gt_actions:
+            data_sample.pred_track_instances["actions"] = detections["actions"]
+
+        for k, v in detections.items():
+            if k not in self.fields_to_remove:
+                data_sample.pred_track_instances[k] = v[pred_idx]
+
+        if predicted_bboxes is not None:
+            data_sample.pred_track_instances.update(
+                {
+                    "next_frame_bboxes": predicted_bboxes,
+                }
+            )
+        if velocities is not None:
+            data_sample.pred_track_instances.update({"velocities": velocities})
+        if features is not None:
+            data_sample.pred_track_instances.update({"features": features})
+
+    def update_thresholds(self, tracking_thresholds: dict) -> None:
+        pass
+
+    def get_tracks_preds_ious(
+        self,
+        track_bboxes: np.ndarray,
+        pred_instances: dict,
+        pred_idx: np.ndarray,
+    ) -> np.ndarray:
+
+        det_bboxes = pred_instances["bboxes"][pred_idx].to(torch.float32)
+        if track_bboxes.shape[0] == 0 or det_bboxes.shape[0] == 0:
+            return torch.zeros((track_bboxes.shape[0], det_bboxes.shape[0]), dtype=torch.float32, device=self.feature_device)
+        return bbox_overlaps(track_bboxes.view(1, -1, 4), reformat(det_bboxes, "cxcywh", "xyxy").view(1, -1, 4)).squeeze(0)
+
+    def assign_ids(
+        self,
+        dists: np.ndarray,
+        tracks: Optional[dict] = None,
+        track_ids: Optional[List[int]] = None,
+        pred_instances: Optional[dict] = None,
+        pred_idx: Optional[np.ndarray] = None,
+        weight_iou_with_det_scores: Optional[bool] = False,
+        match_iou_thr: Optional[float] = 0.5,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        if weight_iou_with_det_scores and pred_idx is not None:
+            det_scores = pred_instances.scores[pred_idx]
+            dists *= det_scores
+
+        # add huge cost to dets/tracks class mismatch
+        if tracks is not None and track_ids is not None and pred_idx is not None and pred_instances is not None:
+            track_labels = torch.tensor([tracks[id]["labels"] for id in track_ids], dtype=torch.int, device=self.feature_device)
+            det_labels = pred_instances["labels"][pred_idx]
+            same_labels = det_labels[None, :] == track_labels[:, None]
+            dists = (dists * same_labels).detach().cpu().numpy()
+
+        matched_tracks, matched_dets = linear_assignment(1 - dists, match_iou_thr)
+        return torch.from_numpy(matched_tracks.astype(int)), torch.from_numpy(matched_dets.astype(int))

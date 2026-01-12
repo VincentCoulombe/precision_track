@@ -18,11 +18,12 @@ class BasePostProcessor(nn.Module):
         kpts: Tensor,
         kpt_vis: Tensor,
         features: Tensor,
+        priors: Tensor,
         kept_idxs: Tensor,
         *args,
         **kwargs,
     ) -> Tuple[Tensor]:
-        return scores, objectness, bboxes, kpts, kpt_vis, features, kept_idxs
+        return scores, objectness, bboxes, kpts, kpt_vis, features, priors, kept_idxs
 
 
 class BaseActionPostProcessor(nn.Module):

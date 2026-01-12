@@ -43,7 +43,7 @@ train_cfg = dict(
 )
 val_cfg = dict(
     type="ValidationLossLoop",
-    val_cfg=_base_.model.test_cfg,
+    val_cfg=dict(data_preprocessor=_base_.inference_data_preprocessor),
 )
 # /Loops
 
@@ -59,6 +59,7 @@ optim_wrapper = dict(
         bypass_duplicate=True,
     ),
     clip_grad=dict(max_norm=1.0, norm_type=2),
+    accumulative_counts=1,
 )
 # /Optimization
 
@@ -145,8 +146,9 @@ param_scheduler = [
 
 train_dataloader = dict(
     batch_size=batch_size,
-    num_workers=8,
-    persistent_workers=True,
+    # num_workers=8,
+    # persistent_workers=True,
+    num_workers=0,
     pin_memory=True,
     sampler=dict(type="DefaultSampler", shuffle=True),
     dataset=dict(
@@ -162,8 +164,9 @@ train_dataloader = dict(
 val_pipeline = load_img + [dict(type="Resize", input_size=input_size, pad_val=(pad_value, pad_value, pad_value))] + load_anns
 val_dataloader = dict(
     batch_size=1,
-    num_workers=2,
-    persistent_workers=True,
+    # num_workers=2,
+    # persistent_workers=True,
+    num_workers=0,
     pin_memory=True,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(

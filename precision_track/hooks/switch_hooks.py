@@ -110,41 +110,32 @@ class YOLOXPoseModeSwitchHook(Hook):
 
 
 @HOOKS.register_module()
-class RTMOModeSwitchHook(Hook):
-    """A hook to switch the mode of RTMO during training.
+class SequencesSwitchHook(Hook):
+    def __init__(self, generate_every: int):
+        self.generate_every = int(generate_every)
+        assert self.generate_every > 0
 
-    This hook allows for dynamic adjustments of model attributes at specified
-    training epochs. It is designed to modify configurations such as turning
-    off specific augmentations or changing loss functions at different stages
-    of the training process.
+    def _modify_dataloader(self, runner: Runner):
+        runner.logger.info("Generating new training sequences.")
+        runner.train_dataloader.dataset._join_prefix()
+        runner.train_dataloader.dataset._init_data_list()
 
-    Args:
-        epoch_attributes (Dict[str, Dict]): A dictionary where keys are epoch
-        numbers and values are attribute modification dictionaries. Each
-        dictionary specifies the attribute to modify and its new value.
-
-    Example:
-        epoch_attributes = {
-            5: [{"attr1.subattr": new_value1}, {"attr2.subattr": new_value2}],
-            10: [{"attr3.subattr": new_value3}]
-        }
-    """
-
-    def __init__(self, epoch_attributes: Dict[int, Dict]):
-        self.epoch_attributes = epoch_attributes
+    def before_train_iter(self, runner, batch_idx: int, data_batch=None) -> None:
+        if batch_idx > 0 and batch_idx % self.generate_every == 0:
+            self._modify_dataloader(runner)
 
     def before_train_epoch(self, runner: Runner):
-        """Method called before each training epoch.
-
-        It checks if the current epoch is in the `epoch_attributes` mapping and
-        applies the corresponding attribute changes to the model.
-        """
         epoch = runner.epoch
-        model = runner.model
-        if is_model_wrapper(model):
-            model = model.module
+        if epoch > 0 and epoch % self.generate_every == 0:
+            self._modify_dataloader(runner)
 
-        if epoch in self.epoch_attributes:
-            for key, value in self.epoch_attributes[epoch].items():
-                rsetattr(model.head, key, value)
-                runner.logger.info(f"Change model.head.{key} to {rgetattr(model.head, key)}")
+
+@HOOKS.register_module()
+class ActionRecognitionRegenerationSwitchHook(SequencesSwitchHook):
+    def __init__(self, generate_every: int):
+        self.generate_every = int(generate_every)
+        assert self.generate_every > 0
+
+    def _modify_dataloader(self, runner: Runner):
+        runner.logger.info("Generating new training sequences.")
+        runner.train_dataloader.dataset.load_data_list()

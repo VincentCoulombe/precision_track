@@ -1,11 +1,11 @@
 from collections import Counter, deque
 from typing import Dict, List, Optional, Tuple
-from mmengine.logging import print_log
+
 import numpy as np
+from mmengine.logging import print_log
 
 from precision_track.registry import TRACKING
-from precision_track.utils import iou_batch, linear_assignment, reformat, parse_pose_metainfo
-
+from precision_track.utils import iou_batch, linear_assignment, parse_pose_metainfo, reformat
 
 from .base import BaseStitchingAlgorithm
 

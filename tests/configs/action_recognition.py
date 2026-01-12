@@ -13,6 +13,14 @@ assigner = dict(
 
 metainfo = _base_.metainfo
 
+training_data_preprocessor = dict(
+    type="ActionRecognitionTrainingPreprocessor",
+    metainfo=metainfo,
+    _delete_=True,
+    block_size=block_size,
+)
+
+
 action_recognition_input_names = ["features", "poses", "dynamics"]
 action_recognition_output_names = ["class_logits", "action_embeddings"]
 analyzer = dict(
@@ -22,6 +30,11 @@ analyzer = dict(
         metainfo=metainfo,
         _delete_=True,
         block_size=block_size,
+        embd_size=n_embd_features,
+        with_actions=False,
+        with_kpts=True,
+        with_vels=True,
+        velocity_encoder=dict(type="BaseVelocityEncoder"),
     ),
     metainfo=metainfo,
     input_names=action_recognition_input_names,

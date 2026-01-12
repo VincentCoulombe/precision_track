@@ -29,7 +29,7 @@ class LowScoresFiltering(BasePostProcessor):
         assert isinstance(filter_features, bool)
         self.filter_features = filter_features
 
-    def forward(self, bboxes, scores, keypoints, kpt_vis, labels, features, kept_idxs):
+    def forward(self, bboxes, scores, keypoints, kpt_vis, labels, features, priors, kept_idxs):
         valid_mask = scores > self.score_thr
         scores = scores[valid_mask]
         valid_idxs = torch.nonzero(valid_mask)
@@ -45,9 +45,10 @@ class LowScoresFiltering(BasePostProcessor):
         if self.filter_features:
             features = features[keep_idxs]
         labels = labels[keep_idxs]
+        priors = priors[keep_idxs]
         kept_idxs = kept_idxs[keep_idxs]
 
-        return bboxes, scores, keypoints, kpt_vis, labels, features, kept_idxs
+        return bboxes, scores, keypoints, kpt_vis, labels, features, priors, kept_idxs
 
 
 @MODELS.register_module()
@@ -69,13 +70,11 @@ class NearnessBasedActionFiltering(BaseActionPostProcessor):
 
         action_mask = np.isin(actions, self.concerned_labels)
         relevant_bboxes = bboxes[action_mask]
+        isolated = data_sample["pred_track_instances"]["isolated"][action_mask]
 
-        if relevant_bboxes.size > 0:
-            bious = biou_batch(relevant_bboxes, bboxes.copy(), 0.25)
-            isolated = (bious.sum(1) - bious.max(1)) == 0
-            if any(isolated):
-                update_indices = np.flatnonzero(action_mask)[isolated]
-                actions[update_indices] = self.fallback_label
-                data_sample["pred_track_instances"]["actions"] = actions
+        if relevant_bboxes.size > 0 and any(isolated):
+            update_indices = np.flatnonzero(action_mask)[isolated]
+            actions[update_indices] = self.fallback_label
+            data_sample["pred_track_instances"]["actions"] = actions
 
         return data_sample

@@ -8,7 +8,7 @@ from mmengine import Config
 from precision_track import PipelinedTracker, Runner, Tracker
 from precision_track.utils import cuda_available
 
-ROOT = "./tests/"
+ROOT = os.path.join(os.getcwd(), "tests")
 
 
 @pytest.fixture
@@ -25,9 +25,9 @@ def expected_results_path():
     "checkpoints",
     [
         (
-            os.path.join(ROOT, "configs/yolox-pose_s_clustering_DEPLOYED.pth"),
-            os.path.join(ROOT, "configs/yolox-pose_s_clustering_DEPLOYED.onnx"),
-            os.path.join(ROOT, "configs/yolox-pose_s_clustering_DEPLOYED_NVIDIAGeForceRTX3090_FP16.engine"),
+            os.path.join(ROOT, "configs/model_mice_clustering_DEPLOYED.pth"),
+            os.path.join(ROOT, "configs/model_mice_clustering_DEPLOYED.onnx"),
+            os.path.join(ROOT, "configs/model_mice_clustering_DEPLOYED_NVIDIAGeForceRTX3090_FP16.engine"),
         )
     ],
 )
@@ -39,6 +39,7 @@ def test_tracking(checkpoints, expected_results_path, config):
     detector = cfg["detector"]
 
     for checkpoint in checkpoints:
+        assert os.path.exists(checkpoint)
         if checkpoint.endswith(".engine") and not cuda_available():
             continue
         if checkpoint.endswith(".onnx") and not cuda_available():
@@ -59,4 +60,4 @@ def test_tracking(checkpoints, expected_results_path, config):
 
 
 if __name__ == "__main__":
-    pytest.main()
+    pytest.main(["-x", os.path.realpath(__file__)])

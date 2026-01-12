@@ -9,7 +9,7 @@ from mmengine.logging import print_log
 from mmengine.runner.amp import autocast
 
 from precision_track.registry import MODELS
-from precision_track.utils import PoseDataSample, kwargs_to_args, parse_pose_metainfo, sequential_ema_smoothing
+from precision_track.utils import PoseDataSample, kwargs_to_args, parse_pose_metainfo, postprocess_fpv_action_recognition
 
 from .base import BaseBackend
 
@@ -119,37 +119,9 @@ class ActionRecognitionBackend(BaseBackend):
         preds: Union[torch.Tensor, tuple],
         data_samples: List[PoseDataSample],
     ):
-        assert len(data_samples) == 1, "Action Recognition does not support batches."
-        data_sample = data_samples[0]
-        if isinstance(preds, tuple):
-            data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
-            preds = preds[0]
-
-        current_timestep_ids = data_sample["pred_track_instances"]["instances_id"]
-        current_timestep_probs = preds.detach().cpu().numpy().astype(np.float32)
-        if isinstance(self.last_timestep_ids, np.ndarray) and isinstance(self.last_timestep_probs, np.ndarray):
-            assert current_timestep_probs.shape[1] == self.last_timestep_probs.shape[1]
-            current_timestep_probs = sequential_ema_smoothing(
-                self.last_timestep_ids,
-                self.last_timestep_probs,
-                current_timestep_ids,
-                current_timestep_probs,
-                self.smooth_factor,
-            )
-        actions = self.actions[np.argmax(current_timestep_probs, axis=1).reshape(-1)]
-        action_scores = np.max(current_timestep_probs, axis=1).reshape(-1)
-
-        valid_context = data_sample["pred_track_instances"]["valid_action_recognition_context"]
-        actions[~valid_context] = "Analyzing..."
-        action_scores[~valid_context] = 1
-
-        data_sample["pred_track_instances"]["actions"] = actions
-        data_sample["pred_track_instances"]["action_scores"] = action_scores
-
-        self.last_timestep_ids = current_timestep_ids
-        self.last_timestep_probs = current_timestep_probs
-
-        if self.data_postprocessor is not None:
-            data_sample = self.data_postprocessor(data_sample)
-
-        return data_sample
+        return postprocess_fpv_action_recognition(
+            preds,
+            data_samples,
+            self.actions,
+            self.data_postprocessor,
+        )

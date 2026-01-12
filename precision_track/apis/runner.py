@@ -2,6 +2,7 @@ import copy
 import logging
 import os
 import os.path as osp
+import pickle
 import platform
 import warnings
 from typing import Callable, Dict, List, Optional, Union
@@ -9,6 +10,7 @@ from typing import Callable, Dict, List, Optional, Union
 import cv2
 import mmengine
 import torch.multiprocessing as mp
+import torch.nn as nn
 from mmengine.config import Config
 from mmengine.hooks import Hook
 from mmengine.logging import print_log
@@ -19,7 +21,7 @@ from mmengine.utils import digit_version
 from mmengine.visualization import Visualizer
 
 from precision_track.registry import MODELS
-from precision_track.utils import CheckpointLoader, load_checkpoint_to_model
+from precision_track.utils import CheckpointLoader, get_device, load_checkpoint_to_model
 
 warnings.simplefilter("ignore", category=FutureWarning)
 
@@ -158,7 +160,8 @@ class Runner(MMENGINERunner):
         if isinstance(model_config, dict) and data_preprocessor is not None:
             model_config.setdefault("data_preprocessor", data_preprocessor)
         self.model = MODELS.build(model_config)
-        self.model = self.wrap_model(self.cfg.get("model_wrapper_cfg"), self.model)
+        if isinstance(self.model, nn.Module):
+            self.model = self.wrap_model(self.cfg.get("model_wrapper_cfg"), self.model)
 
         if hasattr(self.model, "module"):
             self._model_name = self.model.module.__class__.__name__
@@ -304,3 +307,116 @@ def setup_multi_processes(cfg):
             f"performance in your application as needed."
         )
         os.environ["MKL_NUM_THREADS"] = str(mkl_num_threads)
+
+    def resume(
+        self, filename: str, resume_optimizer: bool = True, resume_param_scheduler: bool = True, map_location: Union[str, Callable] = "default"
+    ) -> None:
+        """Resume model from checkpoint.
+
+        Args:
+            filename (str): Accept local filepath, URL, ``torchvision://xxx``,
+                ``open-mmlab://xxx``.
+            resume_optimizer (bool): Whether to resume optimizer state.
+                Defaults to True.
+            resume_param_scheduler (bool): Whether to resume param scheduler
+                state. Defaults to True.
+            map_location (str or callable):A string or a callable function to
+                specifying how to remap storage locations.
+                Defaults to 'default'.
+        """
+        if map_location == "default":
+            device = get_device()
+            checkpoint = self.load_checkpoint(filename, map_location=device)
+        else:
+            checkpoint = self.load_checkpoint(filename, map_location=map_location)
+
+        self.train_loop._epoch = checkpoint["meta"]["epoch"]
+        self.train_loop._iter = checkpoint["meta"]["iter"]
+
+        # check whether the number of GPU used for current experiment
+        # is consistent with resuming from checkpoint
+        if "config" in checkpoint["meta"]:
+            config = mmengine.Config.fromstring(checkpoint["meta"]["config"], file_format=".py")
+            previous_gpu_ids = config.get("gpu_ids", None)
+            if previous_gpu_ids is not None and len(previous_gpu_ids) > 0 and len(previous_gpu_ids) != self._world_size:
+                # TODO, should we modify the iteration?
+                if self.auto_scale_lr is None or not self.auto_scale_lr.get("enable", False):
+                    raise RuntimeError(
+                        "Number of GPUs used for current experiment is not "
+                        "consistent with the checkpoint being resumed from. "
+                        "This will result in poor performance due to the "
+                        "learning rate. You must set the "
+                        "`auto_scale_lr` parameter for Runner and make "
+                        '`auto_scale_lr["enable"]=True`.'
+                    )
+                else:
+                    self.logger.info(
+                        "Number of GPU used for current experiment is not "
+                        "consistent with resuming from checkpoint but the "
+                        "leaning rate will be adjusted according to the "
+                        f"setting in auto_scale_lr={self.auto_scale_lr}"
+                    )
+
+        # resume random seed
+        resumed_seed = checkpoint["meta"].get("seed", None)
+        current_seed = self._randomness_cfg.get("seed")
+        if resumed_seed is not None and resumed_seed != current_seed:
+            if current_seed is not None:
+                self.logger.warning(
+                    f"The value of random seed in the "
+                    f'checkpoint "{resumed_seed}" is '
+                    f"different from the value in "
+                    f'`randomness` config "{current_seed}"'
+                )
+            self._randomness_cfg.update(seed=resumed_seed)
+            self.set_randomness(**self._randomness_cfg)
+
+        resumed_dataset_meta = checkpoint["meta"].get("dataset_meta", None)
+        dataset_meta = getattr(self.train_dataloader.dataset, "metainfo", None)
+
+        # `resumed_dataset_meta` and `dataset_meta` could be object like
+        # np.ndarray, which cannot be directly judged as equal or not,
+        # therefore we just compared their dumped results.
+        if pickle.dumps(resumed_dataset_meta) != pickle.dumps(dataset_meta):
+            self.logger.warning(
+                "The dataset metainfo from the resumed checkpoint is "
+                "different from the current training dataset, please "
+                "check the correctness of the checkpoint or the training "
+                "dataset."
+            )
+
+        self.message_hub.load_state_dict(checkpoint["message_hub"])
+
+        # resume optimizer
+        if resume_optimizer:
+            if "optimizer" in checkpoint:
+                self.optim_wrapper = self.build_optim_wrapper(self.optim_wrapper)
+                self.optim_wrapper.load_state_dict(checkpoint["optimizer"])  # type: ignore
+            else:
+                raise ValueError(
+                    f"You are trying to resume a training run by loading a DEPLOYED checkpoint: "
+                    f"{os.path.abspath(filename)}. "
+                    f"To resume a training run, you need a training checkpoint, not a DEPLOYED checkpoint. "
+                    f"You can find your latest training checkpoint by reading the "
+                    f"'../work_dir/training_runs/<your dataset name>/last_checkpoint' file."
+                )
+
+        # resume param scheduler
+        if resume_param_scheduler and self.param_schedulers is None:
+            self.logger.warning("`resume_param_scheduler` is True but `self.param_schedulers` " "is None, so skip resuming parameter schedulers")
+            resume_param_scheduler = False
+        if "param_schedulers" in checkpoint and resume_param_scheduler:
+            self.param_schedulers = self.build_param_scheduler(  # type: ignore
+                self.param_schedulers
+            )  # type: ignore
+            if isinstance(self.param_schedulers, dict):
+                for name, schedulers in self.param_schedulers.items():
+                    for scheduler, ckpt_scheduler in zip(schedulers, checkpoint["param_schedulers"][name]):
+                        scheduler.load_state_dict(ckpt_scheduler)
+            else:
+                for scheduler, ckpt_scheduler in zip(self.param_schedulers, checkpoint["param_schedulers"]):  # type: ignore
+                    scheduler.load_state_dict(ckpt_scheduler)
+
+        self._has_loaded = True
+
+        self.logger.info(f"resumed epoch: {self.epoch}, iter: {self.iter}")

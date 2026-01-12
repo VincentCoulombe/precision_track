@@ -24,7 +24,7 @@ class PostProcessingSteps(BasePostProcessor):
             assert isinstance(postprocessing_steps, list)
             self.postprocessing_steps = [MODELS.build(p) for p in postprocessing_steps]
 
-    def forward(self, bboxes, scores, keypoints, kpt_vis, labels, features, kept_idx):
+    def forward(self, bboxes, scores, keypoints, kpt_vis, labels, features, priors, kept_idx):
         for p in self.postprocessing_steps:
             (
                 bboxes,
@@ -33,9 +33,10 @@ class PostProcessingSteps(BasePostProcessor):
                 kpt_vis,
                 labels,
                 features,
+                priors,
                 kept_idx,
-            ) = p(bboxes, scores, keypoints, kpt_vis, labels, features, kept_idx)
-        return bboxes, scores, keypoints, kpt_vis, labels, features, kept_idx
+            ) = p(bboxes, scores, keypoints, kpt_vis, labels, features, priors, kept_idx)
+        return bboxes, scores, keypoints, kpt_vis, labels, features, priors, kept_idx
 
 
 @MODELS.register_module()

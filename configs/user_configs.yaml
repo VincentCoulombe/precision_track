@@ -4,7 +4,7 @@
 booleans:
   pipelined: false
   with_validation: false
-  with_action_recognition: false
+  with_action_recognition: true
   with_pose_estimation: true
 
 # ================================
@@ -26,8 +26,8 @@ training:
 
   deploying_sanity_check_img_path: "images/0000003435.jpg"
 
-  batch_size: 38
-  wandb_logging: false
+  batch_size: 38 # Warning: The training is unstable with batch sizes < 16.
+  wandb_logging: true
 
 # ================================
 # Tracking parameters, directories and paths
@@ -41,12 +41,12 @@ tracking:
 # Visualization parameters
 # ================================
 visualization:
-  display_bounding_boxes: true
-  display_poses: true
-  display_velocities: true
-  display_species: true
-  display_confidence_scores: true
-  display_actions: false
-  display_search_zones: true
+  display_bounding_boxes: false
+  display_poses: false
+  display_velocities: false
+  display_species: false
+  display_confidence_scores: false
+  display_actions: true
+  display_search_zones: false
   display_validations: false
-  display_untracked_detections: true
+  display_untracked_detections: false

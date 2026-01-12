@@ -8,10 +8,73 @@ import mmengine.fileio as fileio
 from mmengine.hooks import Hook
 from mmengine.runner import Runner
 from mmengine.visualization import Visualizer
+from mmengine.structures import InstanceData
+from mmengine.dataset import Compose
+from copy import deepcopy
+import cv2
+import numpy as np
 
 from precision_track.datasets.transforms.loading import imfrombytes
 from precision_track.registry import HOOKS
-from precision_track.utils import PoseDataSample, merge_data_samples
+from precision_track.utils import PoseDataSample, merge_data_samples, reformat
+from precision_track.visualization import ColorPalette
+
+
+@HOOKS.register_module()
+class ActivatedPriorsVisualizationHook(Hook):
+    ALLOWED_AUG_SEQ = ["LoadImage", "BottomupRandomAffine", "FilterAnnotations", "GenerateTarget", "PackPoseInputs"]
+
+    def __init__(
+        self,
+        augmentations: dict,
+        radius: Optional[int] = 4,
+        font_size: Optional[float] = 1.0,
+        palette_size: Optional[int] = 100,
+        interval: Optional[int] = 50,
+        out_dir: Optional[str] = None,
+    ):
+        # 1) vérifier que les augmentations sont OK
+        aug_names = [x["type"] for x in augmentations]
+        assert (
+            aug_names == self.ALLOWED_AUG_SEQ
+        ), f"The Activated Prior visualization is intended to be ran with only the augmentations: {self.ALLOWED_AUG_SEQ}. The provided augmentations are: {aug_names}."
+        self.pipeline = Compose(augmentations)
+
+        self.palette = ColorPalette(size=palette_size)
+        if isinstance(out_dir, str):
+            os.makedirs(out_dir, exist_ok=True)
+            self.out_dir = out_dir
+
+        self._iter = 0
+        self.interval = interval
+
+        self.radius = int(radius)
+        self.font_size = float(font_size)
+
+    def after_assignment_iter(self, data_sample: PoseDataSample, priors: list, assigned_gt_idx: list, strides: list) -> None:
+        if self._iter % self.interval == 0:
+            img_path = data_sample.img_path
+            img_name = os.path.splitext(os.path.basename(img_path))[0]
+            dummy_ds = deepcopy(data_sample).to_dict()
+            dummy_ds = dummy_ds | dummy_ds["gt_instances"] | dict(num_keypoints=np.array([dummy_ds["gt_instances"]["keypoints"].shape[0]]))
+            transformed_image = self.pipeline(dummy_ds)["inputs"].numpy().transpose(1, 2, 0)
+            mlvl_imgs = {int(strides[0]): np.ascontiguousarray(deepcopy(transformed_image), dtype=np.uint8) for strides in strides}
+            lbls_center_coords = reformat(dummy_ds["gt_instances"]["bboxes"], "xyxy", "cxcywh")[:, :2]
+
+            for (x, y, stride_x, stride_y), idx in zip(priors, assigned_gt_idx):
+                lbl_center_coords = lbls_center_coords[idx]
+                lbl_center_coords = (int(lbl_center_coords[0].item()), int(lbl_center_coords[1].item()))
+                if int(stride_x) in mlvl_imgs:
+                    img = mlvl_imgs[int(stride_x)]
+                    for (dot_x, dot_y), color_idx in zip(
+                        [(int(x), int(y)), lbl_center_coords], [self.palette.by_idx(idx).as_rgb(), self.palette.by_idx(-1).as_rgb()]
+                    ):
+                        cv2.circle(img, (dot_x, dot_y), radius=self.radius, color=color_idx, thickness=-1)
+
+            for k, v in mlvl_imgs.items():
+                cv2.imwrite(os.path.join(self.out_dir, f"{img_name}_stride={k}.jpg"), v)
+
+        self._iter += 1
 
 
 @HOOKS.register_module()

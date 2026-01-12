@@ -16,6 +16,14 @@ data_postprocessor = [
     ),
 ]
 
+inference_data_preprocessor = dict(
+    type="InferencePreprocessor",
+    mean=[0, 0, 0],
+    std=[1, 1, 1],
+    input_size=input_size,
+    pad_val=(pad_value, pad_value, pad_value),
+)
+
 model = dict(
     type="DetectionModel",
     metainfo=metainfo,

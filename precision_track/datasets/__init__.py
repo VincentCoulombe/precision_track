@@ -1,5 +1,5 @@
 from .coco import COCODataset
-from .sequence import ActionRecognitionDataset, ActionRecognitionPerFrameDataset, ReIDDataset, VideoDataset
+from .sequence import ActionRecognitionDataset, ActionRecognitionPerFrameDataset, ReIDDataset, VideoDataset, MAEDataset
 
 __all__ = [
     "COCODataset",
@@ -7,4 +7,5 @@ __all__ = [
     "ActionRecognitionDataset",
     "ActionRecognitionPerFrameDataset",
     "VideoDataset",
+    "MAEDataset",
 ]

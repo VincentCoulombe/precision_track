@@ -8,7 +8,7 @@
 
 
 from abc import ABCMeta, abstractmethod
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import numpy as np
 import torch
@@ -108,6 +108,14 @@ def xyxy_cxcywh(bboxes: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, 
     return bboxes
 
 
+def xyxy_cxcywh_torch_1d(bboxe: torch.Tensor) -> torch.Tensor:
+    bboxe[2] = bboxe[2] - bboxe[0]
+    bboxe[3] = bboxe[3] - bboxe[1]
+    bboxe[0] = bboxe[0] + bboxe[2] / 2
+    bboxe[1] = bboxe[1] + bboxe[3] / 2
+    return bboxe
+
+
 @njit
 def xyxy_cxcywh_1d(bboxe: np.ndarray) -> np.ndarray:
     bboxe[2] = bboxe[2] - bboxe[0]
@@ -176,6 +184,14 @@ def xywh_xyxy(bboxes: np.ndarray) -> np.ndarray:
     return bboxes_out
 
 
+@njit
+def xywh_xyxy_1d(bboxes: np.ndarray) -> np.ndarray:
+    bboxes_out = bboxes.copy()
+    bboxes_out[2] = bboxes_out[2] + bboxes_out[0]
+    bboxes_out[3] = bboxes_out[3] + bboxes_out[1]
+    return bboxes_out
+
+
 def xywh_xyxy_torch(bboxes: torch.Tensor) -> torch.Tensor:
     bboxes_out = bboxes.clone()
     bboxes_out[:, 2] = bboxes_out[:, 2] + bboxes_out[:, 0]
@@ -214,6 +230,7 @@ def corner_xyxy(bbox: np.ndarray):
 
 transformation_functions = {
     "xyxy_cxcywh_torch": xyxy_cxcywh,
+    "xyxy_cxcywh_torch_1d": xyxy_cxcywh_torch_1d,
     "xyxy_cxcywh": xyxy_cxcywh,
     "xyxy_cxcywh_1d": xyxy_cxcywh_1d,
     "xyxy_xywh": xyxy_xywh,
@@ -230,7 +247,9 @@ transformation_functions = {
     "cxcyah_cxcywh": cxcyah_cxcywh,
     "cxcyah_cxcywh_1d": cxcyah_cxcywh_1d,
     "xywh_cxcywh": xywh_cxcywh,
+    "xywh_cxcywh_torch": xywh_cxcywh,
     "xywh_xyxy": xywh_xyxy,
+    "xywh_xyxy_1d": xywh_xyxy_1d,
     "xywh_xyxy_torch": xywh_xyxy_torch,
     "corner_xyxy_1d": corner_xyxy,
     "corner_xyxy": corner_xyxy,
@@ -419,6 +438,7 @@ def kpts_to_poses(
 
     scale = 1
     if normalize:
+        # Normalizing with respect to the subject's median bone lengths is more robust to occlusion than normalizing with respect to its bounding boxe sizes.
         lens = torch.norm(bone_vec, dim=-1)
         lens[~vis_mask] = torch.nan
         scale, _ = torch.nanmedian(lens, dim=1, keepdim=True)
@@ -429,37 +449,6 @@ def kpts_to_poses(
     bone_vec[~vis_mask[..., None].expand_as(bone_vec)] = 0.0
 
     return bone_vec, scale
-
-    # ---------- cosine-angle stream ----------------------------------------
-    # TODO à optimiser.....
-    # T, V, C = kpts.shape
-    # angles_cos = torch.zeros((T, V), dtype=kpts.dtype, device=kpts.device)
-
-    # # pre-gather bone indices touching each joint
-    # src_map = {j: torch.where(skeleton_sources == j)[0] for j in range(V)}
-    # tgt_map = {j: torch.where(skeleton_targets == j)[0] for j in range(V)}
-
-    # for j in range(V):
-    #     if len(src_map[j]) == 0 or len(tgt_map[j]) == 0:
-    #         continue  # is an extremity
-
-    #     child_idx = tgt_map[j][0]
-    #     parent_idx = src_map[j][0]
-
-    #     v_child = bone_vec[:, child_idx]
-    #     v_parent = -bone_vec[:, parent_idx]
-
-    #     valid = vis_mask[:, child_idx] & vis_mask[:, parent_idx]
-
-    #     dot_product = (v_child * v_parent).sum(-1)
-    #     cosθ = dot_product / (v_child.norm(dim=-1) * v_parent.norm(dim=-1)) + eps
-
-    #     angles_cos[valid, j] = cosθ[valid]
-
-    # return bone_vec, angles_cos
-    # return torch.hstack((bone_vec.view(-1, 18), angles_cos))  # TODO rendrep lus efficace, shotgun mémoire au début.
-
-    return bone_vec
 
 
 def velocity_to_dir_speed(velocity, eps=1e-6):
@@ -489,9 +478,14 @@ class PosesShape(InputShape):
 @TASK_UTILS.register_module()
 class VelocityShape(InputShape):
 
-    def __init__(self, block_size: int):
+    def __init__(self, block_size: int, n_encoding: int = None):
         assert 0 < block_size
-        self.shape = (block_size, 2)
+        if n_encoding is None:
+            n_encoding = 2
+        else:
+            n_encoding = int(n_encoding)
+        assert 0 < n_encoding
+        self.shape = (block_size, n_encoding)
 
 
 @TASK_UTILS.register_module()
@@ -509,3 +503,26 @@ class ImageShape(InputShape):
         for arg_ in [n_channels, width, height]:
             assert 0 < arg_
         self.shape = (n_channels, width, height)
+
+
+def unflatten_predictions(flat_preds: torch.Tensor, shapes: List[Tuple[int, int]]):
+    """
+    Reconstructs original list of prediction tensors from the flattened tensor.
+
+    Args:
+        flat_preds: Tensor of shape (N, Σ(H*W), C).
+        shapes: List of (H, W) for each original feature map.
+    """
+    outputs = []
+    N = flat_preds.shape[0]
+    C = flat_preds.shape[-1]
+
+    idx = 0
+    for H, W in shapes:
+        numel = H * W
+        chunk = flat_preds[:, idx : idx + numel, :]  # (N, H*W, C)
+        chunk = chunk.view(N, H, W, C).permute(0, 3, 1, 2)  # back to (N, C, H, W)
+        outputs.append(chunk)
+        idx += numel
+
+    return outputs

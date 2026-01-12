@@ -75,7 +75,12 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 **⚠️IMPORTANT⚠️** For Windows and WSL users. Paths **outside** of your precision_track's directory will not exists within your docker container. Ensure that all the provided paths are **inside** your precision_track's directory.
 
 - **resume**  
-  Turn ON if you want to continue a stopped training.
+  Turn ON if you want to continue a stopped training. Turning this on will:
+
+  - Load the checkpoint saved at the `training_checkpoint` path. Therefore, `training_checkpoint` should be the path to the last saved checkpoint from the run you want to resume.
+  - Resume the training from this checkpoint.
+
+  **NOTE** Your latest training checkpoint is indicated in the `../work_dir/training_runs/<your dataset name>/last_checkpoint` file.
 
 - **training_checkpoint**  
   Path to a `.pth` file used to initialize training with transfer learning. Using a checkpoint strongly improves performance.
@@ -133,23 +138,23 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 # 5. Visualization parameters
 
-- **display_bounding_boxes**: Render the tracked subject's bounding boxes, given that a `bboxes.csv` file exists in the `saving_directory`.
+- **display_bounding_boxes**: Render the tracked subject's bounding boxes, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
 
-- **display_poses**: Render the tracked subject's poses, given that a `kpts.csv` file exists in the `saving_directory`.
+- **display_poses**: Render the tracked subject's poses, given that a `tracked_kpts.csv` file exists in the `saving_directory`.
 
-- **display_velocities**: Render the tracked subject's velocities, (in the form of an arrow) given that a `velocities.csv` file exists in the `saving_directory`.
+- **display_velocities**: Render the tracked subject's velocities, (in the form of an arrow) given that a `tracked_velocities.csv` file exists in the `saving_directory`.
 
-- **display_species**: Add the tracked subject's predicted species to the subject's label bars, given that a `bboxes.csv` file exists in the `saving_directory`.
+- **display_species**: Add the tracked subject's predicted species to the subject's label bars, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
 
-- **display_confidence_scores**: Add the tracked subject's confidence score (which means how confident the subject's detections are) to the subject's label bars, given that a `bboxes.csv` file exists in the `saving_directory`.
+- **display_confidence_scores**: Add the tracked subject's confidence score (which means how confident the subject's detections are) to the subject's label bars, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
 
-- **display_actions**: Add the tracked subject's predicted actions to the subject's label bars, given that a `actions.csv` file exists in the `saving_directory`.
+- **display_actions**: Add the tracked subject's predicted actions to the subject's label bars, given that a `tracked_actions.csv` file exists in the `saving_directory`.
 
-- **display_search_zones**: Render the tracked subject's search zones (as described in the manuscript), given that a `search_areas.csv` file exists in the `saving_directory`.
+- **display_search_zones**: Render the tracked subject's search zones (as described in the manuscript), given that a `stitching_search_areas.csv` file exists in the `saving_directory`.
 
-- **display_validations**: Render the tracked subject's validations (Tailtag detections), given that a `validations.csv` file exists in the `saving_directory`.
+- **display_validations**: Render the tracked subject's validations (Tailtag detections), given that a `tracked_validations.csv` file exists in the `saving_directory`.
 
-- **display_untracked_detections**: Render detected bounding boxes (will be bright white), given that a `detections.csv` file exists in the `saving_directory`.
+- **display_untracked_detections**: Render detected bounding boxes (will be bright white), given that a `detected_bboxes.csv` file exists in the `saving_directory`.
 
 ---
 

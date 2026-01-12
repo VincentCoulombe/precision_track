@@ -33,7 +33,7 @@ class Annotation(metaclass=abc.ABCMeta):
 
 
 class DetAnnotation(Annotation):
-    SUPPORTED_FORMAT = ["cxcywh", "xywh"]
+    SUPPORTED_FORMAT = ["xyxy", "cxcywh", "xywh"]
 
     def __init__(self, palette: Optional[dict] = None, format: Optional[str] = "cxcywh"):
         super().__init__(palette)
@@ -46,7 +46,7 @@ class DetAnnotation(Annotation):
             return
         return sv.Detections(
             confidence=output_values[:, -1],
-            xyxy=reformat(output_values[:, 3:7], self.format, "xyxy"),
+            xyxy=reformat(output_values[:, 3:7], self.format, "xyxy") if self.format != "xyxy" else output_values[:, 3:7],
             class_id=output_values[:, 1],
             mask=None,
             tracker_id=output_values[:, 2],

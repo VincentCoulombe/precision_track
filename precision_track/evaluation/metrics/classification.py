@@ -10,7 +10,7 @@ import operator
 import os
 from collections import defaultdict
 from typing import Any, List, Optional
-
+import json
 import numpy as np
 import pandas as pd
 import torch
@@ -189,14 +189,23 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         self,
         metainfo: str,
         confusion_matrix_save_dir: str = None,
+        metric_save_dir: str = None,
         label_index_mode: str = "last",
         collect_device: str = "cpu",
         prefix: Optional[str] = None,
+        *args,
+        **kwargs,
     ) -> None:
         self.metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.confusion_matrix_save_dir = confusion_matrix_save_dir
-        if self.confusion_matrix_save_dir is not None:
+        if isinstance(self.confusion_matrix_save_dir, str):
             os.makedirs(self.confusion_matrix_save_dir, exist_ok=True)
+
+        if isinstance(metric_save_dir, str):
+            os.makedirs(metric_save_dir, exist_ok=True)
+        else:
+            metric_save_dir = ""
+        self.metric_save_dir = metric_save_dir
         super().__init__(collect_device=collect_device, prefix=prefix)
         self.label_to_action = defaultdict(str)
         for i, acc in enumerate(self.metainfo.get("actions", [])):
@@ -221,12 +230,16 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
 
     def process(self, data_batch: Any, data_samples: Any) -> None:
         """Process one batch of data samples and predictions."""
-        if isinstance(data_samples, list):
+        if isinstance(data_samples, list) or isinstance(data_samples, tuple):
             data_samples = data_samples[0]
+        if isinstance(data_samples, tuple):
+            data_samples = data_samples[0]
+        if data_samples.ndim == 1:
+            data_samples = data_samples.unsqueeze(0)
         for i, probs in enumerate(data_samples):
             gt, action = self._fetch_gt_action(i, probs, data_batch["data_samples"])
             pred = torch.argmax(probs).item()
-            ce = F.cross_entropy(input=probs.view(1, -1), target=gt.view(-1)).item()
+            ce = F.cross_entropy(input=probs.view(1, -1).to(torch.float32), target=gt.view(-1)).item()
             gt_label = gt.item()
             self.label_to_action[str(gt_label)] = action
             self.results.append((action, gt_label, pred, ce))
@@ -252,15 +265,20 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
 
         if f1 > self.best_f1:
             self.best_f1 = f1
-        if os.path.isdir(self.confusion_matrix_save_dir):
-            labels = sorted(list(set(y_true + y_pred)))
-            cm = confusion_matrix(y_true, y_pred, labels=labels)
-            label_names = [str(self.label_to_action.get(i, f"Class_{i}")) for i in labels]
-            df_cm = pd.DataFrame(cm, index=label_names, columns=label_names)
-            save_path = os.path.join(self.confusion_matrix_save_dir, f"confusion_matrix_f1_{f1:.3f}.csv")
-            df_cm.to_csv(save_path)
 
-            metrics["Confusion Matrix"] = f"Saved to {save_path}"
+            if os.path.isdir(self.confusion_matrix_save_dir):
+                labels = sorted(list(set(y_true + y_pred)))
+                cm = confusion_matrix(y_true, y_pred, labels=labels)
+                label_names = [str(self.label_to_action.get(i, f"Class_{i}")) for i in labels]
+                df_cm = pd.DataFrame(cm, index=label_names, columns=label_names)
+                save_path = os.path.join(self.confusion_matrix_save_dir, f"confusion_matrix_f1_{f1:.3f}.csv")
+                df_cm.to_csv(save_path)
+
+                metrics["Confusion Matrix"] = f"Saved to {save_path}"
+
+            if os.path.isdir(self.metric_save_dir):
+                with open(os.path.join(self.metric_save_dir, "best_ActionRecognition_f1.json"), "w") as f:
+                    json.dump({"score": self.best_f1}, f, indent=4)
 
         return metrics
 

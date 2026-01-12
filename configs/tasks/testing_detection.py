@@ -17,19 +17,13 @@ data_mode = _base_.data_mode
 testing_anns_path = _base_.testing_anns_path
 testing_imgs_path = _base_.testing_imgs_path
 testing_output_file = _base_.testing_output_file
-data_preprocessor = dict(
-    type="InferencePreprocessor",
-    mean=[0, 0, 0],
-    std=[1, 1, 1],
-    input_size=input_size,
-    pad_val=(pad_value, pad_value, pad_value),
-)
 # /Settings
 
 # Loop
 test_cfg = dict(
     type="TestingLoop",
-    test_cfg=_base_.model.test_cfg | dict(checkpoint=load_from, data_preprocessor=data_preprocessor, data_postprocessor=_base_.model.data_postprocessor),
+    test_cfg=_base_.model.test_cfg
+    | dict(checkpoint=load_from, data_preprocessor=_base_.inference_data_preprocessor, data_postprocessor=_base_.model.data_postprocessor),
 )
 # /Loop
 

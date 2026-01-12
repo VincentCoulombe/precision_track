@@ -2,16 +2,20 @@ import argparse
 import logging
 import os
 import shutil
-import yaml
+
 import mmengine
+import yaml
 from mmengine import Config
 from mmengine.logging import MMLogger
+from test_detection import main as test_detection_main
 
 from precision_track import Runner
 from precision_track.deploy.to_onnx import to_onnx
 from precision_track.deploy.to_tensorrt import to_tensorrt
 from precision_track.models.optimization.thresholds_search import StitchingHyperparamsGridSearch, ThresholdsGridSearch
 from precision_track.utils import (
+    assert_coco_dataset_directory,
+    check_if_mot_dataset_is_ok,
     deploy_weights,
     get_common_config,
     get_device,
@@ -20,15 +24,10 @@ from precision_track.utils import (
     load_calibration,
     load_config,
     load_hyperparameter_dict,
-    parse_device_id,
     load_user_configs,
-    check_if_mot_dataset_is_ok,
-    assert_coco_dataset_directory,
+    parse_device_id,
     resize_coco_dataset,
 )
-
-from test_detection import main as test_detection_main
-
 
 if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:
     import torch._dynamo

@@ -19,17 +19,20 @@ from .modules.necks.yolox import YOLOXPAFPN
 from .optimization.assigners import BBoxOverlaps2D, DynamicSoftLabelAssigner, PoseOKS, SimOTAAssigner, TaskAlignedAssigner
 from .optimization.losses import ArcFaceLoss, BCELoss, CircleLoss, IoULoss, L1Loss, OKSLoss, TripletLoss
 from .optimization.schedulers import QuadraticWarmupLR, QuadraticWarmupParamScheduler
+from .oracles import ActionRecognitionOracle
 from .postprocessing.filtering import LowScoresFiltering, NearnessBasedActionFiltering
 from .postprocessing.nms import NMSPostProcessor
 from .postprocessing.refinement import KeypointBasedActionRefinement
 from .postprocessing.steps import ActionPostProcessingSteps, PostProcessingSteps
-from .preprocessing.action_recognition_preprocessor import ActionRecognitionPreprocessor
-from .preprocessing.inference_preprocessor import InferencePreprocessor
+from .postprocessing.base import BasePostProcessor, BaseActionPostProcessor
+from .preprocessing.action_recognition_preprocessor import ActionRecognitionPreprocessor, ActionRecognitionTrainingPreprocessor
+from .preprocessing.inference_preprocessor import InferencePreprocessor, WildLifeReIDPreprocessor
 from .preprocessing.training_preprocessor import BatchSyncRandomResize, PoseDataPreprocessor
 
 __all__ = [
     "RTMDetPoseHead",
     "InferencePreprocessor",
+    "WildLifeReIDPreprocessor",
     "RTMDetPose",
     "RTMDetPoseHeadModule",
     "YOLOXPoseHeadModule",
@@ -81,4 +84,8 @@ __all__ = [
     "MART",
     "YOLOXPAFPN",
     "ActionRecognitionPreprocessor",
+    "ActionRecognitionTrainingPreprocessor",
+    "BasePostProcessor",
+    "BaseActionPostProcessor",
+    "ActionRecognitionOracle",
 ]

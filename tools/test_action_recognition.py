@@ -1,15 +1,27 @@
 import yaml
+import argparse
+import os
 
 from precision_track import Runner
 from precision_track.utils import load_user_configs
 
-from test_tracking import parse_args
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default="../configs/tasks/testing_action_recognition.py", help="Path to the training config")
+    parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
+    parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
+    args = parser.parse_args()
+    if "LOCAL_RANK" not in os.environ:
+        os.environ["LOCAL_RANK"] = str(args.local_rank)
+    return args
 
 
 def main(args):
-    system_configs_path = "../configs/tasks/testing_action_recognition.py"
+    system_configs_path = args.config
     with open("../configs/user_configs.yaml", "r") as f:
         user_configs = yaml.safe_load(f)
+    user_configs["booleans"]["with_action_recognition"] = True
     load_user_configs(user_configs, system_configs_path)
     runner = Runner(system_configs_path, args.launcher, mode="test")
     runner()

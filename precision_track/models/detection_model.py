@@ -7,7 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, Any, Iterable
 
 import torch
 from mmengine.config import Config
@@ -78,6 +78,13 @@ class DetectionModel(BaseModel):
                 layer.switch_to_deploy(self.test_cfg)
 
     @property
+    def device(self) -> bool:
+        if self.data_preprocessor is None:
+            return None
+        else:
+            return self.data_preprocessor.device
+
+    @property
     def with_neck(self) -> bool:
         """bool: whether the pose estimator has a neck."""
         return hasattr(self, "neck") and self.neck is not None
@@ -116,7 +123,7 @@ class DetectionModel(BaseModel):
     def forward(
         self,
         inputs: torch.Tensor,
-        data_samples: Optional[List[PoseDataSample]],
+        data_samples: Optional[List[PoseDataSample]] = None,
         mode: str = "tensor",
         *args,
         **kwargs,
@@ -163,7 +170,7 @@ class DetectionModel(BaseModel):
             )
         elif mode == "predict":
             # use customed metainfo to override the default metainfo
-            if self.metainfo is not None:
+            if self.metainfo is not None and isinstance(data_samples, Iterable):
                 for data_sample in data_samples:
                     data_sample.set_metainfo(self.metainfo)
             return self.predict(
@@ -186,6 +193,7 @@ class DetectionModel(BaseModel):
         inputs: Tensor,
         data_samples: List[PoseDataSample],
         val_step: Optional[bool] = False,
+        return_preds: Optional[bool] = False,
         *args,
         **kwargs,
     ) -> dict:
@@ -198,24 +206,29 @@ class DetectionModel(BaseModel):
                 data_samples,
                 train_cfg=self.train_cfg,
                 return_features=True,
+                return_preds=return_preds,
                 *args,
                 **kwargs,
             )
-            if val_step:
-                losses["detections"] = head_feats
+            losses["detections"] = head_feats
             if self.with_feature_extraction:
-                loss_feat, feats = self.feature_extraction_head.loss(
-                    detection_head_features=head_feats,
-                    priors_features=feats,
-                    batch_data_samples=data_samples,
-                    train_cfg=self.train_cfg,
-                    return_features=True,
-                    *args,
-                    **kwargs,
-                )
-                if val_step:
-                    losses["extracted_features"] = feats
-                losses.update(loss_feat)
+                # TODO refactor this hack
+                # loss_feat, feats = self.feature_extraction_head.loss(
+                #     detection_head_features=head_feats,
+                #     priors_features=feats,
+                #     batch_data_samples=data_samples,
+                #     train_cfg=self.train_cfg,
+                #     return_features=True,
+                #     *args,
+                #     **kwargs,
+                # )
+                feats = self.feature_extraction_head.forward(feats)
+                head_feats = head_feats[:5] + (feats,) + head_feats[6:]
+                losses["detections"] = head_feats
+
+                # if val_step:
+                #     losses["extracted_features"] = feats
+                # losses.update(loss_feat)
 
         return losses
 
@@ -245,6 +258,35 @@ class DetectionModel(BaseModel):
     def val_step(self, data: Union[tuple, dict, list]) -> list:
         data = self.data_preprocessor(data, False)
         return [self.loss(**data, val_step=True)]
+
+    def train_step(self, data: Union[dict, tuple, list], optim_wrapper, *args, **kwargs) -> Dict[str, torch.Tensor]:
+
+        # Enable automatic mixed precision training context.
+        with optim_wrapper.optim_context(self):
+            data = self.data_preprocessor(data, True)
+            if isinstance(data, dict):
+                losses = self.forward(inputs=data["inputs"], data_samples=data["data_samples"], mode="loss", *args, **kwargs)
+            elif isinstance(data, (list, tuple)):
+                losses = self.forward(inputs=data[0], data_samples=data[1], mode="loss", *args, **kwargs)
+            else:
+                raise TypeError("Output of `data_preprocessor` should be " f"list, tuple or dict, but got {type(data)}")
+        losses, preds = self.split_outputs(losses)
+        parsed_losses, log_vars = self.parse_losses(losses)  # type: ignore
+        optim_wrapper.update_params(parsed_losses)
+        return_preds = kwargs.get("return_preds", False)
+        if return_preds:
+            return log_vars, preds
+        return log_vars
+
+    @staticmethod
+    def split_outputs(out: Dict[str, Any]):
+        losses, preds = {}, {}
+        for k, v in out.items():  # single pass: O(n)
+            if k.startswith("loss_"):  # tuple of prefixes also allowed
+                losses[k] = v
+            else:
+                preds[k] = v.detach() if isinstance(v, torch.Tensor) else v
+        return losses, preds
 
     def extract_feat(self, inputs: Tensor) -> Tuple[Tensor]:
         """Extract features.

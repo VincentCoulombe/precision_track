@@ -118,16 +118,15 @@ class ArucoValidation(BaseValidation):
         tracking_results["correction_instances"]["tags_id"].append(switched_tag_id)
 
     def _build_priority_queue(self, track_instances: dict) -> int:
-        conf_kpts = track_instances["keypoint_scores"][:, self.tag_kpt] > self.kpt_conf_thr
-        kpts = track_instances["keypoints"][:, self.tag_kpt][conf_kpts]
-        dists = euc_dist_batch(kpts)
-        isolated = np.sum(dists > self.estimation_range, axis=1) == kpts.shape[0] - 1
+        tag_kpts_score = track_instances["keypoint_scores"][:, self.tag_kpt]
+        conf_kpts = tag_kpts_score > self.kpt_conf_thr
+        isolated = track_instances["isolated"][conf_kpts]
 
         priority_queue = []
         for cls, inst_id, xy, confirmed, score in zip(
             track_instances["classes"][conf_kpts][isolated],
             track_instances["instances_id"][conf_kpts][isolated],
-            kpts[isolated],
+            track_instances["keypoints"][:, self.tag_kpt][conf_kpts][isolated],
             track_instances["confirmed"][conf_kpts][isolated],
             track_instances["scores"][conf_kpts][isolated],
         ):

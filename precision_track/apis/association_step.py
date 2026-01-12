@@ -12,7 +12,7 @@ from mmengine.config import Config
 from mmengine.logging import print_log
 
 from precision_track.registry import TRACKING
-from precision_track.utils import parse_pose_metainfo
+from precision_track.utils import parse_pose_metainfo, PoseDataSample, biou_batch
 
 
 class AssociationStep(nn.Module):
@@ -27,6 +27,7 @@ class AssociationStep(nn.Module):
         nb_frames_retain: Optional[int] = 10,
         num_tentatives: Optional[int] = 3,
         memory_length: Optional[int] = 30,
+        return_isolations: Optional[bool] = True,
         verbose: Optional[bool] = True,
         **kwargs,
     ) -> None:
@@ -88,6 +89,12 @@ class AssociationStep(nn.Module):
         self.num_tentatives = num_tentatives
         assert 0 < memory_length
         self.memory_length = memory_length
+
+        self.return_isolations = False
+        assert isinstance(return_isolations, bool)
+        if return_isolations:
+            self.return_isolations = True
+
         self.reset()
 
     @property
@@ -302,12 +309,8 @@ class AssociationStep(nn.Module):
             *args,
             **kwargs,
         )
-        self.num_tracks += data_sample["pred_track_instances"]["ids"].shape[0] - len(self.tracks)
-        self.update(frame_ids=frame_id, **data_sample["pred_track_instances"])
-        data_sample["pred_track_instances"]["classes"] = np.array([self.classes[lbl] for lbl in data_sample["pred_track_instances"]["labels"]])
-        data_sample["pred_track_instances"]["instances_id"] = np.array(self.memo_ids)
-        data_sample["pred_track_instances"]["confirmed"] = np.array(self.memo_confirmed)
-        data_sample["pred_track_instances"]["velocities"] = np.array([self.tracks[id_].mean[2:4] for id_ in data_sample["pred_track_instances"]["ids"]])
+
+        self._register_association(frame_id, data_sample)
 
         if self.stitching_algorithm is not None:
             self.stitching_algorithm(
@@ -319,4 +322,81 @@ class AssociationStep(nn.Module):
                 **kwargs,
             )
 
+        if self.return_isolations:
+            relevant_bboxes = data_sample["pred_track_instances"]["bboxes"]
+            search_areas = data_sample.get("search_areas", dict()).get("bboxes", [])
+
+            if len(search_areas) > 0:
+                bboxes = np.concatenate([relevant_bboxes, search_areas])
+            else:
+                bboxes = relevant_bboxes
+
+            bious = biou_batch(relevant_bboxes, bboxes.copy(), 0.25)
+            isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
+            data_sample["pred_track_instances"]["isolated"] = isolated
+
         return data_sample
+
+    def _register_association(self, frame_id, data_sample):
+        if isinstance(data_sample, dict):
+            self.num_tracks += data_sample["pred_track_instances"]["ids"].shape[0] - len(self.tracks)
+            self.update(
+                frame_ids=frame_id,
+                ids=data_sample["pred_track_instances"]["ids"],
+                bboxes=data_sample["pred_track_instances"]["bboxes"],
+                scores=data_sample["pred_track_instances"]["scores"],
+                keypoints=data_sample["pred_track_instances"]["keypoints"],
+                keypoint_scores=data_sample["pred_track_instances"]["keypoint_scores"],
+                labels=data_sample["pred_track_instances"]["labels"],
+                features=data_sample["pred_track_instances"]["features"],
+                kept_idxs=data_sample["pred_track_instances"]["kept_idxs"],
+                next_frame_bboxes=data_sample["pred_track_instances"]["next_frame_bboxes"],
+            )
+            is_numpy = isinstance(data_sample["pred_track_instances"]["bboxes"], np.ndarray)
+            cls_list = [self.classes[lbl] for lbl in data_sample["pred_track_instances"]["labels"]]
+            vels_list = [self.tracks[id_].mean[2:4] for id_ in data_sample["pred_track_instances"]["ids"]]
+            cls, inst_ids, confs, vels = self._format_tracking_info(vels_list, cls_list, is_numpy)
+            data_sample["pred_track_instances"]["classes"] = cls
+            data_sample["pred_track_instances"]["instances_id"] = inst_ids
+            data_sample["pred_track_instances"]["confirmed"] = confs
+            data_sample["pred_track_instances"]["velocities"] = vels
+        elif isinstance(data_sample, PoseDataSample):
+            self.num_tracks += data_sample.pred_track_instances["ids"].shape[0] - len(self.tracks)
+            self.update(
+                frame_ids=frame_id,
+                ids=data_sample.pred_track_instances["ids"],
+                bboxes=data_sample.pred_track_instances["bboxes"],
+                scores=data_sample.pred_track_instances["scores"],
+                keypoints=data_sample.pred_track_instances["keypoints"],
+                keypoint_scores=data_sample.pred_track_instances["keypoint_scores"],
+                labels=data_sample.pred_track_instances["labels"],
+                features=data_sample.pred_track_instances["features"],
+                kept_idxs=data_sample.pred_track_instances["kept_idxs"],
+                next_frame_bboxes=data_sample.pred_track_instances["next_frame_bboxes"],
+            )
+            is_numpy = isinstance(data_sample.pred_track_instances["bboxes"], np.ndarray)
+            cls_list = [self.classes[lbl] for lbl in data_sample.pred_track_instances["labels"]]
+            vels_list = [self.tracks[id_].mean[2:4] for id_ in data_sample.pred_track_instances["ids"]]
+            cls, inst_ids, confs, vels = self._format_tracking_info(vels_list, cls_list, is_numpy)
+            data_sample.pred_track_instances["classes"] = cls
+            data_sample.pred_track_instances["instances_id"] = inst_ids
+            data_sample.pred_track_instances["confirmed"] = confs
+            data_sample.pred_track_instances["velocities"] = vels
+        else:
+            raise ValueError
+
+    def _format_tracking_info(self, velocities_list, classes_list, is_numpy=True):
+        if is_numpy:
+            return (
+                np.array(classes_list),
+                np.array(self.memo_ids),
+                np.array(self.memo_confirmed),
+                np.array(velocities_list),
+            )
+        else:
+            return (
+                np.array(classes_list),
+                torch.tensor(self.memo_ids),
+                torch.tensor(self.memo_confirmed),
+                torch.stack(velocities_list) if velocities_list else torch.tensor(velocities_list),
+            )
