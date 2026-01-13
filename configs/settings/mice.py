@@ -23,7 +23,7 @@ input_size = (640, 640)
 pad_value = 114
 
 base_lr = 0.004
-batch_size = 16
+batch_size = 38
 weight_decay = 0.05
 
 ema_momentum = 0.0003
@@ -32,7 +32,7 @@ num_epochs = 300
 num_epochs_pipeline1 = 280
 warmup_epochs = 5
 
-val_interval = 10
+val_interval = 1
 
 training_anns_path = data_root + "annotations/train.json"
 training_imgs_path = data_root + "images/"

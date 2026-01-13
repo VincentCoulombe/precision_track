@@ -2,7 +2,7 @@ from typing import Dict, Optional
 import os
 from mmengine.hooks import Hook
 from mmengine.logging import print_log
-from mmengine.runner import find_latest_checkpoint
+from mmengine.hooks import CheckpointHook
 
 from precision_track.registry import HOOKS
 
@@ -18,10 +18,25 @@ class ColabCheckpointHook(Hook):
         except ImportError:
             on_colab = False
 
-        if on_colab:
-            latest_checkpoint = os.path.abspath(os.path.join(runner.work_dir, "last_checkpoint"))
-            print_log(logger="current", msg=f"Reading the '{latest_checkpoint}' file.")
-            latest_checkpoint = find_latest_checkpoint(runner.work_dir)
-            if latest_checkpoint:
-                files.download(latest_checkpoint)
-                print_log(logger="current", msg=f"Downloaded the '{latest_checkpoint}' checkpoint file.")
+        checkpoint_hook = self._find_checkpoint_hook(runner)
+
+        if on_colab and checkpoint_hook is not None:
+            for key_indicator in checkpoint_hook.key_indicators:
+                if len(checkpoint_hook.key_indicators) == 1:
+                    best_ckpt_path = checkpoint_hook.best_ckpt_path
+                else:
+                    best_ckpt_path = checkpoint_hook.best_ckpt_path_dict[key_indicator]
+
+                best_ckpt_path = os.path.abspath(best_ckpt_path)
+                files.download(best_ckpt_path)
+                print_log(logger="current", msg=f"Downloaded the '{best_ckpt_path}' checkpoint file.")
+
+    def after_val_iter(self, runner, batch_idx: int, data_batch=None, outputs=None) -> None:
+        self.after_val_epoch(runner)
+
+    @staticmethod
+    def _find_checkpoint_hook(runner):
+        for hook in runner.hooks:
+            if isinstance(hook, CheckpointHook):
+                return hook
+        return None
