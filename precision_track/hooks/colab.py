@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-
+import os
 from mmengine.hooks import Hook
 from mmengine.logging import print_log
 from mmengine.runner import find_latest_checkpoint
@@ -19,6 +19,8 @@ class ColabCheckpointHook(Hook):
             on_colab = False
 
         if on_colab:
+            latest_checkpoint = os.path.abspath(os.path.join(runner.work_dir, "last_checkpoint"))
+            print_log(logger="current", msg=f"Reading the '{latest_checkpoint}' file.")
             latest_checkpoint = find_latest_checkpoint(runner.work_dir)
             if latest_checkpoint:
                 files.download(latest_checkpoint)

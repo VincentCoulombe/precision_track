@@ -3,20 +3,14 @@ import multiprocessing as mp
 import os
 import subprocess
 import time
-
+from pathlib import Path
 import pandas as pd
 import pytest
 import torch
 import yaml
-from mmengine import Config
-from mmengine.structures import InstanceData
-from utils import temp_csv_file
-
-from precision_track import PipelinedTracker, Tracker
-from precision_track.registry import MODELS
-from precision_track.utils import VideoReader, cuda_available
 
 ROOT = "./tests/"
+TOOLS_DIR = "./tools"
 
 
 @pytest.fixture
@@ -60,12 +54,17 @@ def hyperparameters():
 
 def test_training_detection(user_configs, metrics, checkpoints, hyperparameters):
     start_time = time.perf_counter()
-    if os.path.isdir(user_configs["training"]["data_root"]) and torch.cuda.is_available():
-        train_det_tool_path = os.path.join(ROOT, "..", "tools", "train_detection.py")
+    data_root = user_configs["training"]["data_root"]
+    data_root = Path(data_root)
+    data_root = str(Path(*data_root.parts[1:]))
+
+    if os.path.isdir(data_root) and torch.cuda.is_available():
+        train_det_tool_path = os.path.abspath(os.path.join(ROOT, "..", "tools", "train_detection.py"))
         result = subprocess.run(
             ["python", train_det_tool_path, "--test=true", "--format_dataset=true", "--calibrate=true", "--deploy=true", "--optimize_hyperparams=true"],
             capture_output=True,
             text=True,
+            cwd=TOOLS_DIR,
         )
         assert result.returncode == 0, f"Training failed with: {result.stderr}"
 
@@ -79,9 +78,11 @@ def test_training_detection(user_configs, metrics, checkpoints, hyperparameters)
                 assert obt_cls_metric >= bare_nim_cls_metric, f"Metric: {metric}, Obtained: {obt_cls_metric:.4f}, Bare minimum: {bare_nim_cls_metric:.4f}."
 
         deployed_dir = user_configs["training"]["deploying_directory"]
+        deployed_dir = Path(deployed_dir)
+        deployed_dir = str(Path(*deployed_dir.parts[1:]))
 
-        obtained_hyperparameters_path = os.path.join(deployed_dir, hyperparameters)
-        expected_hyperparameters_path = os.path.join(ROOT, "configs", "hyperparameters.json")
+        obtained_hyperparameters_path = os.path.abspath(os.path.join(deployed_dir, hyperparameters))
+        expected_hyperparameters_path = os.path.abspath(os.path.join(ROOT, "configs", "hyperparameters.json"))
 
         with open(expected_hyperparameters_path, "r") as f:
             expected_hyperparams = json.load(f)

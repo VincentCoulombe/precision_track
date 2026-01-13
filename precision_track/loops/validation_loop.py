@@ -12,6 +12,7 @@ from mmengine.runner.amp import autocast
 from mmengine.runner.loops import ValLoop
 from torch.utils.data import DataLoader
 
+from precision_track.registry import MODELS
 from precision_track.models.backends import DetectionBackend
 from precision_track.models.postprocessing.steps import PostProcessingSteps
 from precision_track.tracking import OnlineGroundTruth
@@ -51,6 +52,7 @@ class ValidationLossLoop(ValLoop):
         )
         val_data_preprocessor = val_cfg.get("data_preprocessor")
         if val_data_preprocessor is not None:
+            val_data_preprocessor = MODELS.build(val_data_preprocessor)
             self.backend.data_preprocessor = val_data_preprocessor
         self.reset_losses()
 

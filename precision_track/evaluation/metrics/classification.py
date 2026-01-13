@@ -395,14 +395,16 @@ class SearchZoneStitchingMetric(BaseMetric):
             idxs = np.where(mask)[0]
             lost_ids = frame_before_ids[idxs]
 
+            frame_after_bboxes = np.array(bboxes[frame_after])
+
             if len(lost_ids) == 0:
                 self.results.append((n_active_zone, 0))  # Triggered a search without loosing entities...
             elif instance_id not in lost_ids:
                 self.results.append((n_active_zone, 0))  # Triggered a search for the wrong instance id...
-            elif bboxes[frame_after]:
-                inst_id_bbox_mask = np.array(bboxes[frame_after])[:, 2] == instance_id
+            elif frame_after_bboxes.size:
+                inst_id_bbox_mask = frame_after_bboxes[:, 2] == instance_id
                 if np.any(inst_id_bbox_mask):
-                    inst_id_bbox = np.array(bboxes[frame_after])[inst_id_bbox_mask][:, 3:7]
+                    inst_id_bbox = frame_after_bboxes[inst_id_bbox_mask][:, 3:7]
 
                     delay, coresponding_bbox_mask = self.get_coresponding_bbox_mask(gts, self.pred_to_gt[instance_id], frame_after)
                     if np.any(coresponding_bbox_mask):

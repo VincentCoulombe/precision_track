@@ -2,7 +2,7 @@ _base_ = "./_base_.py"
 
 # Common
 metainfo = '../configs/metadata/mice.py'
-wandb_logging = True
+wandb_logging = False
 # /Common
 
 # 1) Detection
@@ -23,7 +23,7 @@ input_size = (640, 640)
 pad_value = 114
 
 base_lr = 0.004
-batch_size = 38
+batch_size = 16
 weight_decay = 0.05
 
 ema_momentum = 0.0003
@@ -32,7 +32,7 @@ num_epochs = 300
 num_epochs_pipeline1 = 280
 warmup_epochs = 5
 
-val_interval = 2
+val_interval = 10
 
 training_anns_path = data_root + "annotations/train.json"
 training_imgs_path = data_root + "images/"
@@ -91,7 +91,7 @@ tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = True
+with_action_recognition = False
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -254,23 +254,23 @@ action_recognition_data_root = "../../datasets/MICE/sequential/"
 
 action_recognition_train_sequences = [
     "videos/train/13-10-02.avi",
-    # "videos/train/13-20-02.avi",
-    # "videos/train/13-40-02.avi",
+    "videos/train/13-20-02.avi",
+    "videos/train/13-40-02.avi",
 ]
 action_recognition_train_bboxes_gt_paths = [
     "bboxes/train/13-10-02.csv",
-    # "bboxes/train/13-20-02.csv",
-    # "bboxes/train/13-40-02.csv",
+    "bboxes/train/13-20-02.csv",
+    "bboxes/train/13-40-02.csv",
 ]
 action_recognition_train_keypoints_gt_paths = [
     "keypoints/train/13-10-02.csv",
-    # "keypoints/train/13-20-02.csv",
-    # "keypoints/train/13-40-02.csv",
+    "keypoints/train/13-20-02.csv",
+    "keypoints/train/13-40-02.csv",
 ]
 action_recognition_train_actions_gt_paths = [
     "actions/train/13-10-02.csv",
-    # "actions/train/13-20-02.csv",
-    # "actions/train/13-40-02.csv",
+    "actions/train/13-20-02.csv",
+    "actions/train/13-40-02.csv",
 ]
 
 action_recognition_val_sequences = ["videos/val/14-20-02.avi"]

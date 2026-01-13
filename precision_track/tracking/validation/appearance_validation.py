@@ -1,15 +1,17 @@
-from typing import List, Tuple, Optional, Dict, Tuple
+from typing import List, Tuple, Optional, Dict
 import torch
 import numpy as np
 import heapq
-from collections import defaultdict, deque
 import cv2
-from scipy import stats
+import re
 
 from .base_validation import BaseValidation
 
+from precision_track.utils import cosine_similarity
+
 
 class AppearanceValidation(BaseValidation):
+    _UNIQUE_ID_PATTERN = re.compile(r"^(.+)_(\d+)$")
 
     def __init__(
         self,
@@ -20,16 +22,15 @@ class AppearanceValidation(BaseValidation):
         memory_length: Optional[int] = 20,
         min_required_proof_to_confirm: Optional[int] = 10,
         confidence_level: Optional[float] = 0.95,
+        features_ema: Optional[float] = 0.1,
+        features_bank_size: Optional[int] = 1000,
+        nb_features: Optional[int] = 128,
         *args,
         **kwargs,
     ) -> None:
         self._frame_size = None
         assert batch_size > 0
         self.batch_size = int(batch_size)
-        self.did_not_check_since = defaultdict(dict)
-        self.max_check_delay = 1000
-        self.proofs = dict()
-        self.memory = dict()
 
         assert len(input_shape) == 2
         self.input_shape = []
@@ -55,13 +56,33 @@ class AppearanceValidation(BaseValidation):
         assert 0 < confidence_level < 1
         self.confidence_level = float(confidence_level)
 
-    def _get_validations(self, priorities, frame, to_switch):
+        assert 0 < features_ema < 1
+        self.strength_ema_new = float(features_ema)
+        self.stregth_ema_baseline = 1 - self.strength_ema_new
+
+        assert 0 < nb_features
+        self.nb_features = int(nb_features)
+        assert 0 < features_bank_size
+        self.features_bank_size = features_bank_size
+
+        self.alpha_counts = torch.zeros((self.features_bank_size, self.features_bank_size), dtype=torch.float32)
+        self.beta_counts = torch.zeros((self.features_bank_size, self.features_bank_size), dtype=torch.float32)
+        self.observation_count = torch.zeros(self.features_bank_size, dtype=torch.int32)
+        self.did_not_check_since = torch.zeros(self.features_bank_size, dtype=torch.int32)
+        self.features_bank = torch.zeros((self.features_bank_size, self.nb_features), dtype=torch.float32)
+        self.unique_ids = np.zeros(self.features_bank_size, dtype=str)
+        self.occupied_idxs = torch.zeros(self.features_bank_size, dtype=bool)
+        self.epsilon_base = 0.25
+        self.max_check_delay = 1000
+
+    def _update_features_bank(self, priorities: heapq, frame: np.ndarray, to_switch: dict):
         inputs = []
-        tracked_inst_ids = []
+        tracked_unique_ids = []
         for _, _ in zip(priorities, range(self.batch_size)):
             cls, instance_id, cxcywh = heapq.heappop(priorities)[1]
             if cls not in to_switch:
                 to_switch[cls] = []
+            unique_key = f"{cls}_{instance_id}"
             if 0 < instance_id:
                 half_w = cxcywh[2] / 2
                 half_h = cxcywh[3] / 2
@@ -69,10 +90,31 @@ class AppearanceValidation(BaseValidation):
                 y1 = int(cxcywh[1] - half_h)
                 x2 = int(cxcywh[0] + half_w)
                 y2 = int(cxcywh[1] + half_h)
-                inputs.append(cv2.resize(frame[y1:y2, x1:x2], self.input_shape))
-            tracked_inst_ids.append((str(cls), int(instance_id)))
-        inputs = torch.stack(inputs)
-        return self.re_identificator(inputs), tracked_inst_ids
+                inputs.append(cv2.resize(frame[max(y1, 0) : min(y2, self.frame_size[1]), max(x1, 0) : min(x2, self.frame_size[0])], self.input_shape))
+            tracked_unique_ids.append(unique_key)
+
+        if len(inputs) == 0:
+            return [], tracked_unique_ids
+
+        extracted_features = self.re_identificator(inputs)
+        updated_idxs = torch.zeros_like(self.occupied_idxs)
+        for i, tracked_unique_id in enumerate(tracked_unique_ids):
+            tracked_idx = np.where(tracked_unique_id == self.unique_ids)[0]
+            if not tracked_idx.any():
+                tracked_idx = self._find_first_available_idx()
+                self.features_bank[tracked_idx] = extracted_features[i]
+            else:
+                self.features_bank[tracked_idx] = self.features_bank[tracked_idx] * self.stregth_ema_baseline + extracted_features[i] * self.strength_ema_new
+            updated_idxs[tracked_idx] = True
+
+        similarities = cosine_similarity(self.features_bank[updated_idxs], self.features_bank[self.occupied_idxs])
+        return similarities, updated_idxs
+
+    def _find_first_available_idx(self):
+        available_idxs = torch.where(~self.occupied_idxs)[0]
+        if len(available_idxs) > 0:
+            return available_idxs[0].item()
+        raise ValueError(f"The Appearance Extractor's feature bank, which can contains up to {self.features_bank_size} concurrent entities, is full.")
 
     def _build_priority_queue(self, track_instances: dict) -> int:
         isolated = track_instances["isolated"]
@@ -85,96 +127,68 @@ class AppearanceValidation(BaseValidation):
             track_instances["scores"][isolated],
         ):
             if self.validated_classes is None or cls in self.validated_classes:
-                if inst_id not in self.did_not_check_since[cls]:
-                    self.did_not_check_since[cls][inst_id] = 0
-                did_not_check_since = self.did_not_check_since[cls][inst_id] / self.max_check_delay
+                unique_key = f"{cls}_{inst_id}"
+                if unique_key not in self.did_not_check_since:
+                    self.did_not_check_since[unique_key] = 0
+                did_not_check_since = self.did_not_check_since[unique_key] / self.max_check_delay
                 heapq.heappush(priority_queue, (-float(did_not_check_since + score), (cls, int(inst_id), cxcywh.tolist())))
         return priority_queue
 
-    def _register_no_checks(self, checked):
-        for cls in self.did_not_check_since:
-            for inst_id in self.did_not_check_since[cls]:
-                was_checked = isinstance(checked.get(cls), None)
-                if was_checked:
-                    was_checked = isinstance(checked[cls].get(inst_id), None)
-                if was_checked:
-                    self.did_not_check_since[cls][inst_id] = 0
-                elif inst_id < self.max_check_delay:
-                    self.did_not_check_since[cls][inst_id] += 1
+    def _register_no_checks(self, updated_idxs):
+        self.did_not_check_since[~updated_idxs] += 1
 
-    def _update_memory_collect_proof(self, cls, tracked_inst_id, validated_inst_id):
-        unique_key = f"{cls}_{tracked_inst_id}"
-        if unique_key not in self.memory:
-            self.memory[unique_key] = deque([validated_inst_id], maxlen=self.memory)
-            self.proofs[unique_key] = np.zeros(self.nb_classes)
-        else:
-            unique_id_memory = self.memory[unique_key]
-            if len(unique_id_memory) == self.memory_length:
-                forgetting = unique_id_memory.popleft()
-                self.proofs[unique_key][forgetting] -= 1
+    def _reset(self, keys):
+        for key in keys:
+            self.alpha_counts[key, :] = 0.0
+            self.beta_counts[key, :] = 0.0
+            self.observation_count[key] = 0
+            self.did_not_check_since[key] = 0
+            self.features_bank[key] = 0.0
+            self.occupied_idxs[key] = False
 
-            unique_id_memory.append(validated_inst_id)
-            self.proofs[unique_key][validated_inst_id] += 1
-
-    def _get_confirmation(self, cls, tracked_inst_id):
+    def _update_memory_collect_proof(self, similarities, updated_idxs):
         """
-        Determines if there's statistically significant evidence to confirm an identity.
-
-        Uses a binomial proportion test to check if the proportion of evidence for the
-        leading candidate is significantly higher than would be expected by chance,
-        at the specified confidence level.
-
-        Returns True only if:
-        1. We have enough total evidence (min_required_proof_to_confirm)
-        2. The leading candidate has significantly more evidence than alternatives
+        Update Beta distribution for each candidate ID.
+        similarity_scores: normalized cosine similarities [N_ids]
         """
-        unique_key = f"{cls}_{tracked_inst_id}"
-        proofs = self.proofs[unique_key]
-        total_proofs = proofs.sum()
 
-        # Need minimum amount of evidence before we can be statistically confident
-        if total_proofs < self.min_required_proof_to_confirm:
-            return False
+        # Compute observation weight based on prediction entropy (confidence)
+        entropy = -np.sum(similarities * np.log(similarities + 1e-10))
+        max_entropy = np.log(len(similarities))
+        confidence = 1.0 - (entropy / max_entropy)  # [0,1], higher = more confident
 
-        # Get the candidate with most evidence
-        max_proof = proofs.max()
+        self.observation_count[updated_idxs] += 1
 
-        # At least 2 observations needed for the leading candidate
-        if max_proof < 2:
-            return False
+        # Add new observation weighted by confidence
+        self.alpha_counts[self.occupied_idxs, updated_idxs] += similarities * confidence
+        self.beta_counts[self.occupied_idxs, updated_idxs] += (1 - similarities) * confidence
 
-        # Number of competing hypotheses (non-zero proof counts)
-        num_candidates = (proofs > 0).sum()
+    def _get_confirmations(self, updated_idxs):
 
-        # If only one candidate, confirm if we have enough evidence
-        if num_candidates == 1:
-            return True
+        confirmable_idxs = self.observation_count[updated_idxs] > self.min_required_proof_to_confirm
+        if not confirmable_idxs.any():
+            return []
 
-        # Expected proportion under null hypothesis (uniform distribution)
-        null_proportion = 1.0 / num_candidates
-        observed_proportion = max_proof / total_proofs
+        alphas = self.alpha_counts[confirmable_idxs]
+        betas = self.beta_counts[confirmable_idxs]
+        posterior_means = alphas / (alphas + betas)
 
-        # Two-tailed binomial test: is the observed proportion significantly
-        # different from what we'd expect by chance?
-        # Using normal approximation to binomial (valid when n*p > 5 and n*(1-p) > 5)
-        n = int(total_proofs)
-        p_null = null_proportion
+        top1_idxs = torch.argmax(posterior_means, dim=1)
+        top1_means = posterior_means[:, top1_idxs].copy()
 
-        # Calculate z-score for the proportion test
-        expected = n * p_null
-        std_error = np.sqrt(n * p_null * (1 - p_null))
+        uncertainty_penalties = (1.0 - top1_means) / np.sqrt(len(confirmable_idxs.shape[0]))
+        epsilons = self.epsilon_base * (1.0 + uncertainty_penalties)
 
-        if std_error == 0:
-            # If no variance (shouldn't happen), fall back to simple majority
-            return observed_proportion > 0.5
+        posterior_means[:, top1_idxs] = -1
+        top2_means = torch.max(posterior_means, dim=1)
 
-        z_score = (max_proof - expected) / std_error
+        are_confirmed = top1_means > epsilons + top2_means
 
-        # One-tailed test: we only care if it's significantly GREATER
-        # Convert confidence level to z-critical value
-        z_critical = stats.norm.ppf(self.confidence_level)
+        return top1_idxs if are_confirmed.any() else []
 
-        return z_score > z_critical
+    def _init_validation(self, tracking_results: dict):
+        if "correction_instances" not in tracking_results:
+            tracking_results["correction_instances"] = {"instances_id": [], "corrected_id": []}
 
     def __call__(
         self,
@@ -185,32 +199,47 @@ class AppearanceValidation(BaseValidation):
         track_instances = tracking_results["pred_track_instances"]
         priorities = self._build_priority_queue(track_instances)
         to_switch = {}
-        insts_id = track_instances["instances_id"]
 
-        validated_inst_ids, tracked_inst_ids = self._get_validations(priorities, frame, to_switch)
+        similarities, updated_idxs = self._update_features_bank(priorities, frame, to_switch)
+        self._update_memory_collect_proof(similarities, updated_idxs)
+        confirmed_idxs = self._get_confirmations(updated_idxs)
+        for updated_idx, confirmed_idx in zip(updated_idxs, confirmed_idxs):
+            updated_idx = updated_idx.item()
+            confirmed_idx = confirmed_idx.item()
 
-        for validated_inst_id, tracked_inst_id in zip(validated_inst_ids, tracked_inst_ids):
-            validated_cls, validated_inst_id = validated_inst_id
-            validated_inst_id = int(validated_inst_id)
-            tracked_cls, tracked_inst_id = tracked_inst_id
+            updated_unique_id = self.unique_ids[updated_idx]
+            confirmed_unique_id = self.unique_ids[confirmed_idx]
 
-            if tracked_cls == validated_cls:
-                self._update_memory_collect_proof(tracked_cls, tracked_inst_id, validated_inst_id)
-                is_confirmed = self._get_confirmation(tracked_cls, tracked_inst_id)
+            updated_cls, updated_inst_id = self._decode_unique_id(updated_unique_id)
+            confirmed_cls, confirmed_inst_id = self._decode_unique_id(confirmed_unique_id)
 
-                if (
-                    is_confirmed
-                    and validated_inst_id != tracked_inst_id
-                    and not self._switching_back(to_switch[tracked_cls], tracked_inst_id, validated_inst_id)
-                ):
-                    to_switch[tracked_cls].append((tracked_inst_id, validated_inst_ids))
-                    mask_a = insts_id == tracked_inst_id
-                    mask_b = insts_id == validated_inst_ids
-                    insts_id[mask_a] = validated_inst_ids
-                    insts_id[mask_b] = tracked_inst_id
-                    self._register_correction(tracking_results, tracked_inst_id, validated_inst_ids)
+            if updated_cls == confirmed_cls:
+
+                are_oscillating = self._switching_back(to_switch.get(updated_cls, []), updated_inst_id, confirmed_inst_id)
+                if updated_inst_id != confirmed_inst_id and not are_oscillating:
+
+                    to_switch[updated_cls].append((updated_inst_id, confirmed_inst_id))
+                    mask_a = (track_instances["instances_id"] == updated_inst_id) & (track_instances["classes"] == updated_cls)
+                    mask_b = (track_instances["instances_id"] == confirmed_inst_id) & (track_instances["classes"] == confirmed_cls)
+                    if mask_a.any() and mask_b.any():
+                        track_instances["instances_id"][mask_a] = confirmed_inst_id
+                        track_instances["instances_id"][mask_b] = updated_inst_id
+                        self._register_correction(tracking_results, updated_inst_id, confirmed_inst_id)
+
+        self._reset([updated_idxs, confirmed_idxs] + [key for key, delay in self.did_not_check_since.items() if delay >= self.max_check_delay])
+
+        self._register_no_checks(updated_idxs)
         tracking_results["corrected_instances_id"] = to_switch
         return tracking_results, to_switch
+
+    @classmethod
+    def _decode_unique_id(cls, unique_id):
+        match = cls._UNIQUE_ID_PATTERN.match(unique_id)
+        if match:
+            cls_ = match.group(1)
+            id_ = match.group(2)
+            return str(cls_), int(id_)
+        raise ValueError(f"The Appearance Extractor failed to decode the following unique id: {unique_id}.")
 
     @staticmethod
     def _switching_back(switches: List[tuple], a: int, b: int):

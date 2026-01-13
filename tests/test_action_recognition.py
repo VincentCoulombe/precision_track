@@ -54,6 +54,15 @@ def deployed_checkpoints():
     )
 
 
+def set_user_configs(with_action_recognition: bool, user_configs, testing_config, deploying_directory=""):
+    with open(user_configs, "r") as f:
+        user_configs = yaml.safe_load(f)
+    user_configs["booleans"]["with_action_recognition"] = with_action_recognition
+    if deploying_directory:
+        user_configs["training"]["deploying_directory"] = deploying_directory
+    load_user_configs(user_configs, testing_config)
+
+
 @pytest.mark.timeout(10 * 60)
 @pytest.mark.parametrize(
     "checkpoints",
@@ -193,99 +202,103 @@ def test_training_preprocessing(predict_inputs, loss_sequence_input, config):
 
 
 # def test_training(training_config, deployed_checkpoints):
-#     start_time = time.perf_counter()
+#     set_user_configs(True)
+#     try:
+#         start_time = time.perf_counter()
 
-#     train_config = Config.fromfile(training_config)
+#         train_config = Config.fromfile(training_config)
 
-#     train_sequences = train_config.train_sequences
-#     train_bboxes_gt_paths = train_config.train_bboxes_gt_paths
-#     train_keypoints_gt_paths = train_config.train_keypoints_gt_paths
-#     train_actions_gt_paths = train_config.train_actions_gt_paths
+#         train_sequences = train_config.train_sequences
+#         train_bboxes_gt_paths = train_config.train_bboxes_gt_paths
+#         train_keypoints_gt_paths = train_config.train_keypoints_gt_paths
+#         train_actions_gt_paths = train_config.train_actions_gt_paths
 
-#     if (
-#         os.path.isdir(train_sequences)
-#         and os.path.isdir(train_bboxes_gt_paths)
-#         and os.path.isdir(train_keypoints_gt_paths)
-#         and os.path.isdir(train_actions_gt_paths)
-#         and torch.cuda.is_available()
-#     ):
+#         if (
+#             os.path.isdir(train_sequences)
+#             and os.path.isdir(train_bboxes_gt_paths)
+#             and os.path.isdir(train_keypoints_gt_paths)
+#             and os.path.isdir(train_actions_gt_paths)
+#             and torch.cuda.is_available()
+#         ):
 
-#         train_ar_tool_path = os.path.join(ROOT, "..", "tools", "train_action_recognition.py")
+#             train_ar_tool_path = os.path.join(ROOT, "..", "tools", "train_action_recognition.py")
 
-#         result = subprocess.run(
-#             ["python", train_ar_tool_path, "--test=true", "--deploy=true", f"--config={os.path.join(training_config)}"],
-#             capture_output=True,
-#             text=True,
-#         )
-#         assert result.returncode == 0, f"Training failed with: {result.stderr}"
+#             result = subprocess.run(
+#                 ["python", train_ar_tool_path, "--test=true", "--deploy=true", f"--config={os.path.join(training_config)}"],
+#                 capture_output=True,
+#                 text=True,
+#             )
+#             assert result.returncode == 0, f"Training failed with: {result.stderr}"
 
-#         with open(os.path.join(train_config.work_dir, "best_ActionRecognition_f1.json"), "r") as f:
-#             obtained = json.load(f)
+#             with open(os.path.join(train_config.work_dir, "best_ActionRecognition_f1.json"), "r") as f:
+#                 obtained = json.load(f)
 
-#         with open(os.path.join(ROOT, "work_dir", "dummy_bare_minimum_ActionRecognition_f1.json"), "r") as f:
-#             bare_minimum = json.load(f)
+#             with open(os.path.join(ROOT, "work_dir", "dummy_bare_minimum_ActionRecognition_f1.json"), "r") as f:
+#                 bare_minimum = json.load(f)
 
-#         for metric in obtained:
-#             obtained_metric = obtained[metric]
-#             bare_min_metric = bare_minimum[metric]
-#             for obt_cls_metric, bare_nim_cls_metric in zip(obtained_metric, bare_min_metric):
-#                 assert obt_cls_metric >= bare_nim_cls_metric, f"Metric: {metric}, Obtained: {obt_cls_metric:.4f}, Bare minimum: {bare_nim_cls_metric:.4f}."
+#             for metric in obtained:
+#                 obtained_metric = obtained[metric]
+#                 bare_min_metric = bare_minimum[metric]
+#                 for obt_cls_metric, bare_nim_cls_metric in zip(obtained_metric, bare_min_metric):
+#                     assert obt_cls_metric >= bare_nim_cls_metric, f"Metric: {metric}, Obtained: {obt_cls_metric:.4f}, Bare minimum: {bare_nim_cls_metric:.4f}."
 
-#         deployed_dir = train_config.mart_deploying_directory
+#             deployed_dir = train_config.mart_deploying_directory
 
-#         ckpt_names = deployed_checkpoints["checkpoint_names"]
-#         ckpt_found = deployed_checkpoints["found"]
-#         for i, ckpt_name in enumerate(ckpt_names):
-#             file_path = os.path.join(deployed_dir, ckpt_name)
-#             if os.path.exists(file_path):
-#                 file_mtime = os.path.getmtime(file_path)
-#                 if file_mtime >= start_time:
-#                     ckpt_found[i] = True
+#             ckpt_names = deployed_checkpoints["checkpoint_names"]
+#             ckpt_found = deployed_checkpoints["found"]
+#             for i, ckpt_name in enumerate(ckpt_names):
+#                 file_path = os.path.join(deployed_dir, ckpt_name)
+#                 if os.path.exists(file_path):
+#                     file_mtime = os.path.getmtime(file_path)
+#                     if file_mtime >= start_time:
+#                         ckpt_found[i] = True
 
-#         assert all(ckpt_found), f"Not all checkpoints were created or updated. Found: {dict(zip(ckpt_names, ckpt_found))}"
+#             assert all(ckpt_found), f"Not all checkpoints were created or updated. Found: {dict(zip(ckpt_names, ckpt_found))}"
+#     finally:
+#         set_user_configs(False)
 
 
 def test_testing(testing_config, user_configs):
-    with open(user_configs, "r") as f:
-        user_configs = yaml.safe_load(f)
-    user_configs["booleans"]["with_action_recognition"] = True
-    load_user_configs(user_configs, testing_config)
-    test_config = Config.fromfile(testing_config)
+    set_user_configs(True, user_configs, testing_config, deploying_directory=os.path.join(ROOT, "configs"))
+    try:
+        test_config = Config.fromfile(testing_config)
 
-    ar_data_root = Path(test_config.action_recognition_data_root)
-    ar_data_root = str(Path(*ar_data_root.parts[1:]))
+        ar_data_root = Path(test_config.action_recognition_data_root)
+        ar_data_root = str(Path(*ar_data_root.parts[1:]))
 
-    test_sequences = os.path.join(ar_data_root, test_config.test_sequences)
-    test_bboxes_gt_paths = os.path.join(ar_data_root, test_config.test_bboxes_gt_paths)
-    test_keypoints_gt_paths = os.path.join(ar_data_root, test_config.test_keypoints_gt_paths)
-    test_actions_gt_paths = os.path.join(ar_data_root, test_config.test_actions_gt_paths)
+        test_sequences = os.path.join(ar_data_root, test_config.test_sequences)
+        test_bboxes_gt_paths = os.path.join(ar_data_root, test_config.test_bboxes_gt_paths)
+        test_keypoints_gt_paths = os.path.join(ar_data_root, test_config.test_keypoints_gt_paths)
+        test_actions_gt_paths = os.path.join(ar_data_root, test_config.test_actions_gt_paths)
 
-    if (
-        os.path.isdir(test_sequences)
-        and os.path.isdir(test_bboxes_gt_paths)
-        and os.path.isdir(test_keypoints_gt_paths)
-        and os.path.isdir(test_actions_gt_paths)
-        and torch.cuda.is_available()
-    ):
+        if (
+            os.path.isdir(test_sequences)
+            and os.path.isdir(test_bboxes_gt_paths)
+            and os.path.isdir(test_keypoints_gt_paths)
+            and os.path.isdir(test_actions_gt_paths)
+            and torch.cuda.is_available()
+        ):
 
-        result = subprocess.run(
-            ["python", "./test_action_recognition.py", f"--config={os.path.abspath(testing_config)}"],
-            capture_output=True,
-            text=True,
-            cwd=TOOLS_DIR,
-        )
-        assert result.returncode == 0, f"Training failed with: {result.stderr}"
+            result = subprocess.run(
+                ["python", "./test_action_recognition.py", f"--config={os.path.abspath(testing_config)}"],
+                capture_output=True,
+                text=True,
+                cwd=TOOLS_DIR,
+            )
+            assert result.returncode == 0, f"Training failed with: {result.stderr}"
 
-        with open(os.path.abspath(os.path.join(ROOT, test_config.work_dir, "best_ActionRecognition_f1.json")), "r") as f:
-            obtained = json.load(f)
+            with open(os.path.abspath(os.path.join(ROOT, test_config.work_dir, "best_ActionRecognition_f1.json")), "r") as f:
+                obtained = json.load(f)
 
-        with open(os.path.abspath(os.path.join(ROOT, "work_dir", "bare_minimum_ActionRecognition_f1.json")), "r") as f:
-            bare_minimum = json.load(f)
+            with open(os.path.abspath(os.path.join(ROOT, "work_dir", "bare_minimum_ActionRecognition_f1.json")), "r") as f:
+                bare_minimum = json.load(f)
 
-        for metric in obtained:
-            obtained_metric = obtained[metric]
-            bare_minimum_metric = bare_minimum[metric]
-            assert obtained_metric >= bare_minimum_metric, f"Metric: {metric}, Obtained: {obtained_metric:.4f}, Bare minimum: {bare_minimum_metric:.4f}."
+            for metric in obtained:
+                obtained_metric = obtained[metric]
+                bare_minimum_metric = bare_minimum[metric]
+                assert obtained_metric >= bare_minimum_metric, f"Metric: {metric}, Obtained: {obtained_metric:.4f}, Bare minimum: {bare_minimum_metric:.4f}."
+    finally:
+        set_user_configs(False, user_configs, testing_config, deploying_directory="../checkpoints/mice/")
 
 
 if __name__ == "__main__":
