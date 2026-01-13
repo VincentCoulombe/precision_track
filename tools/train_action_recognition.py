@@ -9,6 +9,8 @@ from test_action_recognition import main as test_ar_main
 from train_detection import deploy, get_device, load_config, parse_device_id, str2bool
 
 from precision_track import AssociationStep, Runner
+from precision_track.registry import TASK_UTILS
+
 from precision_track.deploy.to_onnx import mart_to_onnx
 from precision_track.deploy.to_tensorrt import to_tensorrt
 from precision_track.models.backends import DetectionBackend
@@ -36,8 +38,8 @@ def main(args):
     user_configs["booleans"]["with_action_recognition"] = True
     load_user_configs(user_configs, system_configs_path)
 
-    runner = Runner(system_configs_path, args.launcher, mode="train")
-    runner()
+    # runner = Runner(system_configs_path, args.launcher, mode="train")
+    # runner()
 
     deploy_cfg = load_config("../configs/tasks/deploying.py")
     deployed_path = deploy(deploy_cfg, "mart_runtime_config", deploy_cfg["mart_testing_checkpoint"], logger)
@@ -48,8 +50,9 @@ def main(args):
     if device == "auto":
         device = get_device()
 
-    if args.test:
-        test_ar_main(args=args)
+    args.config = "../configs/tasks/testing_action_recognition.py"
+    # if args.test:
+    #     test_ar_main(args=args)
 
     if args.deploy:
         if deploy_cfg["mart_runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:
@@ -71,9 +74,12 @@ def main(args):
             logger.info(f"Optimizing {ir_save_file} to TensorRT.")
 
             common_params = deploy_cfg["mart_runtime_config"]["common_config"]
-            model_params = deploy_cfg["mart_runtime_config"]["model_inputs"]
 
-            input_shapes = deploy_cfg["analyzer"]["runtime"]["input_shapes"]
+            input_shape_cfgs = deploy_cfg["analyzer"]["runtime"]["input_shapes"]
+            input_shapes = []
+            for input_shape in input_shape_cfgs:
+                input_shapes.append(TASK_UTILS.build(input_shape))
+
             input_names = deploy_cfg["action_recognition_input_names"]
 
             num_subjects = deploy_cfg.get("num_subjects")
@@ -91,15 +97,12 @@ def main(args):
                 formatted_input_shapes[k]["opt_shape"] = [num_subjects] + list(input_shape.shape)
                 formatted_input_shapes[k]["max_shape"] = [max_subjects] + list(input_shape.shape)
 
-            final_params = common_params
-            final_params.update(model_params)
-
             to_tensorrt(
                 os.path.join(deploy_cfg["mart_runtime_config"]["paths"]["directory"], ir_save_file),
-                input_shapes=final_params["input_shapes"],
+                input_shapes=[dict(input_shapes=formatted_input_shapes)],
                 log_level=None,
-                half_precision=final_params.get("half_precision", False),
-                max_workspace_size=final_params.get("max_workspace_size", 0),
+                half_precision=common_params.get("half_precision", False),
+                max_workspace_size=common_params.get("max_workspace_size", 0),
                 device_id=parse_device_id(device),
             )
 

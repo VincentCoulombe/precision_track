@@ -109,9 +109,9 @@ runtime_config = dict(
         dict(
             input_shapes=dict(
                 input=dict(
-                    min_shape=[1, 3, 640, 640],
-                    opt_shape=[_base_.tracking_batch_size, 3, 640, 640],
-                    max_shape=[_base_.tracking_batch_size, 3, 640, 640],
+                    min_shape=[1, 3, input_size[0], input_size[1]],
+                    opt_shape=[_base_.tracking_batch_size, 3, input_size[0], input_size[1]],
+                    max_shape=[_base_.tracking_batch_size, 3, input_size[0], input_size[1]],
                 )
             )
         )
