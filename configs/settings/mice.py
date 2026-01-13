@@ -1,7 +1,7 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../configs/metadata/mice.py'
+metainfo = '../../datasets//camille/stripedmice_corrected_without_tail.py'
 wandb_logging = False
 # /Common
 
@@ -13,8 +13,8 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
-dataset_name = 'mice'
+data_root = '../../datasets/camille/multi_size_data_640x640/'
+dataset_name = 'stripedmice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
 training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
@@ -32,7 +32,7 @@ num_epochs = 300
 num_epochs_pipeline1 = 280
 warmup_epochs = 5
 
-val_interval = 1
+val_interval = 10
 
 training_anns_path = data_root + "annotations/train.json"
 training_imgs_path = data_root + "images/"
@@ -75,7 +75,7 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 deploying_sanity_check_img_path = 'images/0000003435.jpg'
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = '../checkpoints/mice/'
+deploying_directory = '../checkpoints/camille/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection

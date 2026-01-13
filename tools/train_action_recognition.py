@@ -99,7 +99,7 @@ def main(args):
 
             to_tensorrt(
                 os.path.join(deploy_cfg["mart_runtime_config"]["paths"]["directory"], ir_save_file),
-                input_shapes=[dict(input_shapes=formatted_input_shapes)],
+                input_shapes=formatted_input_shapes,
                 log_level=None,
                 half_precision=common_params.get("half_precision", False),
                 max_workspace_size=common_params.get("max_workspace_size", 0),
