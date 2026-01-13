@@ -1,7 +1,7 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = "../configs/metadata/mice.py"
+metainfo = '../configs/metadata/mice.py'
 wandb_logging = False
 # /Common
 
@@ -13,17 +13,17 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = "../../datasets/MICE/pose-estimation_640x640/"
-dataset_name = "mice"
+data_root = '../../datasets/MICE/pose-estimation/'
+dataset_name = 'mice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
-training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
+training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
 
 input_size = (640, 640)
 pad_value = 114
 
 base_lr = 0.004
-batch_size = 38
+batch_size = 16
 weight_decay = 0.05
 
 ema_momentum = 0.0003
@@ -72,28 +72,28 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 #   1.4) /Feature Extraction
 
 #   1.5) Deployment
-deploying_sanity_check_img_path = "images/0000003435.jpg"
+deploying_sanity_check_img_path = 'images/0000003435.jpg'
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = "../checkpoints/mice/"
+deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
 
 
 # 2) Tracking
-tracking_checkpoint_name = "model_mice_DEPLOYED.pth"
+tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
-saving_directory = "../work_dir/"
+saving_directory = '../work_dir/'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
 with_action_recognition = False
 
-num_subjects = {"mouse": 20}
+num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
@@ -254,23 +254,23 @@ action_recognition_data_root = "../../datasets/MICE/sequential/"
 
 action_recognition_train_sequences = [
     "videos/train/13-10-02.avi",
-    # "videos/train/13-20-02.avi",
-    # "videos/train/13-40-02.avi",
+    "videos/train/13-20-02.avi",
+    "videos/train/13-40-02.avi",
 ]
 action_recognition_train_bboxes_gt_paths = [
     "bboxes/train/13-10-02.csv",
-    # "bboxes/train/13-20-02.csv",
-    # "bboxes/train/13-40-02.csv",
+    "bboxes/train/13-20-02.csv",
+    "bboxes/train/13-40-02.csv",
 ]
 action_recognition_train_keypoints_gt_paths = [
     "keypoints/train/13-10-02.csv",
-    # "keypoints/train/13-20-02.csv",
-    # "keypoints/train/13-40-02.csv",
+    "keypoints/train/13-20-02.csv",
+    "keypoints/train/13-40-02.csv",
 ]
 action_recognition_train_actions_gt_paths = [
     "actions/train/13-10-02.csv",
-    # "actions/train/13-20-02.csv",
-    # "actions/train/13-40-02.csv",
+    "actions/train/13-20-02.csv",
+    "actions/train/13-40-02.csv",
 ]
 
 action_recognition_val_sequences = ["videos/val/14-20-02.avi"]

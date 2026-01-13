@@ -54,10 +54,12 @@ def deployed_checkpoints():
     )
 
 
-def set_with_action_recognition(with_action_recognition: bool):
+def set_user_configs(with_action_recognition: bool, user_configs, testing_config, deploying_directory=""):
     with open(user_configs, "r") as f:
         user_configs = yaml.safe_load(f)
     user_configs["booleans"]["with_action_recognition"] = with_action_recognition
+    if deploying_directory:
+        user_configs["training"]["deploying_directory"] = deploying_directory
     load_user_configs(user_configs, testing_config)
 
 
@@ -200,7 +202,7 @@ def test_training_preprocessing(predict_inputs, loss_sequence_input, config):
 
 
 # def test_training(training_config, deployed_checkpoints):
-#     set_with_action_recognition(True)
+#     set_user_configs(True)
 #     try:
 #         start_time = time.perf_counter()
 
@@ -253,13 +255,12 @@ def test_training_preprocessing(predict_inputs, loss_sequence_input, config):
 
 #             assert all(ckpt_found), f"Not all checkpoints were created or updated. Found: {dict(zip(ckpt_names, ckpt_found))}"
 #     finally:
-#         set_with_action_recognition(False)
+#         set_user_configs(False)
 
 
 def test_testing(testing_config, user_configs):
-    set_with_action_recognition(True)
+    set_user_configs(True, user_configs, testing_config, deploying_directory=os.path.join(ROOT, "configs"))
     try:
-        load_user_configs(user_configs, testing_config)
         test_config = Config.fromfile(testing_config)
 
         ar_data_root = Path(test_config.action_recognition_data_root)
@@ -297,7 +298,7 @@ def test_testing(testing_config, user_configs):
                 bare_minimum_metric = bare_minimum[metric]
                 assert obtained_metric >= bare_minimum_metric, f"Metric: {metric}, Obtained: {obtained_metric:.4f}, Bare minimum: {bare_minimum_metric:.4f}."
     finally:
-        set_with_action_recognition(False)
+        set_user_configs(False, user_configs, testing_config, deploying_directory="../checkpoints/mice/")
 
 
 if __name__ == "__main__":

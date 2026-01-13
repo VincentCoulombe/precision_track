@@ -78,9 +78,11 @@ def test_training_detection(user_configs, metrics, checkpoints, hyperparameters)
                 assert obt_cls_metric >= bare_nim_cls_metric, f"Metric: {metric}, Obtained: {obt_cls_metric:.4f}, Bare minimum: {bare_nim_cls_metric:.4f}."
 
         deployed_dir = user_configs["training"]["deploying_directory"]
+        deployed_dir = Path(deployed_dir)
+        deployed_dir = str(Path(*deployed_dir.parts[1:]))
 
-        obtained_hyperparameters_path = os.path.join(deployed_dir, hyperparameters)
-        expected_hyperparameters_path = os.path.join(ROOT, "configs", "hyperparameters.json")
+        obtained_hyperparameters_path = os.path.abspath(os.path.join(deployed_dir, hyperparameters))
+        expected_hyperparameters_path = os.path.abspath(os.path.join(ROOT, "configs", "hyperparameters.json"))
 
         with open(expected_hyperparameters_path, "r") as f:
             expected_hyperparams = json.load(f)

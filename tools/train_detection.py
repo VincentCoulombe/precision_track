@@ -86,20 +86,20 @@ def main(args):
     input_size = training_config["input_size"]
     assert_coco_dataset_directory(data_root)
 
-    if args.format_dataset:
-        normed_data_root = os.path.normpath(data_root)
-        data_root_c = os.path.basename(normed_data_root)
-        data_root_c = f"{data_root_c}_{input_size[0]}x{input_size[1]}/"
-        data_root_p = os.path.dirname(normed_data_root)
-        formatted_dataset_data_root = os.path.join(data_root_p, data_root_c)
-        formatted_dataset_cfg = dict(training=dict(data_root=formatted_dataset_data_root))
+    # if args.format_dataset:
+    #     normed_data_root = os.path.normpath(data_root)
+    #     data_root_c = os.path.basename(normed_data_root)
+    #     data_root_c = f"{data_root_c}_{input_size[0]}x{input_size[1]}/"
+    #     data_root_p = os.path.dirname(normed_data_root)
+    #     formatted_dataset_data_root = os.path.join(data_root_p, data_root_c)
+    #     formatted_dataset_cfg = dict(training=dict(data_root=formatted_dataset_data_root))
 
-        logger.info(f"Auto-formatting your COCO-style dataset saved at: {data_root}. The formatted dataset will be saved at: {formatted_dataset_data_root}.")
-        if os.path.isdir(formatted_dataset_data_root):
-            shutil.rmtree(formatted_dataset_data_root)
-        for ann_name in ["train", "val"]:
-            resize_coco_dataset(data_root, formatted_dataset_data_root, ann_name=f"{ann_name}.json")
-        load_user_configs(formatted_dataset_cfg, system_configs_path)
+    #     logger.info(f"Auto-formatting your COCO-style dataset saved at: {data_root}. The formatted dataset will be saved at: {formatted_dataset_data_root}.")
+    #     if os.path.isdir(formatted_dataset_data_root):
+    #         shutil.rmtree(formatted_dataset_data_root)
+    #     for ann_name in ["train", "val"]:
+    #         resize_coco_dataset(data_root, formatted_dataset_data_root, ann_name=f"{ann_name}.json")
+    #     load_user_configs(formatted_dataset_cfg, system_configs_path)
 
     runner = Runner(system_configs_path, args.launcher, mode="train")
     runner()
