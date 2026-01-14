@@ -1,7 +1,7 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../../datasets//camille/stripedmice_corrected_without_tail.py'
+metainfo = '../configs/metadata/mice.py'
 wandb_logging = False
 # /Common
 
@@ -13,11 +13,11 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/camille/multi_size_data_640x640/'
-dataset_name = 'stripedmice'
+data_root = '../../datasets/MICE/pose-estimation_640x640/'
+dataset_name = 'mice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
-resume = False
-training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
+resume = True
+training_checkpoint = '../work_dir/training_runs//mice/epoch_20.pth'
 
 input_size = (640, 640)
 pad_value = 114
@@ -75,7 +75,7 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 deploying_sanity_check_img_path = 'images/0000003435.jpg'
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = '../checkpoints/camille/'
+deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
@@ -296,13 +296,13 @@ mart_deployed_name = "mart_DEPLOYED.pth"
 
 
 # 4) Visualization
-display_bounding_boxes = False
-display_poses = False
-display_velocities = False
-display_species = False
-display_confidence_scores = False
-display_actions = True
-display_search_zones = False
+display_bounding_boxes = True
+display_poses = True
+display_velocities = True
+display_species = True
+display_confidence_scores = True
+display_actions = False
+display_search_zones = True
 display_validations = False
-display_untracked_detections = False
+display_untracked_detections = True
 # 4) /Visualization
