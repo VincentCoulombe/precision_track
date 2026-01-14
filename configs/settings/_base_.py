@@ -13,7 +13,7 @@ default_hooks = dict(
     timer=dict(type="IterTimerHook"),
     logger=dict(type="LoggerHook", interval=50),
     param_scheduler=dict(type="ParamSchedulerHook"),
-    checkpoint=dict(interval=-1, type="CheckpointHook", save_best="val/loss", rule="less"),
+    checkpoint=dict(interval=10, type="CheckpointHook", save_best="val/loss", rule="less", max_keep_ckpts=1),
     colab_download=dict(type="ColabCheckpointHook", priority="LOWEST"),
     sampler_seed=dict(type="DistSamplerSeedHook"),
     visualization=dict(type="PoseVisualizationHook", enable=False),
