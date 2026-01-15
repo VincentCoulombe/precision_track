@@ -13,11 +13,11 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation_640x640/'
+data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
-resume = True
-training_checkpoint = '../work_dir/training_runs//mice/epoch_20.pth'
+resume = False
+training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
 
 input_size = (640, 640)
 pad_value = 114
@@ -91,7 +91,7 @@ tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = False
+with_action_recognition = True
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(

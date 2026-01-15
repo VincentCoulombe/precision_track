@@ -20,23 +20,15 @@ class ColabCheckpointHook(Hook):
 
         checkpoint_hook = self._find_checkpoint_hook(runner)
         if on_colab and checkpoint_hook is not None:
-            for key_indicator in checkpoint_hook.key_indicators:
-                if len(checkpoint_hook.key_indicators) == 1:
-                    best_ckpt_path = checkpoint_hook.best_ckpt_path
-                else:
-                    best_ckpt_path = checkpoint_hook.best_ckpt_path_dict[key_indicator]
-
-                best_ckpt_path = os.path.abspath(best_ckpt_path)
-
-                try:
-                    files.download(best_ckpt_path)
-                    print_log(logger="current", msg=f"Downloaded the '{best_ckpt_path}' checkpoint file.")
-                except AttributeError:
-                    print_log(
-                        logger="current",
-                        msg=f"Could not download your current best training checkpoint. "
-                        f"You can still download it manually. It is located at '{best_ckpt_path}'.",
-                    )
+            ckpt_path = checkpoint_hook.last_ckpt
+            try:
+                files.download(ckpt_path)
+                print_log(logger="current", msg=f"Downloaded the '{ckpt_path}' checkpoint file.")
+            except AttributeError:
+                print_log(
+                    logger="current",
+                    msg=f"Could not download your current best training checkpoint. " f"You can still download it manually. It is located at '{ckpt_path}'.",
+                )
 
     def after_val_iter(self, runner, batch_idx: int, data_batch=None, outputs=None) -> None:
         self.after_val_epoch(runner)
