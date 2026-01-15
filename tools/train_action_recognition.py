@@ -21,7 +21,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--test", type=str2bool, default=True, help="True to test the trained model, False otherwise")
     parser.add_argument("--deploy", type=str2bool, default=True, help="True to deploy the trained model, False otherwise")
-    parser.add_argument("--config", type=str, default="../configs/tasks/training_action_recognition.py", help="Path to the training config")
+    parser.add_argument("--config", type=str, default="../tests/configs/training_action_recognition.py", help="Path to the training config")
+    # parser.add_argument("--config", type=str, default="../configs/tasks/training_action_recognition.py", help="Path to the training config")
     parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
     parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
     args = parser.parse_args()
@@ -38,8 +39,8 @@ def main(args):
     user_configs["booleans"]["with_action_recognition"] = True
     load_user_configs(user_configs, system_configs_path)
 
-    # runner = Runner(system_configs_path, args.launcher, mode="train")
-    # runner()
+    runner = Runner(system_configs_path, args.launcher, mode="train")
+    runner()
 
     deploy_cfg = load_config("../configs/tasks/deploying.py")
     deployed_path = deploy(deploy_cfg, "mart_runtime_config", deploy_cfg["mart_testing_checkpoint"], logger)
@@ -51,8 +52,8 @@ def main(args):
         device = get_device()
 
     args.config = "../configs/tasks/testing_action_recognition.py"
-    # if args.test:
-    #     test_ar_main(args=args)
+    if args.test:
+        test_ar_main(args=args)
 
     if args.deploy:
         if deploy_cfg["mart_runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:
