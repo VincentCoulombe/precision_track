@@ -228,7 +228,7 @@ custom_hooks = [
     #     priority=50,
     # ),
     dict(
-        type="ActionRecognitionRegenerationSwitchHook",
+        type="SequencesSwitchHook",
         priority=51,
         generate_every=1000,
     ),

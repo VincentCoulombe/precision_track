@@ -11,7 +11,7 @@ data_postprocessor = [
     dict(
         type="NMSPostProcessor",
         score_thr=0.01,
-        nms_thr=0.65,
+        nms_thr=0.5,
         pool_thr=0.9,
     ),
 ]

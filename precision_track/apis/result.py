@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from typing import Any, List, Optional
-
+from time import perf_counter
 import numpy as np
 
 from precision_track.registry import OUTPUTS
@@ -26,14 +26,18 @@ class Result:
     def outputs(self):
         return self._outputs
 
-    def __call__(self, data: Any) -> None:
+    def __call__(self, data: Any, profile: Optional[list] = None) -> None:
         """Load new data into the outputs.
 
         Args:
             data (Any): The data to load into the outputs
         """
+        if isinstance(profile, list):
+            saving_result_start = perf_counter()
         for output in self._outputs:
             output(data)
+        if isinstance(profile, list):
+            profile.append(perf_counter() - saving_result_start)
 
     def __iter__(self):
         self._current = 0

@@ -326,7 +326,7 @@ class Runner(MMENGINERunner):
                 raise ValueError(
                     f"The checkpoint you are trying to resume your training run from is not a training checkpoint: "
                     f"{os.path.abspath(filename)}. "
-                    f"Trainign checkpoints takes on the following name: 'epoch_<your chekpointed epoch>.pth'."
+                    f"Training checkpoints takes on the following name: 'epoch_<your chekpointed epoch>.pth'."
                 )
 
         # resume param scheduler

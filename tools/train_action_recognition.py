@@ -21,8 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--test", type=str2bool, default=True, help="True to test the trained model, False otherwise")
     parser.add_argument("--deploy", type=str2bool, default=True, help="True to deploy the trained model, False otherwise")
-    parser.add_argument("--config", type=str, default="../tests/configs/training_action_recognition.py", help="Path to the training config")
-    # parser.add_argument("--config", type=str, default="../configs/tasks/training_action_recognition.py", help="Path to the training config")
+    parser.add_argument("--config", type=str, default="../configs/tasks/training_action_recognition.py", help="Path to the training config")
     parser.add_argument("--launcher", choices=["none", "pytorch", "slurm", "mpi"], default="none", help="job launcher")
     parser.add_argument("--local_rank", "--local-rank", type=int, default=0)
     args = parser.parse_args()
@@ -43,6 +42,7 @@ def main(args):
     runner()
 
     deploy_cfg = load_config("../configs/tasks/deploying.py")
+    # TODO Does not save properly...
     deployed_path = deploy(deploy_cfg, "mart_runtime_config", deploy_cfg["mart_testing_checkpoint"], logger)
     tracking_config = load_config(deploy_cfg.tracking_cfg)
     tracking_config.load_from = deployed_path

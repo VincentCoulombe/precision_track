@@ -3,7 +3,7 @@ import logging
 import os.path as osp
 from collections import deque
 from typing import List, Optional, Tuple, Union
-
+from time import perf_counter
 import numpy as np
 import torch
 import torch.nn as nn
@@ -270,6 +270,7 @@ class AssociationStep(nn.Module):
         self,
         data_sample: dict,
         corrections: Optional[List[Tuple]] = None,
+        profile: Optional[dict] = None,
         *args,
         **kwargs,
     ) -> dict:
@@ -277,6 +278,7 @@ class AssociationStep(nn.Module):
         return self.associate(
             data_sample,
             corrections,
+            profile,
             *args,
             **kwargs,
         )
@@ -285,6 +287,7 @@ class AssociationStep(nn.Module):
         self,
         data_sample: dict,
         corrections: Optional[List[Tuple]] = None,
+        profile: Optional[dict] = None,
         *args,
         **kwargs,
     ) -> dict:
@@ -299,7 +302,15 @@ class AssociationStep(nn.Module):
         Returns:
             dict: The data_sample modified in place.
         """
+        if profile is not None:
+            t0 = perf_counter()
+            init_start = t0
         frame_id = self.init_frame(data_sample, corrections)
+
+        if profile is not None:
+            profile.setdefault("init_frame", []).append(perf_counter() - init_start)
+            tracking_start = perf_counter()
+
         self.tracking_algorithm(
             data_sample,
             self.tracks,
@@ -309,10 +320,14 @@ class AssociationStep(nn.Module):
             *args,
             **kwargs,
         )
+        if profile is not None:
+            profile.setdefault("tracking", []).append(perf_counter() - tracking_start)
 
         self._register_association(frame_id, data_sample)
 
         if self.stitching_algorithm is not None:
+            if profile is not None:
+                stitching_start = perf_counter()
             self.stitching_algorithm(
                 self.tracks,
                 data_sample,
@@ -321,6 +336,8 @@ class AssociationStep(nn.Module):
                 *args,
                 **kwargs,
             )
+            if profile is not None:
+                profile.setdefault("stitching", []).append(perf_counter() - stitching_start)
 
         if self.return_isolations:
             relevant_bboxes = data_sample["pred_track_instances"]["bboxes"]
@@ -334,6 +351,11 @@ class AssociationStep(nn.Module):
             bious = biou_batch(relevant_bboxes, bboxes.copy(), 0.25)
             isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
             data_sample["pred_track_instances"]["isolated"] = isolated
+
+        if profile is not None:
+            total_time = perf_counter() - t0
+            measured = sum(profile.get("init_frame", [])[-1:]) + sum(profile.get("tracking", [])[-1:]) + sum(profile.get("stitching", [])[-1:])
+            profile.setdefault("association_housekeeping", []).append(total_time - measured)
 
         return data_sample
 

@@ -185,17 +185,17 @@ class BaseCsvOutput(BaseOutput, metaclass=abc.ABCMeta):
             self.curr_frame_idx = curr_frame_idx
 
     def _set_ids(self, instance_data: dict):
-        return (
-            np.zeros_like(to_numpy(instance_data["labels"])) - 1
-            if self.instance_data
-            not in [
-                "pred_track_instances",
-                "validation_instances",
-                "correction_instances",
-                "search_areas",
-            ]
-            else instance_data[self.ids_field]
-        )
+        fallback = np.zeros_like(to_numpy(instance_data["labels"])) - 1
+        if self.instance_data not in [
+            "pred_track_instances",
+            "pred_instances",
+            "validation_instances",
+            "correction_instances",
+            "search_areas",
+        ]:
+            return fallback
+
+        return instance_data.get(self.ids_field, fallback)
 
     def _get_ds_info(self, data_sample: dict):
         instance_data = data_sample.get(self.instance_data, None)

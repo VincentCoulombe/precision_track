@@ -35,6 +35,7 @@ class Tracker(BaseModel):
         outputs: Optional[List[dict]] = None,
         verbose: Optional[bool] = True,
         batch_size: Optional[int] = 1,
+        profile: Optional[str] = "",
         *args,
         **kwargs,
     ):
@@ -66,6 +67,9 @@ class Tracker(BaseModel):
         if self.analyzer is not None:
             self.analyzer = MODELS.build(analyzer)
             self._analyzing = True
+
+        assert isinstance(profile, str)
+        self.profile = profile
 
     def _init_association_step(self):
         self.association_step = AssociationStep(**self._assigner)
@@ -147,6 +151,7 @@ class Tracker(BaseModel):
             validator=self.validator,
             analyzer=self.analyzer,
             verbose=self.verbose,
+            profile=self.profile,
         )
         if self.verbose:
             display_latency(

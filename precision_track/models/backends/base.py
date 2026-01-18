@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, List, Optional, Tuple, Union
-
+from time import perf_counter
 import numpy as np
 import torch
 from addict import Dict
@@ -47,7 +47,7 @@ class BaseBackend(BaseModel, metaclass=ABCMeta):
         **kwargs,
     ) -> Union[List[dict], dict]:
         if mode == "predict":
-            return self.predict(inputs=inputs, data_samples=data_samples)
+            return self.predict(inputs=inputs, data_samples=data_samples, *args, **kwargs)
         elif mode == "loss":
             return self.loss(inputs=inputs, data_samples=data_samples)
         elif mode == "tensor":
@@ -70,11 +70,16 @@ class BaseBackend(BaseModel, metaclass=ABCMeta):
         self,
         inputs: Union[List[Union[np.ndarray, str, torch.Tensor]], torch.Tensor],
         data_samples: Union[List[Union[int, PoseDataSample, dict]], dict],
+        profile: Optional[list] = None,
     ) -> Union[list[dict], dict]:
+        if isinstance(profile, list):
+            t0 = perf_counter()
         with autocast(enabled=self.half_precision):
             data = self.preprocess(inputs, data_samples)
             feats = self._runtime.predict(**data)
             outputs = self.postprocess(*feats, data_samples=data["data_samples"])
+        if isinstance(profile, list):
+            profile.append((perf_counter() - t0) / len(data_samples))
         return outputs
 
     @abstractmethod
