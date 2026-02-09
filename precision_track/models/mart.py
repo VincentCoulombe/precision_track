@@ -50,7 +50,6 @@ class MART(BaseModel):
         self.n_embd_feats = config.n_embd
         self.block_size = config.block_size
 
-        # Create separate config copies to avoid mutation
         n_embd_dynamics = config.n_embd_dynamics
         dynamics_config = config.copy()
         dynamics_config.n_embd = n_embd_dynamics
@@ -217,3 +216,316 @@ class MART(BaseModel):
         for block in self.decoder:
             x = block(x)
         return x
+
+
+@MODELS.register_module()
+class MLPAnalyzer(BaseModel):
+    METAINFO_KEYS = [
+        "skeleton_links",
+    ]
+
+    def __init__(
+        self,
+        config: Config,
+        metainfo: str,
+        data_preprocessor: Optional[Union[dict, nn.Module]] = None,
+        loss_actions: Optional[Config] = None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(data_preprocessor=data_preprocessor)
+
+        assert hasattr(config, "block_size") and config.block_size > 0, "config.block_size must be positive"
+        assert hasattr(config, "n_output") and config.n_output > 0, "config.n_output must be positive"
+        assert hasattr(config, "n_embd") and config.n_embd > 0, "config.n_embd must be positive"
+        assert hasattr(config, "n_embd_dynamics"), "config must have n_embd_dynamics attribute"
+        assert hasattr(config, "n_embd_pose"), "config must have n_embd_pose attribute"
+        assert hasattr(config, "n_block"), "config must have n_block attribute"
+
+        metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        self.n_pose = len(metainfo.get("skeleton_links", []))
+        self.n_kpts = metainfo.get("num_keypoints", 0)
+        self.n_embd_feats = config.n_embd
+        self.block_size = config.block_size
+
+        n_embd_dynamics = config.n_embd_dynamics
+        dynamics_config = config.copy()
+        dynamics_config.n_embd = n_embd_dynamics
+        self.n_encoded_dynamics = config.get("n_encoded_dynamics", 2)
+        self.velocity_encoder = nn.Sequential(
+            ProjLN(self.n_encoded_dynamics, dynamics_config.n_embd, bias=dynamics_config.bias),
+            TransformerMLP(dynamics_config),
+            nn.LayerNorm(dynamics_config.n_embd, bias=dynamics_config.bias),
+        )
+
+        n_embd_pose = config.n_embd_pose
+        pose_config = config.copy()
+        pose_config.n_embd = n_embd_pose
+        self.pose_encoder = nn.Sequential(
+            ProjLN(self.n_pose * 2, pose_config.n_embd, bias=pose_config.bias),
+            TransformerMLP(pose_config),
+            nn.LayerNorm(pose_config.n_embd, bias=pose_config.bias),
+        )
+
+        feature_config = config.copy()
+        feature_config.n_embd = self.n_embd_feats
+        self.feature_encoder = nn.Sequential(
+            TransformerMLP(feature_config),
+            nn.LayerNorm(feature_config.n_embd, bias=feature_config.bias),
+        )
+
+        mlp_config = config.copy()
+        mlp_config.n_embd = self.n_embd_feats + n_embd_dynamics + n_embd_pose
+
+        self.n_class = config.n_output
+        self.classification_head = nn.Sequential(
+            TransformerMLP(mlp_config),
+            nn.Linear(mlp_config.n_embd, self.n_class, bias=mlp_config.bias),
+        )
+
+        self.proj = TransformerMLP(mlp_config)
+
+        self.loss_actions = loss_actions
+        if loss_actions is not None:
+            self.loss_actions = MODELS.build(loss_actions)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+
+    def forward(
+        self,
+        features: torch.Tensor,
+        poses: torch.Tensor,
+        dynamics: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
+        data_samples: Optional[List[PoseDataSample]] = None,
+        mode: Optional[str] = "tensor",
+        *args,
+        **kwargs,
+    ) -> Union[Tensor, Tuple[Tensor], dict]:
+        if isinstance(features, list):
+            features = torch.stack(features)
+        if mode == "loss":
+            return self.loss(features, poses, dynamics, labels)
+        elif mode == "predict":
+            return self.predict((features, poses, dynamics), data_samples)
+        else:
+            raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss and predict mode.")
+
+    def train_step(self, data: Union[dict, tuple, list], optim_wrapper: OptimWrapper) -> Dict[str, torch.Tensor]:
+        with optim_wrapper.optim_context(self):
+            data = self.data_preprocessor(data, True)
+            losses = self._run_forward(data, mode=self._mode)
+        parsed_losses, log_vars = self.parse_losses(losses)
+        optim_wrapper.update_params(parsed_losses)
+        return log_vars
+
+    def loss(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, labels: torch.Tensor) -> dict:
+        x = self._get_projections(
+            features=features,
+            poses=poses,
+            dynamics=dynamics,
+        )
+        class_logits = self.classification_head(x)
+
+        N, T, _ = x.shape
+        labels = labels.reshape(N * T).long()
+        loss = F.cross_entropy(class_logits.reshape(N * T, self.n_class), labels)
+        return dict(classification_loss=loss)
+
+    def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
+        features, poses, dynamics = inputs
+        x = self._get_projections(
+            features=features,
+            poses=poses,
+            dynamics=dynamics,
+        )
+        class_logits = self.classification_head(x)
+        return F.softmax(class_logits[:, -1, :], dim=-1), F.normalize(x[:, -1, :], p=2, dim=-1)
+
+    def _get_projections(
+        self,
+        features: Tensor,
+        poses: torch.Tensor,
+        dynamics: torch.Tensor,
+    ):
+        features = self.dropout(features.reshape(-1, self.block_size, self.n_embd_feats))
+        dynamics = self.dropout(dynamics.reshape(-1, self.block_size, self.n_encoded_dynamics))
+        poses = self.dropout(poses.reshape(-1, self.block_size, self.n_pose * 2))
+
+        pose_embs = self.pose_encoder(poses)
+        dyns_embs = self.velocity_encoder(dynamics)
+        feat_embs = self.feature_encoder(features)
+
+        return self.proj(torch.cat((feat_embs, pose_embs, dyns_embs), dim=-1))
+
+
+@MODELS.register_module()
+class LSTMAnalyzer(BaseModel):
+    METAINFO_KEYS = [
+        "skeleton_links",
+    ]
+
+    def __init__(
+        self,
+        config: Config,
+        metainfo: str,
+        data_preprocessor: Optional[Union[dict, nn.Module]] = None,
+        loss_actions: Optional[Config] = None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(data_preprocessor=data_preprocessor)
+
+        assert hasattr(config, "block_size") and config.block_size > 0, "config.block_size must be positive"
+        assert hasattr(config, "n_output") and config.n_output > 0, "config.n_output must be positive"
+        assert hasattr(config, "n_embd") and config.n_embd > 0, "config.n_embd must be positive"
+        assert hasattr(config, "n_embd_dynamics"), "config must have n_embd_dynamics attribute"
+        assert hasattr(config, "n_embd_pose"), "config must have n_embd_pose attribute"
+        assert hasattr(config, "n_block"), "config must have n_block attribute"
+
+        metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        self.n_pose = len(metainfo.get("skeleton_links", []))
+        self.n_kpts = metainfo.get("num_keypoints", 0)
+        self.n_embd_feats = config.n_embd
+        self.block_size = config.block_size
+
+        n_embd_dynamics = config.n_embd_dynamics
+        dynamics_config = config.copy()
+        dynamics_config.n_embd = n_embd_dynamics
+        self.n_encoded_dynamics = config.get("n_encoded_dynamics", 2)
+        self.velocity_encoder = nn.Sequential(
+            ProjLN(self.n_encoded_dynamics, dynamics_config.n_embd, bias=dynamics_config.bias),
+            TransformerMLP(dynamics_config),
+            nn.LayerNorm(dynamics_config.n_embd, bias=dynamics_config.bias),
+        )
+
+        n_embd_pose = config.n_embd_pose
+        pose_config = config.copy()
+        pose_config.n_embd = n_embd_pose
+        self.pose_encoder = nn.Sequential(
+            ProjLN(self.n_pose * 2, pose_config.n_embd, bias=pose_config.bias),
+            TransformerMLP(pose_config),
+            nn.LayerNorm(pose_config.n_embd, bias=pose_config.bias),
+        )
+
+        feature_config = config.copy()
+        feature_config.n_embd = self.n_embd_feats
+        self.feature_encoder = nn.Sequential(
+            TransformerMLP(feature_config),
+            nn.LayerNorm(feature_config.n_embd, bias=feature_config.bias),
+        )
+
+        proj_dim = self.n_embd_feats + n_embd_dynamics + n_embd_pose
+        proj_config = config.copy()
+        proj_config.n_embd = proj_dim
+        self.proj = TransformerMLP(proj_config)
+
+        self.lstm = nn.LSTM(
+            input_size=proj_dim,
+            hidden_size=proj_dim,
+            num_layers=config.n_block,
+            batch_first=True,
+            dropout=config.dropout if config.n_block > 1 else 0.0,
+            bidirectional=False,
+        )
+
+        self.ln = nn.LayerNorm(proj_dim, bias=config.bias)
+        self.n_class = config.n_output
+        self.classification_head = nn.Linear(proj_dim, self.n_class, bias=config.bias)
+
+        self.loss_actions = loss_actions
+        if loss_actions is not None:
+            self.loss_actions = MODELS.build(loss_actions)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.LSTM):
+            for name, param in module.named_parameters():
+                if "weight_ih" in name:
+                    torch.nn.init.xavier_uniform_(param)
+                elif "weight_hh" in name:
+                    torch.nn.init.orthogonal_(param)
+                elif "bias" in name:
+                    torch.nn.init.zeros_(param)
+
+    def forward(
+        self,
+        features: torch.Tensor,
+        poses: torch.Tensor,
+        dynamics: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
+        data_samples: Optional[List[PoseDataSample]] = None,
+        mode: Optional[str] = "tensor",
+        *args,
+        **kwargs,
+    ) -> Union[Tensor, Tuple[Tensor], dict]:
+        if isinstance(features, list):
+            features = torch.stack(features)
+        if mode == "loss":
+            return self.loss(features, poses, dynamics, labels)
+        elif mode == "predict":
+            return self.predict((features, poses, dynamics), data_samples)
+        else:
+            raise RuntimeError(f'Invalid mode "{mode}". ' "Only supports loss and predict mode.")
+
+    def train_step(self, data: Union[dict, tuple, list], optim_wrapper: OptimWrapper) -> Dict[str, torch.Tensor]:
+        with optim_wrapper.optim_context(self):
+            data = self.data_preprocessor(data, True)
+            losses = self._run_forward(data, mode="loss")
+        parsed_losses, log_vars = self.parse_losses(losses)
+        optim_wrapper.update_params(parsed_losses)
+        return log_vars
+
+    def loss(self, features: Tensor, poses: torch.Tensor, dynamics: torch.Tensor, labels: torch.Tensor) -> dict:
+        x = self._get_projections(
+            features=features,
+            poses=poses,
+            dynamics=dynamics,
+        )
+        x = self._get_lstm_output(x)
+        class_logits = self.classification_head(x)
+
+        N, T, _ = x.shape
+        labels = labels.reshape(N * T).long()
+        loss = F.cross_entropy(class_logits.reshape(N * T, self.n_class), labels)
+        return dict(classification_loss=loss)
+
+    def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
+        features, poses, dynamics = inputs
+        x = self._get_projections(
+            features=features,
+            poses=poses,
+            dynamics=dynamics,
+        )
+        x = self._get_lstm_output(x)
+        class_logits = self.classification_head(x)
+        return F.softmax(class_logits[:, -1, :], dim=-1), F.normalize(x[:, -1, :], p=2, dim=-1)
+
+    def _get_projections(
+        self,
+        features: Tensor,
+        poses: torch.Tensor,
+        dynamics: torch.Tensor,
+    ):
+        features = self.dropout(features.reshape(-1, self.block_size, self.n_embd_feats))
+        dynamics = self.dropout(dynamics.reshape(-1, self.block_size, self.n_encoded_dynamics))
+        poses = self.dropout(poses.reshape(-1, self.block_size, self.n_pose * 2))
+
+        pose_embs = self.pose_encoder(poses)
+        dyns_embs = self.velocity_encoder(dynamics)
+        feat_embs = self.feature_encoder(features)
+
+        return self.proj(torch.cat((feat_embs, pose_embs, dyns_embs), dim=-1))
+
+    def _get_lstm_output(self, x: Tensor) -> Tensor:
+        lstm_out, _ = self.lstm(x)
+        return self.ln(lstm_out)

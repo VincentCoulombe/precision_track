@@ -3,7 +3,7 @@ from typing import List, Optional
 import numpy as np
 
 from precision_track.registry import TRACKING
-from precision_track.utils import batch_bbox_areas, oks_batch, parse_pose_metainfo
+from precision_track.utils import batch_bbox_areas, oks_batch, parse_pose_metainfo, biou_batch, iou_batch
 
 from .byte_track import ByteTrack
 
@@ -18,12 +18,13 @@ class PrecisionTrack(ByteTrack):
         weight_iou_with_det_scores: Optional[bool] = False,
         match_iou_thrs: Optional[dict] = dict(high=0.9, low=0.5, tentative=0.9),
         init_track_thr: Optional[float] = 0.8,
-        keep_searching_for: Optional[int] = 1,
+        keep_searching_for: Optional[int] = 30,
         dynamic_temporal_scaling: Optional[bool] = False,
         alpha: Optional[float] = 0.5,
         with_kpt_weights: Optional[bool] = True,
         with_kpt_sigmas: Optional[bool] = False,
-        nb_frames_retain: Optional[int] = 10,
+        nb_frames_retain: Optional[int] = 30,
+        use_oks: Optional[bool] = True,
         **kwargs,
     ):
         """PrecisionTrack: Building trajectories by doing detections-tracks associations
@@ -42,6 +43,7 @@ class PrecisionTrack(ByteTrack):
             alpha (float, optional): The weight of the pose in the association score. Defaults to 0.2.
             with_kpt_weights (bool, optional): Weight the pose association score by each keypoint confidence. Defaults to True.
             with_kpt_sigmas (bool, optional): Weight the pose association score by each keypoint sigma. Defaults to False.
+            use_oks (bool, optional): If OKS is used to calculate the matching costs. Default to True.
         """
         assert isinstance(keep_searching_for, int) and 0 < keep_searching_for
         self.keep_searching_for = keep_searching_for
@@ -69,6 +71,7 @@ class PrecisionTrack(ByteTrack):
         self.alpha = alpha
 
         self.frame_id = 0
+        self.use_oks = use_oks
 
     def get_tracks_preds_oks(self, track_bboxes, track_poses, track_pose_confs, pred_instances, pred_idx, eps=1e-3):
         det_poses = pred_instances["keypoints"][pred_idx].astype(np.float32)
@@ -125,6 +128,7 @@ class PrecisionTrack(ByteTrack):
         track_poses_conf = np.empty((num_tracks, self.num_keypoints), dtype=np.float32)
         track_bboxes = np.empty((num_tracks, 4), dtype=np.float32)
         track_detection_deltas = np.zeros((num_tracks, 1), dtype=np.float32)
+        track_velocity_erraticities = np.zeros((num_tracks, 1), dtype=np.float32)
         keep_trying = np.ones(num_tracks, dtype=bool)
 
         for i, track_id in enumerate(track_ids):
@@ -132,11 +136,12 @@ class PrecisionTrack(ByteTrack):
             track_bboxes[i] = tracks[track_id]["pred_bboxe"].astype(np.float32)
             track_poses_conf[i] = tracks[track_id]["keypoint_scores"][-1].astype(np.float32)
             trk_frame_id = tracks[track_id]["frame_ids"][-1]
+            track_velocity_erraticities[i] = tracks[track_id].get("bounded_erraticity", 0.0)
             keep_trying[i] = trk_frame_id >= self.frame_id - self.keep_searching_for
             if trk_frame_id > 0 and self.use_deltas_t:
                 track_detection_deltas[i] = (self.frame_id - trk_frame_id) / self.nb_frames_retain
 
-        return track_bboxes, track_poses, track_poses_conf, track_detection_deltas, keep_trying
+        return track_bboxes, track_poses, track_poses_conf, track_detection_deltas, track_velocity_erraticities, keep_trying
 
     def __call__(
         self,
@@ -197,6 +202,7 @@ class PrecisionTrack(ByteTrack):
                 track_poses,
                 track_pose_confs,
                 deltas_t,
+                erraticities,
                 keep_trying,
             ) = self._tracks_to_pred_bboxes_kpts(tracks, confirmed_ids)
 
@@ -207,7 +213,7 @@ class PrecisionTrack(ByteTrack):
                 pred_instances,
                 remaining_conf_idx,
                 deltas_t,
-                use_oks=True,
+                use_oks=self.use_oks,
             )
 
             matched_tracks, matched_dets = self.assign_ids(
@@ -218,6 +224,7 @@ class PrecisionTrack(ByteTrack):
                 remaining_conf_idx,
                 self.weight_iou_with_det_scores,
                 self.match_iou_thrs["high"],
+                erraticities=erraticities,
             )
 
             matched_pred_idx_tmp = np.where(remaining_conf_idx)[0][matched_dets]
@@ -247,6 +254,7 @@ class PrecisionTrack(ByteTrack):
                     track_pose_confs,
                     deltas_t,
                     _,
+                    _,
                 ) = self._tracks_to_pred_bboxes_kpts(tracks, unconfirmed_ids)
 
                 dists = self.get_cost_matrix(
@@ -256,7 +264,7 @@ class PrecisionTrack(ByteTrack):
                     pred_instances,
                     remaining_conf_idx,
                     deltas_t,
-                    use_oks=True,
+                    use_oks=self.use_oks,
                 )
 
                 matched_tracks, matched_dets = self.assign_ids(
@@ -287,6 +295,7 @@ class PrecisionTrack(ByteTrack):
                     track_poses,
                     track_pose_confs,
                     deltas_t,
+                    _,
                     _,
                 ) = self._tracks_to_pred_bboxes_kpts(tracks, remaining_alive_confirmed_trk_ids)
                 dists = self.get_cost_matrix(

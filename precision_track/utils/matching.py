@@ -28,7 +28,7 @@ def biou_batch(tracks, detections, scales, general=False):
     """scales should be values between 0 and 1"""
     if isinstance(scales, np.ndarray) and scales.ndim == 1:
         scales = np.expand_dims(scales, axis=1)
-    detections[:, 2:] += 2 * scales * detections[:, 2:]
+    tracks[:, 2:] += scales * tracks[:, 2:]
     return iou_batch(tracks, detections, general)
 
 
@@ -330,7 +330,7 @@ def linear_assignment(cost_matrix, thresh=None):
     elif isinstance(thresh, float):
         return filter_matches(x, y, cost_matrix, thresh)
     elif isinstance(thresh, np.ndarray):
-        thresh = thresh[y].astype(np.float32)
+        thresh = thresh[x].astype(np.float32)
         return filter_matches_dynamic(x, y, cost_matrix, thresh)
     else:
         TypeError(f"thresh must be one of [NoneType, float, np.ndarray]. Not, {type(thresh)}.")

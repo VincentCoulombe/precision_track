@@ -61,7 +61,6 @@ class Runner(MMENGINERunner):
         randomness = cfg.get("randomness", dict(seed=None))
         experiment_name = cfg.get("experiment_name")
         load_from = None if mode == "test" else cfg.get("load_from")
-        cfg = cfg
 
         self._work_dir = osp.abspath(work_dir)
         mmengine.mkdir_or_exist(self._work_dir)

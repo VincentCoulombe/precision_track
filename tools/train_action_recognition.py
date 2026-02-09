@@ -3,7 +3,6 @@ import logging
 import os
 from collections import defaultdict
 
-import yaml
 from mmengine.logging import MMLogger
 from test_action_recognition import main as test_ar_main
 from train_detection import deploy, get_device, load_config, parse_device_id, str2bool
@@ -14,7 +13,7 @@ from precision_track.registry import TASK_UTILS
 from precision_track.deploy.to_onnx import mart_to_onnx
 from precision_track.deploy.to_tensorrt import to_tensorrt
 from precision_track.models.backends import DetectionBackend
-from precision_track.utils import load_user_configs
+from precision_track.utils import load_user_configs, find_checkpoint_hook
 
 
 def parse_args():
@@ -33,17 +32,19 @@ def parse_args():
 def main(args):
     logger = MMLogger.get_instance("mmengine", log_level=logging.INFO, file_mode="w")
     system_configs_path = args.config
-    with open("../configs/user_configs.yaml", "r") as f:
-        user_configs = yaml.safe_load(f)
-    user_configs["booleans"]["with_action_recognition"] = True
-    load_user_configs(user_configs, system_configs_path)
+    user_system_configs_path = "../configs/user_configs.yaml"
+    load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
 
     runner = Runner(system_configs_path, args.launcher, mode="train")
     runner()
+    checkpoint_hook = find_checkpoint_hook(runner)
+
+    best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
+    assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
+    "This is either because you deleted it manually or because the training run stopped before a validation step took place."
 
     deploy_cfg = load_config("../configs/tasks/deploying.py")
-    # TODO Does not save properly...
-    deployed_path = deploy(deploy_cfg, "mart_runtime_config", deploy_cfg["mart_testing_checkpoint"], logger)
+    deployed_path = deploy(deploy_cfg, "mart_runtime_config", best_ckpt_path, logger)
     tracking_config = load_config(deploy_cfg.tracking_cfg)
     tracking_config.load_from = deployed_path
 

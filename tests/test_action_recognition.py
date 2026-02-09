@@ -54,12 +54,14 @@ def deployed_checkpoints():
     )
 
 
-def set_user_configs(with_action_recognition: bool, user_configs, system_config, deploying_directory=""):
+def set_user_configs(with_action_recognition: bool, user_configs, system_config, deploying_directory="", metadata_file=""):
     with open(user_configs, "r") as f:
         user_configs = yaml.safe_load(f)
     user_configs["booleans"]["with_action_recognition"] = with_action_recognition
     if deploying_directory:
         user_configs["training"]["deploying_directory"] = deploying_directory + "/"
+    if metadata_file:
+        user_configs["training"]["metainfo"] = metadata_file
     load_user_configs(user_configs, system_config)
 
 
@@ -204,144 +206,160 @@ def test_training_preprocessing(predict_inputs, loss_sequence_input, config):
 
 def test_action_recognition_dataset(training_config, user_configs):
 
-    set_user_configs(True, user_configs, training_config, deploying_directory=os.path.join(ROOT, "configs"))
+    set_user_configs(True, user_configs, training_config, deploying_directory=os.path.join(ROOT, "configs"), metadata_file="./configs/metadata/mice.py")
     try:
         train_config = Config.fromfile(training_config)
         val_data_prefix = train_config.val_dataloader["dataset"]["data_prefix"]
         data_root = train_config.val_dataloader["dataset"]["data_root"]
+        train_config.val_dataloader["dataset"]["data_root"] = os.path.abspath(os.path.join(TOOLS_DIR, data_root))
 
-        reference_bboxes = OUTPUTS.build(
-            {
-                "type": train_config.val_dataloader["dataset"]["bboxes_gt_format"],
-                "path": os.path.join(TOOLS_DIR, data_root, val_data_prefix["bboxes_gt_paths"][0]),
-            }
-        )
-        reference_bboxes.read()
-        reference_actions = OUTPUTS.build(
-            {
-                "type": train_config.val_dataloader["dataset"]["actions_gt_format"],
-                "path": os.path.join(TOOLS_DIR, data_root, val_data_prefix["actions_gt_paths"][0]),
-            }
-        )
-        reference_actions.read()
+        bboxes_gt_path = val_data_prefix["bboxes_gt_paths"][0]
+        kpts_gt_path = val_data_prefix["keypoints_gt_paths"][0]
+        actions_gt_path = val_data_prefix["actions_gt_paths"][0]
+        sequence_path = val_data_prefix["sequences"][0]
 
-        def run_asserts(ar_dataset, reference_bboxes, reference_actions):
-            assert len(ar_dataset.data_list) > 0, "Dataset data_list should not be empty"
-            for seq_idx, sequence in enumerate(ar_dataset.data_list):
-                assert len(sequence) > 0, f"Sequence {seq_idx} should not be empty"
-                for data_sample in sequence:
-                    frame_id = data_sample.img_id
-                    frame_reference_actions = np.array(reference_actions[frame_id])
-                    frame_reference_bboxes = np.array(reference_bboxes[frame_id])
+        if os.path.isfile(bboxes_gt_path) and os.path.isfile(kpts_gt_path) and os.path.isfile(actions_gt_path) and os.path.isfile(sequence_path):
+            train_config.val_dataloader["dataset"]["data_prefix"] = dict(
+                sequences=[sequence_path],
+                keypoints_gt_paths=[kpts_gt_path],
+                bboxes_gt_paths=[bboxes_gt_path],
+                actions_gt_paths=[actions_gt_path],
+            )
 
-                    assert np.allclose(frame_reference_actions[:, :3].astype(int), frame_reference_bboxes[:, :3].astype(int))
+            reference_bboxes = OUTPUTS.build(
+                {
+                    "type": train_config.val_dataloader["dataset"]["bboxes_gt_format"],
+                    "path": bboxes_gt_path,
+                }
+            )
+            reference_bboxes.read()
+            reference_actions = OUTPUTS.build(
+                {
+                    "type": train_config.val_dataloader["dataset"]["actions_gt_format"],
+                    "path": kpts_gt_path,
+                }
+            )
+            reference_actions.read()
 
-                    gt_ids = frame_reference_bboxes[:, 2]
-                    gt_bboxes = frame_reference_bboxes[:, 3:]
-                    gt_actions = frame_reference_actions[:, 3]
+            def run_asserts(ar_dataset, reference_bboxes, reference_actions):
+                assert len(ar_dataset.data_list) > 0, "Dataset data_list should not be empty"
+                for seq_idx, sequence in enumerate(ar_dataset.data_list):
+                    assert len(sequence) > 0, f"Sequence {seq_idx} should not be empty"
+                    for data_sample in sequence:
+                        frame_id = data_sample.img_id
+                        frame_reference_actions = np.array(reference_actions[frame_id])
+                        frame_reference_bboxes = np.array(reference_bboxes[frame_id])
 
-                    ds_pti = data_sample.pred_track_instances
-                    ds_gt = data_sample.gt_instance_labels
+                        assert np.allclose(frame_reference_actions[:, :3].astype(int), frame_reference_bboxes[:, :3].astype(int))
 
-                    for ds_id, ds_bboxe, ds_action in zip(ds_pti.instances_id, ds_pti.bboxes, gt_bboxes, ds_gt.action_labels):
-                        assert np.isin(ds_id, gt_ids)
-                        ds_id_idx = np.where(ds_id == gt_ids)[0][0]
-                        gt_id_bboxes = gt_bboxes[ds_id_idx]
-                        assert np.allclose(
-                            gt_id_bboxes, ds_bboxe, atol=50
-                        ), f"The ground truth bboxe ({gt_id_bboxes.tolist()}) is significantly different than the data_sample bboxe ({ds_bboxe.tolist()})."
-                        assert gt_actions[ds_id_idx].item() == ar_dataset.label_to_action_map[ds_action.item()]
+                        gt_ids = frame_reference_bboxes[:, 2]
+                        gt_bboxes = frame_reference_bboxes[:, 3:]
+                        gt_actions = frame_reference_actions[:, 3]
 
-                    assert data_sample.pred_track_instances.features.shape[1] == ar_dataset.n_feats
-                    assert data_sample.pred_track_instances.dynamics.shape[1] == ar_dataset.n_velocities
+                        ds_pti = data_sample.pred_track_instances
+                        ds_gt = data_sample.gt_instance_labels
 
-            assert len(ar_dataset.action_to_sequence_map) > 0, "action_to_sequence_map should not be empty"
+                        for ds_id, ds_bboxe, ds_action in zip(ds_pti.instances_id, ds_pti.bboxes, gt_bboxes, ds_gt.action_labels):
+                            assert np.isin(ds_id, gt_ids)
+                            ds_id_idx = np.where(ds_id == gt_ids)[0][0]
+                            gt_id_bboxes = gt_bboxes[ds_id_idx]
+                            assert np.allclose(
+                                gt_id_bboxes, ds_bboxe, atol=50
+                            ), f"The ground truth bboxe ({gt_id_bboxes.tolist()}) is significantly different than the data_sample bboxe ({ds_bboxe.tolist()})."
+                            assert gt_actions[ds_id_idx].item() == ar_dataset.label_to_action_map[ds_action.item()]
 
-            for action, sequence_list in ar_dataset.action_to_sequence_map.items():
-                action_label = ar_dataset.label_to_action_map[action]
-                for seq in sequence_list:
-                    seq_idx, _, frame_id, inst_id = seq
-                    inst_id = int(inst_id)
-                    frame_reference_actions = np.array(reference_actions[frame_id])
-                    ref_frame_id = frame_reference_actions[:, 0].astype(int)[0]
-                    assert frame_id == ref_frame_id
-                    ref_ids = frame_reference_actions[:, 2].astype(int)
-                    ref_action = frame_reference_actions[:, 3]
-                    assert np.isin(inst_id, ref_ids)
-                    inst_id_idx = np.where(inst_id == ref_ids)[0][0]
-                    assert action_label == ref_action[inst_id_idx].item()
+                        assert data_sample.pred_track_instances.features.shape[1] == ar_dataset.n_feats
+                        assert data_sample.pred_track_instances.dynamics.shape[1] == ar_dataset.n_velocities
 
-                    assert isinstance(seq_idx, (int, np.integer)), f"seq_idx should be int, got {type(seq_idx)}"
-                    assert isinstance(frame_id, (int, np.integer)), f"frame_id should be int, got {type(frame_id)}"
-                    assert frame_id >= ar_dataset.block_size, f"frame_id {frame_id} should be >= block_size {ar_dataset.block_size}"
+                assert len(ar_dataset.action_to_sequence_map) > 0, "action_to_sequence_map should not be empty"
 
-            num_iterations = 200
-            for iteration in range(num_iterations):
-                data = ar_dataset.prepare_data(iteration)
+                for action, sequence_list in ar_dataset.action_to_sequence_map.items():
+                    action_label = ar_dataset.label_to_action_map[action]
+                    for seq in sequence_list:
+                        seq_idx, _, frame_id, inst_id = seq
+                        inst_id = int(inst_id)
+                        frame_reference_actions = np.array(reference_actions[frame_id])
+                        ref_frame_id = frame_reference_actions[:, 0].astype(int)[0]
+                        assert frame_id == ref_frame_id
+                        ref_ids = frame_reference_actions[:, 2].astype(int)
+                        ref_action = frame_reference_actions[:, 3]
+                        assert np.isin(inst_id, ref_ids)
+                        inst_id_idx = np.where(inst_id == ref_ids)[0][0]
+                        assert action_label == ref_action[inst_id_idx].item()
 
-                assert "inputs" in data, "prepare_data output missing 'inputs'"
-                assert "data_samples" in data, "prepare_data output missing 'data_samples'"
+                        assert isinstance(seq_idx, (int, np.integer)), f"seq_idx should be int, got {type(seq_idx)}"
+                        assert isinstance(frame_id, (int, np.integer)), f"frame_id should be int, got {type(frame_id)}"
+                        assert frame_id >= ar_dataset.block_size, f"frame_id {frame_id} should be >= block_size {ar_dataset.block_size}"
 
-                inputs = data["inputs"]
-                assert inputs.shape == (
-                    ar_dataset.block_size,
-                    ar_dataset.n_feats,
-                ), f"Iteration {iteration}: inputs shape {inputs.shape} != expected {(ar_dataset.block_size, ar_dataset.n_feats)}"
+                num_iterations = 200
+                for iteration in range(num_iterations):
+                    data = ar_dataset.prepare_data(iteration)
 
-                data_samples = data["data_samples"]
-                assert hasattr(data_samples, "pred_track_instances"), "data_samples missing pred_track_instances"
-                assert hasattr(data_samples, "gt_instance_labels"), "data_samples missing gt_instance_labels"
-                assert data_samples.pred_track_instances.kpts.shape == (
-                    ar_dataset.block_size,
-                    ar_dataset.n_kpts,
-                    2,
-                ), f"Iteration {iteration}: kpts shape mismatch"
-                assert data_samples.pred_track_instances.kpt_vis.shape == (
-                    ar_dataset.block_size,
-                    ar_dataset.n_kpts,
-                ), f"Iteration {iteration}: kpt_vis shape mismatch"
-                assert data_samples.pred_track_instances.velocities.shape == (
-                    ar_dataset.block_size,
-                    ar_dataset.n_velocities,
-                ), f"Iteration {iteration}: velocities shape mismatch"
-                assert data_samples.gt_instance_labels.action_labels.shape[0] == ar_dataset.block_size, f"Iteration {iteration}: action_labels shape mismatch"
+                    assert "inputs" in data, "prepare_data output missing 'inputs'"
+                    assert "data_samples" in data, "prepare_data output missing 'data_samples'"
 
-                frame_id = int(data_samples.img_id)
-                inst_id = int(data_samples.instance_id)
+                    inputs = data["inputs"]
+                    assert inputs.shape == (
+                        ar_dataset.block_size,
+                        ar_dataset.n_feats,
+                    ), f"Iteration {iteration}: inputs shape {inputs.shape} != expected {(ar_dataset.block_size, ar_dataset.n_feats)}"
 
-                for i in reversed(range(ar_dataset.block_size)):
-                    block_frame_id = frame_id - i
-                    frame_reference_actions = np.array(reference_actions[block_frame_id])
-                    gt_ids = frame_reference_actions[:, 2].astype(int)
-                    gt_actions = frame_reference_actions[:, 3]
-                    prepared_action = data_samples.gt_instance_labels.action_labels[ar_dataset.block_size - i - 1].item()
-                    if np.isin(inst_id, gt_ids):
-                        if int(prepared_action) == int(ar_dataset._ignore_idx):
-                            inst_id = int(inst_id)
-                            assert inst_id in ar_dataset.missed_gt
-                            assert block_frame_id in ar_dataset.missed_gt[inst_id]
-                            assert not np.isin(inst_id, ar_dataset.data_list[data_samples.seq_id][block_frame_id].pred_track_instances.instances_id)
+                    data_samples = data["data_samples"]
+                    assert hasattr(data_samples, "pred_track_instances"), "data_samples missing pred_track_instances"
+                    assert hasattr(data_samples, "gt_instance_labels"), "data_samples missing gt_instance_labels"
+                    assert data_samples.pred_track_instances.kpts.shape == (
+                        ar_dataset.block_size,
+                        ar_dataset.n_kpts,
+                        2,
+                    ), f"Iteration {iteration}: kpts shape mismatch"
+                    assert data_samples.pred_track_instances.kpt_vis.shape == (
+                        ar_dataset.block_size,
+                        ar_dataset.n_kpts,
+                    ), f"Iteration {iteration}: kpt_vis shape mismatch"
+                    assert data_samples.pred_track_instances.velocities.shape == (
+                        ar_dataset.block_size,
+                        ar_dataset.n_velocities,
+                    ), f"Iteration {iteration}: velocities shape mismatch"
+                    assert (
+                        data_samples.gt_instance_labels.action_labels.shape[0] == ar_dataset.block_size
+                    ), f"Iteration {iteration}: action_labels shape mismatch"
+
+                    frame_id = int(data_samples.img_id)
+                    inst_id = int(data_samples.instance_id)
+
+                    for i in reversed(range(ar_dataset.block_size)):
+                        block_frame_id = frame_id - i
+                        frame_reference_actions = np.array(reference_actions[block_frame_id])
+                        gt_ids = frame_reference_actions[:, 2].astype(int)
+                        gt_actions = frame_reference_actions[:, 3]
+                        prepared_action = data_samples.gt_instance_labels.action_labels[ar_dataset.block_size - i - 1].item()
+                        if np.isin(inst_id, gt_ids):
+                            if int(prepared_action) == int(ar_dataset._ignore_idx):
+                                inst_id = int(inst_id)
+                                assert inst_id in ar_dataset.missed_gt
+                                assert block_frame_id in ar_dataset.missed_gt[inst_id]
+                                assert not np.isin(inst_id, ar_dataset.data_list[data_samples.seq_id][block_frame_id].pred_track_instances.instances_id)
+                            else:
+                                inst_id_idx = np.where(inst_id == gt_ids)[0][0]
+                                assert ar_dataset.label_to_action_map[prepared_action] == gt_actions[inst_id_idx].item()
                         else:
-                            inst_id_idx = np.where(inst_id == gt_ids)[0][0]
-                            assert ar_dataset.label_to_action_map[prepared_action] == gt_actions[inst_id_idx].item()
-                    else:
-                        assert int(prepared_action) == int(ar_dataset._ignore_idx)
+                            assert int(prepared_action) == int(ar_dataset._ignore_idx)
 
-        # Reloading without augments
-        ar_dataset = DATASETS.build(train_config.val_dataloader["dataset"])
-        run_asserts(ar_dataset, reference_bboxes, reference_actions)
-        ar_dataset.reset()
-        run_asserts(ar_dataset, reference_bboxes, reference_actions)
+            # Reloading without augments
+            ar_dataset = DATASETS.build(train_config.val_dataloader["dataset"])
+            run_asserts(ar_dataset, reference_bboxes, reference_actions)
+            ar_dataset.reset()
+            run_asserts(ar_dataset, reference_bboxes, reference_actions)
 
-        # Reloading with augments
-        ar_dataset = DATASETS.build(train_config.val_dataloader["dataset"])
-        train_config.val_dataloader["dataset"]["pipeline"] = train_config.augmented_pipeline
-        run_asserts(ar_dataset, reference_bboxes, reference_actions)
-        ar_dataset.reset()
-        run_asserts(ar_dataset, reference_bboxes, reference_actions)
+            # Reloading with augments
+            ar_dataset = DATASETS.build(train_config.val_dataloader["dataset"])
+            train_config.val_dataloader["dataset"]["pipeline"] = train_config.augmented_pipeline
+            run_asserts(ar_dataset, reference_bboxes, reference_actions)
+            ar_dataset.reset()
+            run_asserts(ar_dataset, reference_bboxes, reference_actions)
 
     finally:
-        set_user_configs(False, user_configs, training_config, deploying_directory="../checkpoints/mice/")
+        set_user_configs(False, user_configs, training_config, deploying_directory="../checkpoints/mice/", metadata_file="../configs/metadata/mice.py")
 
 
 # def test_training(training_config, deployed_checkpoints, user_configs):

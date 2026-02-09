@@ -2,9 +2,8 @@ import argparse
 import logging
 import os
 import shutil
-
+from copy import deepcopy
 import mmengine
-import yaml
 from mmengine import Config
 from mmengine.logging import MMLogger
 from test_detection import main as test_detection_main
@@ -27,6 +26,7 @@ from precision_track.utils import (
     load_user_configs,
     parse_device_id,
     resize_coco_dataset,
+    find_checkpoint_hook,
 )
 
 if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:
@@ -77,9 +77,8 @@ def deploy(deploy_cfg: Config, runtime_cfg_key: str, ckpt_path: str, logger: MML
 def main(args):
     logger = MMLogger.get_instance("mmengine", log_level=logging.INFO, file_mode="w")
     system_configs_path = "../configs/tasks/training_detection.py"
-    with open("../configs/user_configs.yaml", "r") as f:
-        user_configs = yaml.safe_load(f)
-    load_user_configs(user_configs, system_configs_path)
+    user_system_configs_path = "../configs/user_configs.yaml"
+    load_user_configs(user_system_configs_path, system_configs_path)
 
     training_config = load_config(system_configs_path)
     data_root = training_config["data_root"]
@@ -104,8 +103,14 @@ def main(args):
     runner = Runner(system_configs_path, args.launcher, mode="train")
     runner()
 
+    checkpoint_hook = find_checkpoint_hook(runner)
+
+    best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
+    assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
+    "This is either because you deleted it manually or because the training run stopped before a validation step took place."
+
     deploy_cfg = load_config("../configs/tasks/deploying.py")
-    deployed_path = deploy(deploy_cfg, "runtime_config", os.path.join(training_config.work_dir, f"epoch_{training_config.num_epochs}.pth"), logger)
+    deployed_path = deploy(deploy_cfg, "runtime_config", best_ckpt_path, logger)
     deploy_cfg["model"]["checkpoint"] = deployed_path
 
     device = deploy_cfg["device"]
@@ -124,10 +129,13 @@ def main(args):
         test_detection_main(args=args)
 
     if args.calibrate:
-        runner = Runner(deploy_cfg, "none", mode="calibrate")
-        logger.info(f"Calibrating the network on {deploy_cfg.test_dataloader.dataset.ann_file}.")
+        deploy_cfg_copy = deepcopy(deploy_cfg)
+        deploy_cfg_copy["work_dir"] = deploy_cfg_copy["calibration_output_dir"]
+        runner = Runner(deploy_cfg_copy, "none", mode="calibrate")
+        logger.info(f"Calibrating the network on {deploy_cfg_copy.test_dataloader.dataset.ann_file}.")
         metrics = runner()
         load_calibration(deployed_path, metrics)
+        del deploy_cfg_copy
 
     if args.deploy:
         if deploy_cfg["runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:
@@ -167,7 +175,7 @@ def main(args):
     if args.optimize_hyperparams:
         load_user_configs(dict(training=dict(data_root=data_root)), system_configs_path)
         deploy_cfg = load_config("../configs/tasks/deploying.py")
-        testing_tracking_data_root = deploy_cfg.testing_tracking_data_root
+        testing_tracking_data_root = deploy_cfg.mot_testing_data_root
         mot_dataset_ok, feedback = check_if_mot_dataset_is_ok(testing_tracking_data_root)
 
         if mot_dataset_ok:

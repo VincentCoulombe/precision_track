@@ -18,6 +18,7 @@ general:
 # ================================
 training:
   dataset_name: "mice"
+
   data_root: "../../datasets/MICE/pose-estimation/"
 
   resume: false
@@ -37,17 +38,25 @@ tracking:
   saving_directory: "../work_dir/"
   num_subjects: { "mouse": 20 }
   tracking_checkpoint_name: "model_mice_DEPLOYED.pth"
+  mot_testing_data_root: "../../datasets/MICE/pose-estimation/benchmark/"
+
+# ================================
+# Validation parameters
+# ================================
+validation:
+  validation_configuration_file: "../configs/settings/validation/appearance.yaml"
 
 # ================================
 # Visualization parameters
 # ================================
 visualization:
-  display_bounding_boxes: true
+  display_bounding_boxes: false
   display_poses: true
-  display_velocities: true
-  display_species: true
-  display_confidence_scores: true
+  display_velocities: false
+  display_species: false
+  display_confidence_scores: false
   display_actions: false
-  display_search_zones: true
+  display_search_zones: false
   display_validations: false
-  display_untracked_detections: true
+  display_untracked_detections: false
+  display_predicted_bounding_boxes: false

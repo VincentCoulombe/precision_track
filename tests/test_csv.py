@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from utils import temp_csv_file
 
-from precision_track.outputs.csv import CsvBoundingBoxes, CsvCorrections, CsvKeypoints, CsvSearchAreas, CsvValidations, CsvVelocities
+from precision_track.outputs.csv import CsvBoundingBoxes, CsvCorrections, CsvKeypoints, CsvSearchAreas, CsvTailtagValidations, CsvVelocities
 
 dummy_one_data_sample = {
     "img_id": 2,
@@ -110,7 +110,7 @@ def dummy_data_samples():
     [
         (CsvBoundingBoxes, "test_bboxes.csv"),
         (CsvKeypoints, "test_kpts.csv"),
-        (CsvValidations, "test_vals.csv"),
+        (CsvTailtagValidations, "test_vals.csv"),
         (CsvSearchAreas, "test_searchs.csv"),
         (CsvCorrections, "test_corrections.csv"),
     ],
@@ -148,7 +148,7 @@ def test_init(CsvClass, path):
             CsvClass(path, instance_data="correction_instances")
         if CsvClass is CsvSearchAreas:
             CsvClass(path, instance_data="search_areas")
-        if CsvClass is CsvValidations:
+        if CsvClass is CsvTailtagValidations:
             CsvClass(path, instance_data="validation_instances")
 
         obj = CsvClass(path)
@@ -172,7 +172,7 @@ def test_init(CsvClass, path):
     [
         (CsvBoundingBoxes, "test_bboxes.csv"),
         (CsvKeypoints, "test_kpts.csv"),
-        (CsvValidations, "test_vals.csv"),
+        (CsvTailtagValidations, "test_vals.csv"),
         (CsvSearchAreas, "test_searchs.csv"),
         (CsvCorrections, "test_corrections.csv"),
         (CsvVelocities, "test_vels.csv"),
@@ -201,7 +201,7 @@ def test_call(CsvClass, path, dummy_data_samples):
     [
         (CsvBoundingBoxes, "test_bboxes.csv"),
         (CsvKeypoints, "test_kpts.csv"),
-        (CsvValidations, "test_vals.csv"),
+        (CsvTailtagValidations, "test_vals.csv"),
         (CsvSearchAreas, "test_searchs.csv"),
         (CsvCorrections, "test_corrections.csv"),
         (CsvVelocities, "test_vels.csv"),
@@ -232,7 +232,7 @@ def test_save_and_read(CsvClass, path, dummy_data_samples):
     [
         (CsvBoundingBoxes, "test_bboxes.csv"),
         (CsvKeypoints, "test_kpts.csv"),
-        (CsvValidations, "test_vals.csv"),
+        (CsvTailtagValidations, "test_vals.csv"),
         (CsvSearchAreas, "test_searchs.csv"),
         (CsvCorrections, "test_corrections.csv"),
         (CsvVelocities, "test_vels.csv"),
@@ -259,7 +259,7 @@ def test_getitem(CsvClass, path, dummy_data_samples):
             assert obj[0] == [[0, 5, 0, -2, 3], [0, 6, 1, 2, -1]]
             assert obj[1] == []
             assert obj[2] == [[2, 5, 0, -2, 3]]
-        elif isinstance(obj, CsvValidations):
+        elif isinstance(obj, CsvTailtagValidations):
             assert obj[0] == [
                 [0, 5, 0, 30, 30, 40, 40, 0.9],
                 [0, 155, 1, 10, 10, 20, 20, 0.8],

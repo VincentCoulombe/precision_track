@@ -21,7 +21,7 @@ class PytorchRuntime(BaseRuntime):
         model: Union[Config, dict, nn.Module],
         checkpoint: Optional[str] = None,
         device: Optional[str] = "auto",
-        half_precision: Optional[bool] = False,
+        half_precision: Optional[bool] = True,
         verbose: Optional[bool] = True,
         freeze: Optional[bool] = False,
         **kwargs,

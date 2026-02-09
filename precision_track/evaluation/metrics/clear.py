@@ -36,12 +36,14 @@ class CLEARMetrics(BaseMetric):
         collect_device: str = "cpu",
         output_file: Optional[str] = None,
         prefix: Optional[str] = None,
+        report_every_prcnt: Optional[float] = 1.0,
     ) -> None:
         super().__init__(collect_device=collect_device, prefix=prefix)
         self.metainfo = metainfo
         self.logger = MMLogger.get_current_instance()
         self.output_file = None
         self.output_results = None
+        self.report_every_prcnt = report_every_prcnt
         if output_file is not None:
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
             output_file, _ = os.path.splitext(output_file)
@@ -57,13 +59,23 @@ class CLEARMetrics(BaseMetric):
                 self.metainfo,
                 save_path=None,
                 verbose=True,
+                report_every_prcnt=self.report_every_prcnt,
             )
             self.results.append(evaluation_results)
 
     def compute_metrics(self, results: list) -> dict:
+        if self.output_results is not None:
+            self.all_evaluations = []
+            for result in results:
+                self.all_evaluations.extend(result)
+
         metrics = defaultdict(list)
+
         for result in results:
-            for cls, scores in result.items():
+            last_eval = result[-1]
+            for cls, scores in last_eval.items():
+                if cls == "completion_prcnt":
+                    continue
                 metrics[cls].append([max(float(scores[s]), 0.0) for s in self.metrics_agg.keys()])
 
         out_metrics = defaultdict(float)
@@ -76,8 +88,6 @@ class CLEARMetrics(BaseMetric):
                     score = np.mean(i_metrics)
                 else:
                     score = np.sum(i_metrics)
-                if self.output_results is not None:
-                    self.output_results[cls][metric] = score
                 out_metrics[f"{cls}/{metric}"] = score
                 overall[f"Overall/{metric}"].append(score)
 
@@ -88,8 +98,6 @@ class CLEARMetrics(BaseMetric):
             else:
                 score = np.sum(overall[k])
             out_metrics[f"Overall/{metric}"] = score
-            if self.output_results is not None:
-                self.output_results["Overall"][metric] = score
 
         if self.output_results is not None:
             self.save_results()
@@ -97,11 +105,26 @@ class CLEARMetrics(BaseMetric):
         return out_metrics
 
     def save_results(self):
-        df = pd.DataFrame.from_dict(self.output_results, orient="index")
-        if "Overall" in df.index:
-            overall_row = df.loc[["Overall"]]
-            df = pd.concat([overall_row, df.drop(index="Overall")])
+        prcnt_checkpoints = sorted(set(eval["completion_prcnt"] for eval in self.all_evaluations))
+        classes = []
+        for eval in self.all_evaluations:
+            for k in eval.keys():
+                if k != "completion_prcnt" and k not in classes:
+                    classes.append(k)
 
-        df.index.name = "Class"
+        rows = []
+        for metric in self.metrics_agg.keys():
+            for cls in classes:
+                row = {"Metric": metric, "Class": cls}
+                for prcnt in prcnt_checkpoints:
+                    values = [max(float(eval[cls][metric]), 0.0) for eval in self.all_evaluations if eval["completion_prcnt"] == prcnt and cls in eval]
+                    if values:
+                        if self.metrics_agg[metric] == "mean":
+                            row[f"{int(prcnt * 100)}%"] = np.mean(values)
+                        else:
+                            row[f"{int(prcnt * 100)}%"] = np.sum(values)
+                rows.append(row)
+
+        df = pd.DataFrame(rows)
         df = df.round(4)
-        df.to_csv(self.output_file)
+        df.to_csv(self.output_file, index=False)

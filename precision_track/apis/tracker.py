@@ -17,7 +17,7 @@ from tqdm import tqdm
 from precision_track.models.backends import DetectionBackend
 from precision_track.outputs.display import display_latency
 from precision_track.registry import MODELS, TRACKING, OUTPUTS
-from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking
+from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking, filter_outputs
 
 from .association_step import AssociationStep
 from .result import Result
@@ -60,6 +60,9 @@ class Tracker(BaseModel):
             self.batch_size = batch_size
         else:
             self.batch_size = 1
+
+        if outputs is not None:
+            outputs = filter_outputs(validator, assigner.stitching_algorithm, analyzer, outputs=outputs)
         self.result = Result(outputs=outputs)
 
         self.analyzer = analyzer
@@ -387,6 +390,7 @@ class PipelinedTracker:
 
         timestamps_output = None
         if outputs is not None:
+            outputs = filter_outputs(validator, assigner.stitching_algorithm, analyzer, outputs=outputs)
             filtered_outputs = []
             for output_cfg in outputs:
                 if output_cfg.get("type") == "CsvTimestamps":

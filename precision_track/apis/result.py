@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from typing import Any, List, Optional
 from time import perf_counter
 import numpy as np
+import os
 
 from precision_track.registry import OUTPUTS
 
@@ -52,10 +53,13 @@ class Result:
 
         results = []
         for output in self._outputs:
+            key = output.__class__.__name__
+            if hasattr(output, "subtype"):
+                key += f"-{output.subtype}"
             try:
-                results.append({output.__class__.__name__: np.array(output[self._current])})
+                results.append({key: np.array(output[self._current])})
             except IndexError:
-                results.append({output.__class__.__name__: np.array([])})
+                results.append({key: np.array([])})
 
         self._current += 1
         return results
@@ -68,8 +72,17 @@ class Result:
         for output in self._outputs:
             output.save()
 
-    def read(self) -> None:
-        for output in self._outputs:
+    def read(self, not_exists_ok: Optional[bool] = False) -> None:
+        output_to_remove = []
+        for i, output in enumerate(self._outputs):
+            if not os.path.exists(output.path):
+                if not_exists_ok:
+                    output_to_remove.append(i)
+                    continue
+                else:
+                    raise RuntimeError(f"The '{output.__class_.__name__}' output as an invalid path: {output.path}")
             output.read()
             if len(output) > self._length:
                 self._length = len(output)
+        for o in reversed(output_to_remove):
+            self._outputs.pop(o)

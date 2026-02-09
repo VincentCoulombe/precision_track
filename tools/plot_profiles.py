@@ -4,7 +4,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-import yaml
 import numpy as np
 from mmengine import Config
 
@@ -209,9 +208,8 @@ def plot_multiple_metrics(data_dict, output_path, std_threshold, palette):
 def plot_profiling_data(json_path: str, std_threshold: float = 2.0) -> None:
 
     system_configs_path = "../configs/tasks/tracking.py"
-    with open("../configs/user_configs.yaml", "r") as f:
-        user_configs = yaml.safe_load(f)
-    load_user_configs(user_configs, system_configs_path)
+    user_system_configs_path = "../configs/user_configs.yaml"
+    load_user_configs(user_system_configs_path, system_configs_path)
 
     config = Config.fromfile(system_configs_path)
 

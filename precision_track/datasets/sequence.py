@@ -1520,13 +1520,16 @@ class VideoDataset:
         base_v_paths = [os.path.splitext(os.path.basename(v))[0] for v in self.video_paths]
         for i, gt in enumerate(self.gt_paths):
             assert os.path.exists(gt), f"Expected the file: {gt}, to exist."
-            gt_name = os.path.splitext(os.path.basename(gt))[0].replace("gt_", "")
+            gt_name = os.path.splitext(os.path.basename(gt))[0]
+            gt_idx = find_path_in_dir(gt_name, base_v_paths)
+            if gt_idx == -1:
+                gt_name = gt_name.replace("gt_", "")
             gt_idx = find_path_in_dir(gt_name, base_v_paths)
             if gt_idx == -1:
                 print_log(
                     (
-                        f"The ground truth file: {gt_name} have no corresponding video, meaning a video file with the same name,"
-                        f"in the provided video paths: {base_v_paths}."
+                        f"The ground truth file: {os.path.abspath(gt)} have no corresponding video, meaning a video file with the same name, "
+                        f"in the provided video paths: {[os.path.abspath(v) for v in self.video_paths]}."
                     ),
                     logger="current",
                     level=WARNING,

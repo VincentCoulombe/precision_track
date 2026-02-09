@@ -24,9 +24,9 @@ class AssociationStep(nn.Module):
         metafile: str,
         thresholds_file: Optional[str] = "",
         stitching_algorithm: Optional[Config] = None,
-        nb_frames_retain: Optional[int] = 10,
+        nb_frames_retain: Optional[int] = 30,
         num_tentatives: Optional[int] = 3,
-        memory_length: Optional[int] = 30,
+        memory_length: Optional[int] = 1,
         return_isolations: Optional[bool] = True,
         verbose: Optional[bool] = True,
         **kwargs,
@@ -85,10 +85,13 @@ class AssociationStep(nn.Module):
         else:
             self.stitching_algorithm = None
 
+        num_tentatives = int(num_tentatives)
         assert 0 <= num_tentatives
         self.num_tentatives = num_tentatives
+
+        memory_length = int(memory_length)
         assert 0 < memory_length
-        self.memory_length = memory_length
+        self.memory_length = max(memory_length, 5)
 
         self.return_isolations = False
         assert isinstance(return_isolations, bool)
@@ -252,17 +255,19 @@ class AssociationStep(nn.Module):
         for k, v in self.tracks.items():
             last_seen_frame = v["frame_ids"][-1]
 
-            # The track is alive and well
+            # First: A track is lost if it is not seen.
             case1 = last_seen_frame == frame_id
             v.lost = not case1
-            # The track have been lost for too long
+
+            # Second: Check if the track has not been seen in a while...
             case2 = frame_id - last_seen_frame >= self.num_frames_retain
 
-            # The track have been lost, but was unconfirmed
+            # Third: Check if the track is lost and was not confirmed.
             case3 = not case1 and v.tentative
 
             if case3 or case2:
                 invalid_ids.append(k)
+
         for invalid_id in invalid_ids:
             self.tracks.pop(invalid_id)
 
@@ -348,7 +353,7 @@ class AssociationStep(nn.Module):
             else:
                 bboxes = relevant_bboxes
 
-            bious = biou_batch(relevant_bboxes, bboxes.copy(), 0.25)
+            bious = biou_batch(relevant_bboxes.copy(), bboxes, 0.5)
             isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
             data_sample["pred_track_instances"]["isolated"] = isolated
 
@@ -372,16 +377,17 @@ class AssociationStep(nn.Module):
                 labels=data_sample["pred_track_instances"]["labels"],
                 features=data_sample["pred_track_instances"]["features"],
                 kept_idxs=data_sample["pred_track_instances"]["kept_idxs"],
-                next_frame_bboxes=data_sample["pred_track_instances"]["next_frame_bboxes"],
+                next_frame_bboxes=data_sample["next_frame_pred_track_instances"]["bboxes"],
             )
             is_numpy = isinstance(data_sample["pred_track_instances"]["bboxes"], np.ndarray)
-            cls_list = [self.classes[lbl] for lbl in data_sample["pred_track_instances"]["labels"]]
-            vels_list = [self.tracks[id_].mean[2:4] for id_ in data_sample["pred_track_instances"]["ids"]]
-            cls, inst_ids, confs, vels = self._format_tracking_info(vels_list, cls_list, is_numpy)
+            cls_list, vels_list, err_list = self._extract_ids_data(data_sample["pred_track_instances"])
+            cls, inst_ids, confs, vels, err = self._format_tracking_info(vels_list, err_list, cls_list, is_numpy)
             data_sample["pred_track_instances"]["classes"] = cls
             data_sample["pred_track_instances"]["instances_id"] = inst_ids
+            data_sample["next_frame_pred_track_instances"]["instances_id"] = inst_ids
             data_sample["pred_track_instances"]["confirmed"] = confs
             data_sample["pred_track_instances"]["velocities"] = vels
+            data_sample["pred_track_instances"]["erraticity"] = err
         elif isinstance(data_sample, PoseDataSample):
             self.num_tracks += data_sample.pred_track_instances["ids"].shape[0] - len(self.tracks)
             self.update(
@@ -394,26 +400,30 @@ class AssociationStep(nn.Module):
                 labels=data_sample.pred_track_instances["labels"],
                 features=data_sample.pred_track_instances["features"],
                 kept_idxs=data_sample.pred_track_instances["kept_idxs"],
-                next_frame_bboxes=data_sample.pred_track_instances["next_frame_bboxes"],
+                next_frame_bboxes=data_sample.next_frame_pred_track_instances["bboxes"],
             )
             is_numpy = isinstance(data_sample.pred_track_instances["bboxes"], np.ndarray)
-            cls_list = [self.classes[lbl] for lbl in data_sample.pred_track_instances["labels"]]
-            vels_list = [self.tracks[id_].mean[2:4] for id_ in data_sample.pred_track_instances["ids"]]
-            cls, inst_ids, confs, vels = self._format_tracking_info(vels_list, cls_list, is_numpy)
+
+            cls_list, vels_list, err_list = self._extract_ids_data(data_sample.pred_track_instances)
+            cls, inst_ids, confs, vels, err = self._format_tracking_info(vels_list, err_list, cls_list, is_numpy)
             data_sample.pred_track_instances["classes"] = cls
             data_sample.pred_track_instances["instances_id"] = inst_ids
+            data_sample.next_frame_pred_track_instances["instances_id"] = inst_ids
             data_sample.pred_track_instances["confirmed"] = confs
             data_sample.pred_track_instances["velocities"] = vels
+            data_sample.pred_track_instances["erraticity"] = err
+
         else:
             raise ValueError
 
-    def _format_tracking_info(self, velocities_list, classes_list, is_numpy=True):
+    def _format_tracking_info(self, velocities_list, erraticities_list, classes_list, is_numpy=True):
         if is_numpy:
             return (
                 np.array(classes_list),
                 np.array(self.memo_ids),
                 np.array(self.memo_confirmed),
                 np.array(velocities_list),
+                np.array(erraticities_list),
             )
         else:
             return (
@@ -421,4 +431,15 @@ class AssociationStep(nn.Module):
                 torch.tensor(self.memo_ids),
                 torch.tensor(self.memo_confirmed),
                 torch.stack(velocities_list) if velocities_list else torch.tensor(velocities_list),
+                torch.tensor(erraticities_list),
             )
+
+    def _extract_ids_data(self, instances_data):
+        cls_list = []
+        vels_list = []
+        errs_list = []
+        for lbl, id_ in zip(instances_data["labels"], instances_data["ids"]):
+            cls_list.append(self.classes[lbl])
+            vels_list.append(self.tracks[id_].mean[2:4])
+            errs_list.append(self.tracks[id_].get("erraticity", 0.0))
+        return cls_list, vels_list, errs_list

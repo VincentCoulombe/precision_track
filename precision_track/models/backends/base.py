@@ -27,7 +27,7 @@ class BaseBackend(BaseModel, metaclass=ABCMeta):
         self._runtime_type = runtime["type"]
         self._runtime = RUNTIMES.build(runtime)
         self.device = getattr(runtime, "device", get_device())
-        self.half_precision = getattr(runtime, "half_precision", False) and self.device != "cpu"
+        self.half_precision = getattr(runtime, "half_precision", True) and self.device != "cpu"
         self.verbose = getattr(runtime, "verbose", False)
 
     @property

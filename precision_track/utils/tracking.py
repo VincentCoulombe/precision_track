@@ -16,7 +16,9 @@ def batch_tracking(video, detector, batch_size, result, association_step, valida
     total_frames = len(video)
     fps = video.fps
     profile_dict = dict()
-    if profile:
+    profile_dir = os.path.dirname(profile)
+    is_profiling = os.path.isdir(profile_dir)
+    if is_profiling:
         os.makedirs(os.path.dirname(profile), exist_ok=True)
         profile_dict = dict(
             detection=[],
@@ -25,7 +27,7 @@ def batch_tracking(video, detector, batch_size, result, association_step, valida
     while True:
         frame = video.read()
         if len(b_frames) == batch_size or (empty and b_frames):
-            for output in detector(inputs=b_frames, data_samples=b_idx, profile=profile_dict["detection"] if profile else None):
+            for output in detector(inputs=b_frames, data_samples=b_idx, profile=profile_dict.get("detection")):
                 outputs.appendleft(output)
             b_frames, b_idx = [], []
         if frame is not None:
@@ -39,18 +41,17 @@ def batch_tracking(video, detector, batch_size, result, association_step, valida
             empty = True
         if outputs:
             output = outputs.pop()
-            output = association_step(output, switches, profile_dict)
+            output = association_step(output, switches, profile_dict if is_profiling else None)
             frame = frames.pop()
             if validator is not None:
-                if validator._frame_size is None:
-                    validator.frame_size = frame.shape[:2]
                 output, switches = validator(frame, output)
             if analyzer is not None:
                 output = analyzer.predict(output)
             output["fps"] = fps
-            result(output, profile_dict["saving_results"])
+            result(output, profile_dict.get("saving_results"))
         elif empty and not b_frames:
             break
-    with open(profile, "w") as f:
-        json.dump(profile_dict, f)
+    if is_profiling:
+        with open(profile, "w") as f:
+            json.dump(profile_dict, f)
     return result

@@ -4,12 +4,11 @@ import multiprocessing as mp
 from logging import WARNING
 import os
 import psutil
-import yaml
 from mmengine import Config
 from mmengine.logging import print_log
 
 from precision_track import PipelinedTracker, Tracker
-from precision_track.utils import VideoReader, load_user_configs
+from precision_track.utils import VideoReader, load_user_configs, load_validation_config
 from train_detection import str2bool
 
 
@@ -24,11 +23,12 @@ def parse_args():
 def main(args):
 
     system_configs_path = "../configs/tasks/tracking.py"
-    with open("../configs/user_configs.yaml", "r") as f:
-        user_configs = yaml.safe_load(f)
-    load_user_configs(user_configs, system_configs_path)
+    user_system_configs_path = "../configs/user_configs.yaml"
+    video_name = os.path.splitext(os.path.basename(args.video))[0]
+    load_user_configs(user_system_configs_path, system_configs_path, dynamic_work_dir_subdir=video_name)
 
     config = Config.fromfile(system_configs_path)
+    load_validation_config(config)
     video = VideoReader(args.video)
     nb_cpu_cores = psutil.cpu_count(logical=False)
     pipelined = config.pipelined

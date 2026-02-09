@@ -7,7 +7,7 @@ import numpy as np
 from mmengine.logging import MMLogger
 
 from precision_track.registry import TRACKING
-from precision_track.utils import clip, euc_dist_batch, reformat
+from precision_track.utils import clip, reformat
 
 from .base_validation import BaseValidation
 
@@ -27,9 +27,9 @@ class ArucoValidation(BaseValidation):
         tags_size: int,
         valid_tags: List[int],
         parameters: Dict[str, Union[int, float]],
+        validated_classes: List[str],
         predefined_dict: Optional[str] = None,
         refinement: Optional[str] = "none",
-        validated_classes: Optional[List[str]] = None,
         tag_kpt: Optional[str] = 7,
         kpt_conf_thr: Optional[float] = 0.5,
         estimation_range: Optional[int] = 50,
@@ -37,6 +37,8 @@ class ArucoValidation(BaseValidation):
         min_sample_size: Optional[int] = 50,
         min_precision: Optional[float] = 0.9,
         memory_length: Optional[int] = 100,
+        *args,
+        **kwargs,
     ) -> None:
         """A validation algorithm consisting of reading the Aruco markers on the tags attached
         to subjects. Please refer to : https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html
@@ -48,7 +50,7 @@ class ArucoValidation(BaseValidation):
             parameters (Dict[str, Union[int, float]]): The reading parameters.
             predefined_dict (Optional[str], optional): Named of the predefined dictionary. Defaults to None.
             refinement (Optional[str], optional): The name of the refinement step. Defaults to "none".
-            validated_classes (Optional[List[str]], optional): List of the classes which support validation. If None, all the classes are considered.
+            validated_classes List[str]]: List of the classes which support validation.
             tag_kpt (Optional[str], optional): The keypoint on which the tag is attached. Defaults to 7.
             kpt_conf_thr (Optional[float], optional): the confidence threshold to consider reading a marker on a keypoint. Defaults to 0.5.
             estimation_range (Optional[int], optional): In how much pixels do we search for a marker around the keypoint. Defaults to 50.
@@ -57,7 +59,7 @@ class ArucoValidation(BaseValidation):
             min_precision (Optional[float], optional): What precision does the tag need to have for a reading to count as a detection.
             Defaults to 0.9.
         """
-        super(ArucoValidation, self).__init__()
+        super(ArucoValidation, self).__init__(validated_classes)
         self.logger = MMLogger.get_current_instance()
         assert isinstance(num_tags, int) and isinstance(tags_size, int)
         assert num_tags >= 0 and tags_size >= 0
@@ -72,11 +74,7 @@ class ArucoValidation(BaseValidation):
         self.parameters.cornerRefinementMethod = self.REFINEMENTS[refinement]
         self.valid_tags = np.array(valid_tags)
         self.warned_full_frame = False
-        if validated_classes is not None:
-            assert isinstance(validated_classes, list)
-            for cls in validated_classes:
-                assert isinstance(cls, str)
-        self.validated_classes = validated_classes
+
         assert isinstance(tag_kpt, int)
         self.tag_kpt = tag_kpt
         assert 0.0 <= kpt_conf_thr <= 1.0
@@ -237,6 +235,9 @@ class ArucoValidation(BaseValidation):
                 self.warned_full_frame = True
             _, _, _ = self._detect_markers(frame, tracking_results)
             return tracking_results, None
+
+        if self._frame_size is None:
+            self.frame_size = tracking_results["ori_shape"][:2]
 
         started_at = perf_counter()
         self._init_validation(tracking_results)
