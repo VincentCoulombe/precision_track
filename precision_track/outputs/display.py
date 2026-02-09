@@ -1,5 +1,5 @@
 import sys
-
+from typing import List, Union
 import numpy as np
 from tabulate import tabulate
 
@@ -37,25 +37,46 @@ def display_latency(times: np.ndarray, title, buffer_size=5, precision=3):
     return mean
 
 
-def display_mot_results(evaluation: dict, precision=3):
+def display_mot_results(evaluations: Union[List[dict], dict], precision=3):
+    if isinstance(evaluations, dict):
+        evaluations = [evaluations]
+
+    headers = ["Metric"] + [f"Up to {eval['completion_prcnt']*100}%" for eval in evaluations]
+
+    classes = []
+    for eval in evaluations:
+        for k in eval.keys():
+            if k != "completion_prcnt" and k not in classes:
+                classes.append(k)
+
+    metric_defs = [
+        ("MOTA", "mota", False),
+        ("IDF1", "idf1", False),
+        ("IDP", "idp", False),
+        ("IDR", "idr", False),
+        ("Precision", "precision", False),
+        ("Recall", "recall", False),
+        ("IDFP", "idfp", True),
+        ("IDFN", "idfn", True),
+        ("IDTP", "idtp", True),
+        ("Num Switches", "num_switches", True),
+        ("Num Detections", "num_detections", True),
+    ]
+
     table = []
-    for cls, metrics in evaluation.items():
-        table.append([f"MOTA on {cls}", metrics["mota"]])
-        table.append([f"IDF1 on {cls}", metrics["idf1"]])
-        table.append([f"IDP on {cls}", metrics["idp"]])
-        table.append([f"IDR on {cls}", metrics["idr"]])
-        table.append([f"Precision on {cls}", metrics["precision"]])
-        table.append([f"Recall on {cls}", metrics["recall"]])
-        table.append([f"IDFP on {cls}", int(metrics["idfp"])])
-        table.append([f"IDFN on {cls}", int(metrics["idfn"])])
-        table.append([f"IDTP on {cls}", int(metrics["idtp"])])
-        table.append([f"Num Switches on {cls}", int(metrics["num_switches"])])
-        table.append([f"Num Detections on {cls}", int(metrics["num_detections"])])
+    for cls in classes:
+        for metric_name, metric_key, is_int in metric_defs:
+            row = [f"{metric_name} on {cls}"]
+            for eval in evaluations:
+                value = eval[cls][metric_key]
+                row.append(int(value) if is_int else value)
+            table.append(row)
+
     print(
         "\n"
         + tabulate(
             table,
-            headers=["Metric", "Score"],
+            headers=headers,
             tablefmt="github",
             floatfmt=f".{precision}f",
             stralign="left",

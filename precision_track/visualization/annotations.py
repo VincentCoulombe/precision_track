@@ -45,8 +45,8 @@ class DetAnnotation(Annotation):
         if output_values.size < 2:
             return
         return sv.Detections(
-            confidence=output_values[:, -1],
-            xyxy=reformat(output_values[:, 3:7], self.format, "xyxy") if self.format != "xyxy" else output_values[:, 3:7],
+            confidence=output_values[:, -1].astype(float),
+            xyxy=reformat(output_values[:, 3:7].astype(int), self.format, "xyxy") if self.format != "xyxy" else output_values[:, 3:7].astype(int),
             class_id=output_values[:, 1],
             mask=None,
             tracker_id=output_values[:, 2],
@@ -74,16 +74,16 @@ class KptAnnotation(Annotation):
         if output_values.size < 2:
             return
         if self.with_scores:
-            keypoint_scores = output_values[:, 5::3]
-            xs = output_values[:, 3::3]
-            ys = output_values[:, 4::3]
+            keypoint_scores = output_values[:, 5::3].astype(float)
+            xs = output_values[:, 3::3].astype(int)
+            ys = output_values[:, 4::3].astype(int)
             keypoints = np.dstack((xs, ys)).ravel().reshape(output_values.shape[0], -1, 2)
             conf_mask = keypoint_scores < self.confidence_threshold
             conf_mask = conf_mask.reshape(output_values.shape[0], -1, 1)
             conf_mask = np.concatenate((conf_mask, conf_mask), axis=2)
             keypoints[conf_mask] = 0.0
         else:
-            keypoints = output_values[:, 3:].reshape(output_values.shape[0], -1, 2)
+            keypoints = output_values[:, 3:].astype(int).reshape(output_values.shape[0], -1, 2)
         return Keypoints(
             xy=keypoints,
             class_id=output_values[:, 1],
@@ -391,9 +391,9 @@ class Arrow(Link):
         **kwargs,
     ) -> None:
         _ = super().__call__(img, output_values, verify=True)
-        if output_values.size < 2 or output_values[:, -2:].size != anchor_coords.size:
+        if output_values.size < 2 or output_values[:, 3:5].size != anchor_coords.size:
             return img
-        vector = np.stack([anchor_coords, output_values[:, -2:] + anchor_coords], axis=1)
+        vector = np.stack([anchor_coords, output_values[:, 3:5] + anchor_coords], axis=1)
         if vector.shape[0] == 0:
             return None
         keypoints = Keypoints(
@@ -407,7 +407,7 @@ class Arrow(Link):
             keypoints.xy[..., 1, 0],
             keypoints.xy[..., 1, 1],
         )
-        magnetudes = np.abs(output_values[:, -2:])
+        magnetudes = np.abs(output_values[:, 3:5])
         direction_of_vector = np.arctan2(y2 - y1, x2 - x1)
         x2 = x2 + magnetudes[:, 0] * self.shaft_size * np.cos(direction_of_vector)
         y2 = y2 + magnetudes[:, 1] * self.shaft_size * np.sin(direction_of_vector)

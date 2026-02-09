@@ -61,7 +61,6 @@ class Runner(MMENGINERunner):
         randomness = cfg.get("randomness", dict(seed=None))
         experiment_name = cfg.get("experiment_name")
         load_from = None if mode == "test" else cfg.get("load_from")
-        cfg = cfg
 
         self._work_dir = osp.abspath(work_dir)
         mmengine.mkdir_or_exist(self._work_dir)
@@ -326,7 +325,7 @@ class Runner(MMENGINERunner):
                 raise ValueError(
                     f"The checkpoint you are trying to resume your training run from is not a training checkpoint: "
                     f"{os.path.abspath(filename)}. "
-                    f"Trainign checkpoints takes on the following name: 'epoch_<your chekpointed epoch>.pth'."
+                    f"Training checkpoints takes on the following name: 'epoch_<your chekpointed epoch>.pth'."
                 )
 
         # resume param scheduler

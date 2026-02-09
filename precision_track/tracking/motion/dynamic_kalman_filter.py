@@ -70,6 +70,7 @@ class DynamicKalmanFilter(BaseKalmanFilter):
         track["pred_bboxe"] = track["bboxes"][-1]
         track["pred_keypoints"] = track["keypoints"][-1]
         track["velocity"] = np.zeros(2)
+        track["erraticity"] = 0.0
 
     def predict(
         self,
@@ -85,19 +86,23 @@ class DynamicKalmanFilter(BaseKalmanFilter):
         """
         self.dt = self.frame_id - track["frame_ids"][-1]
 
+        prev_velocity = track["velocity"]
         mean = track["mean"]
         pred_centroid = self._motion_mat @ mean
         velocity = pred_centroid[:2] - mean[:2]
         track["velocity"] = velocity
+
+        prev_speed = np.linalg.norm(prev_velocity)
+        delta_speed = np.linalg.norm(velocity - prev_velocity)
+        if prev_speed > 1.0:
+            delta_speed = delta_speed / prev_speed
+        track["erraticity"] = delta_speed
 
         bbox = track["bboxes"][-1]
         cxcywh = np.array([bbox[0] + velocity[0], bbox[1] + velocity[1], *bbox[2:]])
         track["pred_bboxe"] = clip(cxcywh, "cxcywh", self.frame_size[0], self.frame_size[1])
 
         track["pred_keypoints"] = track["keypoints"][-1] + velocity
-
-        # process_noise = self._get_process_noise()
-        # track["covariance"] = np.linalg.multi_dot((self._motion_mat, track["covariance"], self._motion_mat.T)) + process_noise
 
     def update(
         self,
@@ -118,15 +123,6 @@ class DynamicKalmanFilter(BaseKalmanFilter):
         previous_centroid = self.get_measurement(track, -2) if self.dt == 1 else centroid
 
         track["mean"] = update_dynamics_2d(track["mean"], centroid, previous_centroid, self.alpha, self.dt)
-
-        # track["covariance"] = np.linalg.multi_dot((self._motion_mat, track["covariance"], self._motion_mat.T))
-        # chol_factor, lower = scipy.linalg.cho_factor(track["covariance"], lower=True, check_finite=False)
-        # kalman_gain = scipy.linalg.cho_solve(
-        #     (chol_factor, lower),
-        #     np.dot(track["covariance"], self._update_mat.T),
-        #     check_finite=False,
-        # ).T
-        # track["covariance"] = track["covariance"] - np.linalg.multi_dot((kalman_gain, track["covariance"], kalman_gain.T))
 
     def get_measurement(self, track: dict, idx: Optional[int] = -1) -> np.ndarray:
         return super().get_measurement(track, idx)[:2]

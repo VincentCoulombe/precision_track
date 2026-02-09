@@ -24,8 +24,8 @@ def input_():
     "checkpoints",
     [
         (
-            os.path.join(ROOT, "configs/model_mice_clustering_DEPLOYED.pth"),
-            os.path.join(ROOT, "configs/model_mice_clustering_DEPLOYED.onnx"),
+            os.path.join(ROOT, "configs/model_mice_DEPLOYED.pth"),
+            os.path.join(ROOT, "configs/model_mice_DEPLOYED.onnx"),
         )
     ],
 )

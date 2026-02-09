@@ -255,11 +255,17 @@ class GroundTruth(BaseAssignationAlgorithm):
         data_samples["pred_track_instances"].update({k: v[pred_idx] for k, v in detections.items() if k not in self.fields_to_remove})
 
         if predicted_bboxes is not None:
-            data_samples["pred_track_instances"].update(
+            if "next_frame_pred_track_instances" not in data_samples:
+                data_samples["next_frame_pred_track_instances"] = dict()
+
+            data_samples["next_frame_pred_track_instances"].update(
                 {
-                    "next_frame_bboxes": predicted_bboxes,
+                    "bboxes": predicted_bboxes,
+                    "labels": data_samples["pred_track_instances"]["labels"],
+                    "scores": np.ones_like(track_ids, dtype=np.float32),
                 }
             )
+
         if velocities is not None:
             data_samples["pred_track_instances"].update({"velocities": velocities})
         if features is not None:

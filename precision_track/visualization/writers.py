@@ -1,11 +1,16 @@
 import abc
 from typing import Dict, List, Optional, Tuple
 
+import yaml
+import os
+import re
 import cv2
 import numpy as np
 import supervision as sv
 
 from precision_track.registry import VISUALIZERS
+from precision_track.utils import parse_pose_metainfo
+
 
 from .palette import ColorPalette
 
@@ -119,6 +124,229 @@ class FrameIdWriter(BaseWriter):
 
 
 @VISUALIZERS.register_module()
+class AppearanceDetectionWriter(BaseWriter):
+    _UNIQUE_ID_PATTERN = re.compile(r"^(.+)_(\d+)$")
+
+    def __init__(
+        self,
+        unique_ids: List[str],
+        re_id_metainfo: str,
+        metainfo: str,
+        palette: Optional[dict] = None,
+        text_color: Optional[List[int]] = None,
+        bar_width: int = 40,
+        bar_height: int = 80,
+        bar_spacing: int = 10,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            text_anchor=[0, 0],
+            text_color=text_color,
+            text_scale=0.5,
+            text_thickness=1,
+            text_padding=30,
+        )
+        classes = []
+        inst_ids = []
+        for unique_id in unique_ids:
+            match = self._UNIQUE_ID_PATTERN.match(unique_id)
+            if match:
+                cls_ = match.group(1)
+                id_ = match.group(2)
+                classes.append(str(cls_))
+                inst_ids.append(int(id_))
+
+        self.unique_ids = unique_ids
+        self.classes = classes
+        self.inst_ids = inst_ids
+        self.metainfo_classes = parse_pose_metainfo({"from_file": metainfo}).get("classes", [])
+
+        assert os.path.isfile(re_id_metainfo), f"The provided re-identification metadata file '{os.path.abspath(metainfo)}' does not exists."
+        with open(re_id_metainfo, "r") as f:
+            re_id_metainfo = yaml.safe_load(f)
+
+        self.identities = re_id_metainfo.get("identities")
+        assert isinstance(self.identities, list), f"The metadata file '{metainfo}' must contain a list of identities"
+
+        for cls_ in self.classes:
+            assert cls_ in self.metainfo_classes, f"The following unique id class: {cls_} is not in the '{metainfo}' classes: {self.metainfo_classes}."
+
+        self.class_map = {cls_: i for i, cls_ in enumerate(self.metainfo_classes)}
+
+        self.palette = ColorPalette(**palette) if palette is not None else ColorPalette()
+        self.title = "Appearance Validation Scores"
+        self.title_scale = self.text_scale + 0.3
+        self.title_thickness = self.text_thickness + 1
+        (self.w_t, self.h_t), _ = cv2.getTextSize(
+            text=self.title,
+            fontFace=self.text_font,
+            fontScale=self.title_scale,
+            thickness=self.title_thickness,
+        )
+        self.bar_width = bar_width
+        self.bar_height = bar_height
+        self.bar_spacing = bar_spacing
+        self.row_height = bar_height + 60
+        self.initialized = False
+        self.cached_top3 = {}
+        self.max_uid_width = max(self._get_text_width_height(uid)[0] for uid in unique_ids)
+        label_overflow = max(0, self.max_uid_width - self.bar_width)
+        self.effective_bar_spacing = max(self.bar_spacing, label_overflow + 10)
+
+    def _get_validations(self, outputs: Tuple[Dict[str, np.ndarray]]) -> np.ndarray:
+        for output in outputs:
+            if "CsvAppearanceValidations" in output.keys():
+                return output.get("CsvAppearanceValidations", np.array([]))
+        return np.array([])
+
+    def _draw_y_axis(self, frame: np.ndarray, x: int, y: int) -> None:
+        axis_x = x - 5
+        cv2.line(frame, (axis_x, y), (axis_x, y + self.bar_height), (0, 0, 0), 1)
+        for val, label in [(0.0, "0"), (0.5, "0.5"), (1.0, "1")]:
+            tick_y = y + self.bar_height - int(val * self.bar_height)
+            cv2.line(frame, (axis_x - 3, tick_y), (axis_x, tick_y), (0, 0, 0), 1)
+            lw, lh = self._get_text_width_height(label)
+            cv2.putText(
+                img=frame,
+                text=label,
+                org=(axis_x - lw - 5, tick_y + lh // 2),
+                fontFace=self.text_font,
+                fontScale=self.text_scale - 0.1,
+                color=self.text_color.as_bgr(),
+                thickness=self.text_thickness,
+                lineType=cv2.LINE_AA,
+            )
+
+    def _draw_bar(
+        self,
+        frame: np.ndarray,
+        x: int,
+        y: int,
+        score: float,
+        label: str,
+        color: sv.Color,
+        show_label: bool = True,
+    ) -> None:
+        bar_h = int(score * self.bar_height)
+        bar_top = y + self.bar_height - bar_h
+
+        cv2.rectangle(
+            frame,
+            (x, bar_top),
+            (x + self.bar_width, y + self.bar_height),
+            color.as_bgr(),
+            -1,
+        )
+        cv2.rectangle(
+            frame,
+            (x, bar_top),
+            (x + self.bar_width, y + self.bar_height),
+            (0, 0, 0),
+            1,
+        )
+
+        if show_label:
+            label_w, _ = self._get_text_width_height(label)
+            label_x = x + (self.bar_width - label_w) // 2
+            label_y = bar_top - 5
+            cv2.putText(
+                img=frame,
+                text=label,
+                org=(label_x, label_y),
+                fontFace=self.text_font,
+                fontScale=self.text_scale,
+                color=self.text_color.as_bgr(),
+                thickness=self.text_thickness,
+                lineType=cv2.LINE_AA,
+            )
+
+    def __call__(self, frame: np.ndarray, outputs: Tuple[Dict[str, np.ndarray]], idx: int) -> None:
+        if not self.initialized:
+            self.x = frame.shape[1] + self.text_padding
+            self.y = self.text_padding
+            self.initialized = True
+
+        y_axis_padding = 30
+        uid_label_padding = self.max_uid_width + 15
+        bars_width = 3 * (self.bar_width + self.effective_bar_spacing)
+        panel_width = max(uid_label_padding + y_axis_padding + bars_width, self.w_t + 20)
+        panel_height = len(self.unique_ids) * self.row_height + self.h_t * 3 + self.text_padding * 2
+
+        text_rect = self._get_text_rectangle(
+            self.x,
+            self.y,
+            panel_width,
+            panel_height,
+        )
+
+        frame = self._pad_frame(frame, text_rect, frame.shape)
+        sv.draw_filled_rectangle(frame, text_rect, sv.Color(255, 255, 255))
+
+        cv2.putText(
+            img=frame,
+            text=self.title,
+            org=(
+                self.x + (panel_width - self.w_t) // 2,
+                self.y + self.h_t + 10,
+            ),
+            fontFace=self.text_font,
+            fontScale=self.title_scale,
+            color=self.text_color.as_bgr(),
+            thickness=self.title_thickness,
+            lineType=cv2.LINE_AA,
+        )
+
+        validations = self._get_validations(outputs)
+
+        if validations is not None and len(validations) > 1:
+            for unique_id, cls_, inst_id in zip(self.unique_ids, self.classes, self.inst_ids):
+                for row in validations:
+                    if int(float(row[1])) == self.class_map[cls_] and int(float(row[2])) == inst_id:
+                        identity = str(row[3])
+                        scores = row[4:].astype(float)
+
+                        top3_indices = np.argsort(scores)[-3:][::-1]
+                        top3_scores = scores[top3_indices]
+                        top3_identities = [self.identities[i] for i in top3_indices]
+
+                        self.cached_top3[unique_id] = (top3_identities, top3_scores)
+
+        bar_start_x = self.x + uid_label_padding + y_axis_padding
+        for row_idx, unique_id in enumerate(self.unique_ids):
+            row_y = self.y + self.h_t * 3 + row_idx * self.row_height + 20
+
+            id_color = self.palette.by_idx(row_idx + 1)
+            cv2.putText(
+                img=frame,
+                text=unique_id,
+                org=(self.x, row_y + self.bar_height // 2),
+                fontFace=self.text_font,
+                fontScale=self.text_scale,
+                color=id_color.as_bgr(),
+                thickness=self.text_thickness + 1,
+                lineType=cv2.LINE_AA,
+            )
+
+            self._draw_y_axis(frame, bar_start_x, row_y)
+
+            top_3 = self.cached_top3.get(unique_id)
+            if top_3 is None:
+                continue
+
+            for bar_idx in range(len(top_3[0])):
+                score = top_3[1][bar_idx]
+                identity = top_3[0][bar_idx]
+                bar_x = bar_start_x + bar_idx * (self.bar_width + self.effective_bar_spacing)
+                bar_color = self.palette.by_idx(row_idx + 1)
+
+                show_label = bar_idx < 2
+                self._draw_bar(frame, bar_x, row_y, score, identity, bar_color, show_label)
+
+        return frame
+
+
+@VISUALIZERS.register_module()
 class TagsDetectionWriter(BaseWriter):
 
     def __init__(
@@ -151,8 +379,8 @@ class TagsDetectionWriter(BaseWriter):
 
     def _get_validations(self, outputs: Tuple[Dict[str, np.ndarray]]) -> np.ndarray:
         for output in outputs:
-            if "CsvValidations" in output.keys():
-                return output.get("CsvValidations", np.array([]))
+            if "CsvTailtagValidations" in output.keys():
+                return output.get("CsvTailtagValidations", np.array([]))
         return np.array([])
 
     def __call__(self, frame: np.ndarray, outputs: Tuple[Dict[str, np.ndarray]], idx: int) -> None:

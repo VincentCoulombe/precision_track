@@ -1,4 +1,5 @@
 import abc
+import re
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -7,7 +8,7 @@ from mmengine.config import Config
 from precision_track.registry import VISUALIZERS
 from precision_track.utils import parse_pose_metainfo
 
-from .annotations import Arrow, Dot, Joint, Label, Link
+from .annotations import Arrow, Dot, Joint, Label, Link, Box
 
 
 class BasePainter(metaclass=abc.ABCMeta):
@@ -32,20 +33,23 @@ class BasePainter(metaclass=abc.ABCMeta):
         return frame
 
     def output_is_supported(self, output_class: str):
-        return output_class in self.supported_outputs
+        for supported_output in self.supported_outputs:
+            if re.search(supported_output, output_class):
+                return True
+        return False
 
 
 @VISUALIZERS.register_module()
 class BoundingBoxPainter(BasePainter):
 
-    def __init__(self, annotations: List[Config], palette: Optional[dict], idx: Optional[int] = 0) -> None:
+    def __init__(self, annotations: List[Config], subtype: str, palette: Optional[dict]) -> None:
         """Paints any combination of supported annotations. Check the
         annotations module to see which ones are supported.
 
         Args:
             annotations (List[Config]): A list of supported annotations
+            subtype (str): The bounding boxes subtype
             palette (Optional[dict]): The color palette
-            idx (Optional[int]): Which CsvBoundingBoxes from the outputs will this particular painter annotate
         """
         super().__init__(["CsvBoundingBoxes"])
         self.annotations = []
@@ -53,19 +57,17 @@ class BoundingBoxPainter(BasePainter):
             ann.update({"palette": palette})
             self.annotations.append(VISUALIZERS.build(ann))
 
-        idx = int(idx)
-        assert idx >= 0
-        self.idx = idx
+        self.subtype = str(subtype)
 
     def __call__(self, frame: np.ndarray, outputs: List[Dict[str, np.ndarray]], idx: int) -> None:
-        output_idx = 0
         for output in outputs:
             output_name, output_values = next(iter(output.items()))
             if self.output_is_supported(output_name):
-                if output_idx == self.idx:
+                match = re.search(r"-(.+)", output_name)
+                output_subtype = match.group(1) if match else ""
+                if output_subtype == self.subtype:
                     for annotation in self.annotations:
                         frame = annotation(img=frame, output_values=output_values, idx=idx)
-                output_idx += 1
         return frame
 
 
@@ -122,8 +124,47 @@ class ValidationPainter(BasePainter):
             radius (Optional[int], optional): The radius of the dot. Defaults to 20.
             palette (Optional[dict]): The color palette
         """
-        super().__init__(["CsvValidations"])
+        super().__init__(["CsvTailtagValidations"])
         self.annotations = [Dot(radius=radius, palette=palette)]
+
+
+@VISUALIZERS.register_module()
+class AppearanceValidationPainter(BasePainter):
+
+    def __init__(self, thickness: Optional[int] = 1, palette: Optional[dict] = None, *args, **kwargs) -> None:
+        """Paint the validated bounding boxes.
+
+        Args:
+            thickness (Optional[int]): the box thickness
+            palette (Optional[dict]): The color palette
+        """
+        super().__init__(["CsvAppearanceValidations"])
+        self.annotations = [
+            Box(
+                thickness=thickness,
+                palette=palette,
+            )
+        ]
+
+    def __call__(self, frame: np.ndarray, outputs: List[Dict[str, np.ndarray]], idx: int) -> None:
+        retained_outputs = dict()
+        for output in outputs:
+            output_name, output_values = next(iter(output.items()))
+            if self.output_is_supported(output_name) and output_values.size > 0:
+                retained_outputs[output_name] = output_values
+            elif re.search("CsvBoundingBoxes", output_name):
+                match = re.search(r"-(.+)", output_name)
+                output_subtype = match.group(1) if match else ""
+                if output_subtype == "tracked_bboxes":
+                    retained_outputs[output_name] = output_values
+        if len(retained_outputs) == 2:
+            inst_ids = retained_outputs["CsvAppearanceValidations"][:, 2].astype(int)
+            bbox_ids = retained_outputs["CsvBoundingBoxes-tracked_bboxes"][:, 2].astype(int)
+            validated_idx = np.where(np.isin(bbox_ids, inst_ids))[0]
+            output = retained_outputs["CsvBoundingBoxes-tracked_bboxes"][validated_idx]
+            for annotation in self.annotations:
+                frame = annotation(img=frame, output_values=output, idx=idx)
+        return frame
 
 
 @VISUALIZERS.register_module()
@@ -273,12 +314,12 @@ class LabelPainter(BasePainter):
         bboxes_values = None
         action_values = None
         is_tracking_bboxes = True
-        nb_bboxes_output = sum([1 if next(iter(o.keys())) == "CsvBoundingBoxes" else 0 for o in outputs])
+        nb_bboxes_output = sum([1 if re.search("CsvBoundingBoxes", next(iter(o.keys()))) else 0 for o in outputs])
         if nb_bboxes_output > 1:
             is_tracking_bboxes = False  # Untracked detecions will always be before bboxes
         for output in outputs:
             output_name, output_values = next(iter(output.items()))
-            if output_name == "CsvBoundingBoxes":
+            if re.search("CsvBoundingBoxes", output_name):
                 if is_tracking_bboxes:
                     bboxes_values = output_values
                 else:

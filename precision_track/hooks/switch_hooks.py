@@ -117,8 +117,7 @@ class SequencesSwitchHook(Hook):
 
     def _modify_dataloader(self, runner: Runner):
         runner.logger.info("Generating new training sequences.")
-        runner.train_dataloader.dataset._join_prefix()
-        runner.train_dataloader.dataset._init_data_list()
+        runner.train_dataloader.dataset.reset()
 
     def before_train_iter(self, runner, batch_idx: int, data_batch=None) -> None:
         if batch_idx > 0 and batch_idx % self.generate_every == 0:
@@ -128,14 +127,3 @@ class SequencesSwitchHook(Hook):
         epoch = runner.epoch
         if epoch > 0 and epoch % self.generate_every == 0:
             self._modify_dataloader(runner)
-
-
-@HOOKS.register_module()
-class ActionRecognitionRegenerationSwitchHook(SequencesSwitchHook):
-    def __init__(self, generate_every: int):
-        self.generate_every = int(generate_every)
-        assert self.generate_every > 0
-
-    def _modify_dataloader(self, runner: Runner):
-        runner.logger.info("Generating new training sequences.")
-        runner.train_dataloader.dataset.load_data_list()

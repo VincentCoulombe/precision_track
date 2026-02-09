@@ -1,7 +1,8 @@
-from typing import Any, List, Union
-
+from typing import Any, List, Union, Tuple
+import os
 import numpy as np
 import torch
+import yaml
 from mmengine import Config
 
 from precision_track.registry import MODELS
@@ -12,18 +13,39 @@ from .base import BaseBackend
 
 @MODELS.register_module()
 class ReIDBackend(BaseBackend):
+    SUPPORTED_RUNTIMES = [".onnx", ".engine"]
 
-    def __init__(
-        self,
-        config: Config,
-    ) -> None:
-        super(ReIDBackend, self).__init__(config.runtime)
+    def __init__(self, checkpoint: str, metainfo: str, input_shape: List[int]) -> None:
+        assert os.path.isfile(checkpoint), f"The provided re-identification checkpoint '{os.path.abspath(checkpoint)}' does not exists."
+        assert (
+            os.path.splitext(checkpoint)[1] in self.SUPPORTED_RUNTIMES
+        ), f"The provided re-identification checkpoint '{os.path.abspath(checkpoint)}' must be one of : {self.SUPPORTED_RUNTIMES}."
 
-    def preprocess(self, inputs: Any, data_samples: List[Union[int, PoseDataSample]]):
+        assert os.path.isfile(metainfo), f"The provided re-identification metadata file '{os.path.abspath(metainfo)}' does not exists."
+        with open(metainfo, "r") as f:
+            metadata = yaml.safe_load(f)
+
+        self.identities = metadata.get("identities")
+        assert isinstance(self.identities, list), f"The metadata file '{metainfo}' must contain a list of identities"
+
+        self.nb_features = int(metadata.get("nb_features", 0))
+        assert self.nb_features > 0
+
+        self.input_shape = input_shape[-2:]
+
+        super(ReIDBackend, self).__init__(
+            dict(
+                checkpoint=checkpoint,
+                output_names=["output"],
+                input_shapes=input_shape,
+            )
+        )
+
+    def preprocess(self, inputs: np.ndarray, data_samples: List[Union[int, PoseDataSample]]):
         return dict(inputs=inputs, data_samples=data_samples)
 
-    def postprocess(self, features: torch.Tensor, data_samples: List[PoseDataSample]) -> List[dict]:
-        return features
+    def postprocess(self, features: torch.Tensor, logits: torch.Tensor, data_samples: List[PoseDataSample]) -> List[dict]:
+        return features, logits
 
     def loss(
         self,

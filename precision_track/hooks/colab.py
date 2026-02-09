@@ -1,10 +1,9 @@
 from typing import Dict, Optional
-import os
 from mmengine.hooks import Hook
 from mmengine.logging import print_log
-from mmengine.hooks import CheckpointHook
 
 from precision_track.registry import HOOKS
+from precision_track.utils import find_checkpoint_hook
 
 
 @HOOKS.register_module()
@@ -18,7 +17,7 @@ class ColabCheckpointHook(Hook):
         except ImportError:
             on_colab = False
 
-        checkpoint_hook = self._find_checkpoint_hook(runner)
+        checkpoint_hook = find_checkpoint_hook(runner)
         if on_colab and checkpoint_hook is not None:
             ckpt_path = checkpoint_hook.last_ckpt
             try:
@@ -32,10 +31,3 @@ class ColabCheckpointHook(Hook):
 
     def after_val_iter(self, runner, batch_idx: int, data_batch=None, outputs=None) -> None:
         self.after_val_epoch(runner)
-
-    @staticmethod
-    def _find_checkpoint_hook(runner):
-        for hook in runner.hooks:
-            if isinstance(hook, CheckpointHook):
-                return hook
-        return None

@@ -142,9 +142,14 @@ class TrackingTestingLoop(BaseLoop):
                 path=self.output_path,
                 instance_data="pred_track_instances",
                 precision=64,
+                subtype="tracked_bboxes",
             ),
         ]
         self.test_cfg = test_cfg
+        self.validator_cfg = runner.cfg.validator
+        self.assigner_cfg = runner.cfg.assigner
+        self.detector_cfg = runner.cfg.detector
+
         if isinstance(evaluator, dict) or isinstance(evaluator, list):
             self.evaluator = runner.build_evaluator(evaluator)  # type: ignore
         else:
@@ -180,10 +185,10 @@ class TrackingTestingLoop(BaseLoop):
             for video_path, gt_path in zip(data_batch["inputs"], data_batch["data_samples"]):
                 video = VideoReader(video_path)
                 tracker = self._tracker(
-                    detector=self.test_cfg.get("detector"),
-                    assigner=self.test_cfg.get("assigner"),
-                    validator=self.test_cfg.get("validator"),
-                    analyzer=self.test_cfg.get("analyzer"),
+                    detector=self.detector_cfg,
+                    assigner=self.assigner_cfg,
+                    validator=self.validator_cfg,
+                    analyzer=None,
                     outputs=self.outputs,
                     batch_size=self.test_cfg.get("batch_size"),
                     verbose=self.verbose,

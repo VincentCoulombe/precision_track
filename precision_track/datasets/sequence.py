@@ -569,9 +569,11 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
         test_mode: bool = False,
         block_size: Optional[int] = 2,
         inference_resolution: Optional[tuple] = None,
+        verbose: Optional[tuple] = False,
         *args,
         **kwargs,
     ):
+        self.verbose = verbose
         self.detector = DetectionBackend(**detector)
         self.actions_gt_format = actions_gt_format
         self.action_to_label_map = dict()
@@ -645,6 +647,9 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
         else:
             assert isinstance(self.data_prefix[key], list), f"{key} is expected to be a list or a directory."
 
+    def _init_data_list(self):
+        self.data_list = self.load_data_list()
+
     def _join_prefix(self):
         missing_keys = [k for k in self.MANDATORY_PREFIX_KEYS if k not in self.data_prefix]
         assert not missing_keys, f"Missing mandatory keys: {missing_keys}"
@@ -701,6 +706,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
     def load_data_list(self) -> List[dict]:
         self.logger.info("Loading sequences...")
         prefix_map = []
+        self.missed_gt = defaultdict(list)
         self.action_to_label_map = {ac: i for i, ac in enumerate(self.metainfo.get("actions", []))}
         sequences_name = [os.path.basename(os.path.normpath(i)) for i in self.data_prefix["sequences"]]
         for i, sequence_name in enumerate(sequences_name):
@@ -817,9 +823,21 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                                 matched_preds = torch.tensor([], dtype=torch.long)
                                 matched_gts = torch.tensor([], dtype=torch.long)
 
-                            ids = data_sample.gt_instance_labels.ids[matched_gts]
+                            all_gt_ids = data_sample.gt_instance_labels.ids
+                            ids = all_gt_ids[matched_gts]
                             unique_idx = np.unique(ids.numpy(), return_index=True)[1]
                             ids = ids[unique_idx]
+
+                            unmatched_ids = set(all_gt_ids.numpy()) - set(ids.numpy())
+                            if unmatched_ids:
+                                frame_id = data_sample.img_id
+                                for unmatched_id in unmatched_ids:
+                                    self.missed_gt[int(unmatched_id)].append(int(frame_id))
+                                if self.verbose:
+                                    self.logger.warning(
+                                        f"Instance IDs {unmatched_ids} from frame {frame_id} of sequence '{sequence_name}' "
+                                        f"were removed because they were not detected."
+                                    )
 
                             features = outputs[j]["pred_instances"]["features"][matched_preds][unique_idx].cpu()
                             bboxes = outputs[j]["pred_instances"]["bboxes"][matched_preds][unique_idx].cpu()
@@ -872,6 +890,9 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                         batch = defaultdict(list)
         return data_list
 
+    def reset(self):
+        self._init_data_list()
+
     @staticmethod
     def _standardize_frame_data(frame_data):
         frame_data = np.array(frame_data)
@@ -906,7 +927,6 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         *args,
         **kwargs,
     ):
-        self.action_to_sequence_map = defaultdict(list)
         super().__init__(
             from_file=from_file,
             detector=detector,
@@ -978,7 +998,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
             else:
                 actions[block_idx] = self._ignore_idx
 
-        assert id_idx.numel() > 0, f"Bad synchronization for id {id_} of frame {idx} of sequence {seq}."
+        assert id_idx.numel() > 0, f"The id: '{id_}' of sequence: '{seq_name}' is not present on frame {idx} when preparing the data, but should be. "
         action = data_sample.gt_instance_labels.action_labels[id_idx]
         assert action == random_action, (
             f"Action for sequence: {seq}, frame idx: {idx} and instance id: {id_} should be {self.label_to_action_map[random_action]},"
@@ -999,10 +1019,11 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         return dict(inputs=inputs, data_samples=inputs_ds)
 
     def load_data_list(self) -> List[dict]:
+        self.action_to_sequence_map = defaultdict(list)
         data_list = super().load_data_list()
         for s, sequence in enumerate(data_list):
             seq_dynamics = dict()
-            for i, data_sample in enumerate(sequence):
+            for data_sample in sequence:
                 frame_id = data_sample.img_id
                 seq_name = data_sample.seq_name
                 bboxes = data_sample.pred_track_instances.bboxes
@@ -1025,7 +1046,7 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
                     frame_dynamics[j] = torch.from_numpy(seq_dynamics[id_][:6]).to(torch.float32)
 
                     if frame_id >= self.block_size:  # Removing first self.block_size frames from each sequences.
-                        self.action_to_sequence_map[action].append((s, seq_name, i, id_))
+                        self.action_to_sequence_map[action].append((s, seq_name, frame_id, id_))
                 data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
         return data_list
 
@@ -1383,8 +1404,9 @@ class MAEDataset(OfflineRandomSequenceDataset):
 
         return data_list
 
-    def _init_data_list(self):
-        self.data_list = self.load_data_list()
+    def reset(self):
+        self._join_prefix()
+        self._init_data_list()
 
     def __len__(self):
         if self._custom_length > 0:
@@ -1498,13 +1520,16 @@ class VideoDataset:
         base_v_paths = [os.path.splitext(os.path.basename(v))[0] for v in self.video_paths]
         for i, gt in enumerate(self.gt_paths):
             assert os.path.exists(gt), f"Expected the file: {gt}, to exist."
-            gt_name = os.path.splitext(os.path.basename(gt))[0].replace("gt_", "")
+            gt_name = os.path.splitext(os.path.basename(gt))[0]
+            gt_idx = find_path_in_dir(gt_name, base_v_paths)
+            if gt_idx == -1:
+                gt_name = gt_name.replace("gt_", "")
             gt_idx = find_path_in_dir(gt_name, base_v_paths)
             if gt_idx == -1:
                 print_log(
                     (
-                        f"The ground truth file: {gt_name} have no corresponding video, meaning a video file with the same name,"
-                        f"in the provided video paths: {base_v_paths}."
+                        f"The ground truth file: {os.path.abspath(gt)} have no corresponding video, meaning a video file with the same name, "
+                        f"in the provided video paths: {[os.path.abspath(v) for v in self.video_paths]}."
                     ),
                     logger="current",
                     level=WARNING,

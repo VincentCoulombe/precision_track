@@ -25,9 +25,9 @@ def expected_results_path():
     "checkpoints",
     [
         (
-            os.path.join(ROOT, "configs/model_mice_clustering_DEPLOYED.pth"),
-            os.path.join(ROOT, "configs/model_mice_clustering_DEPLOYED.onnx"),
-            os.path.join(ROOT, "configs/model_mice_clustering_DEPLOYED_NVIDIAGeForceRTX3090_FP16.engine"),
+            os.path.join(ROOT, "configs/model_mice_DEPLOYED.pth"),
+            os.path.join(ROOT, "configs/model_mice_DEPLOYED.onnx"),
+            os.path.join(ROOT, "configs/model_mice_DEPLOYED_NVIDIAGeForceRTX3090_FP16.engine"),
         )
     ],
 )

@@ -73,7 +73,11 @@ class ByteTrack(BaseAssignationAlgorithm):
         pred_idx: Optional[np.ndarray] = None,
         weight_iou_with_det_scores: Optional[bool] = False,
         match_iou_thr: Optional[Union[float, np.ndarray]] = 0.5,
+        erraticities: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
+        # if isinstance(erraticities, np.ndarray):
+        #     match_iou_thr = np.maximum(erraticities, match_iou_thr)
+
         if not dists.size:
             return np.array([], dtype=int), np.array([], dtype=int)
 

@@ -1,10 +1,8 @@
 import argparse
 import os
 
-import yaml
-
 from precision_track import Runner
-from precision_track.utils import check_if_mot_dataset_is_ok, load_config, load_user_configs
+from precision_track.utils import check_if_mot_dataset_is_ok, load_config, load_user_configs, load_validation_config
 
 
 def parse_args():
@@ -19,12 +17,13 @@ def parse_args():
 
 def main(args):
     system_configs_path = "../configs/tasks/testing_tracking.py"
-    with open("../configs/user_configs.yaml", "r") as f:
-        user_configs = yaml.safe_load(f)
-    load_user_configs(user_configs, system_configs_path)
+    user_system_configs_path = "../configs/user_configs.yaml"
+    load_user_configs(user_system_configs_path, system_configs_path)
     config = load_config(system_configs_path)
-    check_if_mot_dataset_is_ok(config["testing_tracking_data_root"])
-    runner = Runner(system_configs_path, args.launcher, mode="test")
+    load_validation_config(config)
+    config["test_cfg"]["validator"] = config.get("validator")
+    check_if_mot_dataset_is_ok(config["mot_testing_data_root"])
+    runner = Runner(config, args.launcher, mode="test")
     runner()
 
 

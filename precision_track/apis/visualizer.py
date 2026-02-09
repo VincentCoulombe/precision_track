@@ -150,6 +150,7 @@ class Visualizer:
         else:
             os.makedirs(os.path.dirname(sink_path), exist_ok=True)
             self._write_to_video(sink_path, iterator, fps)
+        print_log(f"Sink saved at: {sink_path}.")
 
     def _assert_vid_ext(self, ext: str) -> None:
         assert ext in self.SUPPORTED_VIDEO_EXTENSIONS, f"Video extension must be one of: {self.SUPPORTED_VIDEO_EXTENSIONS}, not {ext}."

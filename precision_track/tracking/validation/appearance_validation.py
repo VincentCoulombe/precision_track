@@ -2,121 +2,163 @@ from typing import List, Tuple, Optional, Dict
 import torch
 import numpy as np
 import heapq
-import cv2
 import re
+import cv2
+from mmengine.logging import print_log
 
 from .base_validation import BaseValidation
 
-from precision_track.utils import cosine_similarity
+from precision_track.registry import TRACKING, MODELS
+from precision_track.utils import parse_pose_metainfo, clip
+from precision_track.models.backends import ReIDBackend
 
 
+@TRACKING.register_module()
 class AppearanceValidation(BaseValidation):
     _UNIQUE_ID_PATTERN = re.compile(r"^(.+)_(\d+)$")
 
     def __init__(
         self,
+        metainfo: str,
         re_identificator: dict,
+        data_preprocessor: dict,
         batch_size: int,
+        unique_ids: list,
+        validated_classes: List[str],
         input_shape: Optional[Tuple] = (224, 224),
-        validated_classes: Optional[List[str]] = None,
         memory_length: Optional[int] = 20,
-        min_required_proof_to_confirm: Optional[int] = 10,
+        min_consecutive_hits: Optional[int] = 5,
         confidence_level: Optional[float] = 0.95,
         features_ema: Optional[float] = 0.1,
-        features_bank_size: Optional[int] = 1000,
-        nb_features: Optional[int] = 128,
+        crop_enlargement_factor: Optional[float] = 0.0,
         *args,
         **kwargs,
     ) -> None:
-        self._frame_size = None
+        super().__init__(validated_classes)
+
+        metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        self.cls_to_labels = {cls_: i for i, cls_ in enumerate(metainfo.get("classes", []))}
+
         assert batch_size > 0
         self.batch_size = int(batch_size)
 
         assert len(input_shape) == 2
-        self.input_shape = []
+        self.input_shape = [3]
         for shape in input_shape:
             assert shape > 0
             self.input_shape.append(int(shape))
-        self.input_shape = tuple(input_shape)
+        self.img_size = tuple(self.input_shape[-2:])
+        self.input_shape = tuple(self.input_shape)
 
-        if validated_classes is not None:
-            assert isinstance(validated_classes, list)
-            for cls in validated_classes:
-                assert isinstance(cls, str)
-        self.validated_classes = validated_classes
+        re_identificator["input_shape"] = [(-1,) + self.input_shape]
 
         self.re_identificator = ReIDBackend(**re_identificator)
+        self.device = self.re_identificator.device
+        self.identities = self.re_identificator.identities
+
+        self.precision = torch.float16 if self.re_identificator.half_precision else torch.float32
+
+        self.data_preprocessor = MODELS.build(data_preprocessor)
 
         assert memory_length > 0
         self.memory_length = int(memory_length)
 
-        assert min_required_proof_to_confirm > 0
-        self.min_required_proof_to_confirm = int(min_required_proof_to_confirm)
+        assert min_consecutive_hits > 0
+        self.min_consecutive_hits = int(min_consecutive_hits)
 
         assert 0 < confidence_level < 1
         self.confidence_level = float(confidence_level)
 
         assert 0 < features_ema < 1
         self.strength_ema_new = float(features_ema)
-        self.stregth_ema_baseline = 1 - self.strength_ema_new
+        self.strength_ema_baseline = 1 - self.strength_ema_new
 
-        assert 0 < nb_features
-        self.nb_features = int(nb_features)
-        assert 0 < features_bank_size
-        self.features_bank_size = features_bank_size
+        crop_enlargement_factor = float(crop_enlargement_factor)
+        assert 0.0 <= crop_enlargement_factor < 1.0
+        self.crop_enlargement_factor = crop_enlargement_factor
 
-        self.alpha_counts = torch.zeros((self.features_bank_size, self.features_bank_size), dtype=torch.float32)
-        self.beta_counts = torch.zeros((self.features_bank_size, self.features_bank_size), dtype=torch.float32)
-        self.observation_count = torch.zeros(self.features_bank_size, dtype=torch.int32)
-        self.did_not_check_since = torch.zeros(self.features_bank_size, dtype=torch.int32)
-        self.features_bank = torch.zeros((self.features_bank_size, self.nb_features), dtype=torch.float32)
-        self.unique_ids = np.zeros(self.features_bank_size, dtype=str)
-        self.occupied_idxs = torch.zeros(self.features_bank_size, dtype=bool)
-        self.epsilon_base = 0.25
+        self.unique_ids_list = unique_ids
+        print_log(
+            f"Set to re-identify the following unique ids: {unique_ids}, based on their appearances.",
+            logger="current",
+        )
+
+        assert len(self.identities) == len(
+            unique_ids
+        ), f"The AppearanceValidation module is set to re-identify {len(unique_ids)} distinct subjects ({unique_ids}) with an incoherant number of identities {len(self.identities)} ({self.identities})."
+        self.nb_identities = len(unique_ids)
+
+        self.has_been_observed = torch.zeros(self.nb_identities, dtype=torch.bool, device=self.device)
+        self.consecutive_hits = torch.zeros(self.nb_identities, self.nb_identities, dtype=torch.int64, device=self.device)
+        self.did_not_check_since = torch.zeros(self.nb_identities, dtype=torch.int64, device=self.device)
+        self.identity_probabilities = torch.zeros((self.nb_identities, self.nb_identities), dtype=self.precision, device=self.device)
+
+        self.unique_ids = {u: i for i, u in enumerate(self.unique_ids_list)}
+        self.reverse_unique_ids = {i: u for i, u in enumerate(self.unique_ids_list)}
+        self.identity2uid = dict()
         self.max_check_delay = 1000
 
-    def _update_features_bank(self, priorities: heapq, frame: np.ndarray, to_switch: dict):
+    def _update(self, priorities: heapq, frame: np.ndarray, to_switch: dict):
         inputs = []
         tracked_unique_ids = []
-        for _, _ in zip(priorities, range(self.batch_size)):
+        qty_to_process = min(len(priorities), self.batch_size)
+        for _ in range(qty_to_process):
             cls, instance_id, cxcywh = heapq.heappop(priorities)[1]
             if cls not in to_switch:
-                to_switch[cls] = []
+                to_switch[cls] = set()
             unique_key = f"{cls}_{instance_id}"
-            if 0 < instance_id:
-                half_w = cxcywh[2] / 2
-                half_h = cxcywh[3] / 2
-                x1 = int(cxcywh[0] - half_w)
-                y1 = int(cxcywh[1] - half_h)
-                x2 = int(cxcywh[0] + half_w)
-                y2 = int(cxcywh[1] + half_h)
-                inputs.append(cv2.resize(frame[max(y1, 0) : min(y2, self.frame_size[1]), max(x1, 0) : min(x2, self.frame_size[0])], self.input_shape))
+            w = cxcywh[2]
+            h = cxcywh[3]
+            w_enlargement = cxcywh[2] * self.crop_enlargement_factor
+            h_enlargement = cxcywh[3] * self.crop_enlargement_factor
+            cxcywh[2] = w + w_enlargement
+            cxcywh[3] = h + h_enlargement
+
+            clipped_coords = clip(np.array(cxcywh), "cxcywh", self.frame_size[1], self.frame_size[0])
+
+            enlarged_half_w = clipped_coords[2] / 2
+            enlarged_half_h = clipped_coords[3] / 2
+
+            x1 = int(clipped_coords[0] - enlarged_half_w)
+            y1 = int(clipped_coords[1] - enlarged_half_h)
+            x2 = int(clipped_coords[0] + enlarged_half_w)
+            y2 = int(clipped_coords[1] + enlarged_half_h)
+
+            crop = cv2.resize(frame[y1:y2, x1:x2], self.img_size)
+            crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            inputs.append(self.data_preprocessor(crop))
             tracked_unique_ids.append(unique_key)
 
         if len(inputs) == 0:
-            return [], tracked_unique_ids
+            return []
 
-        extracted_features = self.re_identificator(inputs)
-        updated_idxs = torch.zeros_like(self.occupied_idxs)
-        for i, tracked_unique_id in enumerate(tracked_unique_ids):
-            tracked_idx = np.where(tracked_unique_id == self.unique_ids)[0]
-            if not tracked_idx.any():
-                tracked_idx = self._find_first_available_idx()
-                self.features_bank[tracked_idx] = extracted_features[i]
-            else:
-                self.features_bank[tracked_idx] = self.features_bank[tracked_idx] * self.stregth_ema_baseline + extracted_features[i] * self.strength_ema_new
-            updated_idxs[tracked_idx] = True
+        _, logits = self.re_identificator(torch.stack(inputs).to(self.device), [])
+        identity_probabilities = logits.softmax(1)
 
-        similarities = cosine_similarity(self.features_bank[updated_idxs], self.features_bank[self.occupied_idxs])
-        return similarities, updated_idxs
+        updated_idxs = []
+        for tracked_unique_id in tracked_unique_ids:
+            tracked_idx = self.unique_ids[tracked_unique_id]
+            updated_idxs.append(tracked_idx)
 
-    def _find_first_available_idx(self):
-        available_idxs = torch.where(~self.occupied_idxs)[0]
-        if len(available_idxs) > 0:
-            return available_idxs[0].item()
-        raise ValueError(f"The Appearance Extractor's feature bank, which can contains up to {self.features_bank_size} concurrent entities, is full.")
+        tensor_updated_idxs = torch.tensor(updated_idxs, dtype=torch.int64, device=self.device)
 
-    def _build_priority_queue(self, track_instances: dict) -> int:
+        first_observation = ~self.has_been_observed[tensor_updated_idxs]
+
+        observed = ~first_observation
+        observed_idxs = tensor_updated_idxs[observed]
+
+        first_observation_idxs = tensor_updated_idxs[first_observation]
+        self.has_been_observed[first_observation_idxs] = True
+
+        self.identity_probabilities[first_observation_idxs] = identity_probabilities[first_observation]
+
+        self.identity_probabilities[observed_idxs] = (
+            self.identity_probabilities[observed_idxs] * self.strength_ema_baseline + identity_probabilities[observed] * self.strength_ema_new
+        )
+
+        return observed_idxs
+
+    def _build_priority_queue(self, track_instances: dict) -> list:
         isolated = track_instances["isolated"]
 
         priority_queue = []
@@ -126,107 +168,127 @@ class AppearanceValidation(BaseValidation):
             track_instances["bboxes"][isolated],
             track_instances["scores"][isolated],
         ):
-            if self.validated_classes is None or cls in self.validated_classes:
+            if inst_id >= 0 and (self.validated_classes is None or cls in self.validated_classes):
                 unique_key = f"{cls}_{inst_id}"
-                if unique_key not in self.did_not_check_since:
-                    self.did_not_check_since[unique_key] = 0
-                did_not_check_since = self.did_not_check_since[unique_key] / self.max_check_delay
+                idx = self.unique_ids.get(unique_key)
+                assert (
+                    idx is not None
+                ), f"The appearance validator encountered the following not registered unique id at runtime: {unique_key}. The registered unique ids are: {self.unique_ids_list}."
+                did_not_check_since = self.did_not_check_since[idx] / self.max_check_delay
                 heapq.heappush(priority_queue, (-float(did_not_check_since + score), (cls, int(inst_id), cxcywh.tolist())))
         return priority_queue
 
     def _register_no_checks(self, updated_idxs):
-        self.did_not_check_since[~updated_idxs] += 1
+        self.did_not_check_since += 1
+        self.did_not_check_since[updated_idxs] = 0
 
     def _reset(self, keys):
-        for key in keys:
-            self.alpha_counts[key, :] = 0.0
-            self.beta_counts[key, :] = 0.0
-            self.observation_count[key] = 0
-            self.did_not_check_since[key] = 0
-            self.features_bank[key] = 0.0
-            self.occupied_idxs[key] = False
-
-    def _update_memory_collect_proof(self, similarities, updated_idxs):
-        """
-        Update Beta distribution for each candidate ID.
-        similarity_scores: normalized cosine similarities [N_ids]
-        """
-
-        # Compute observation weight based on prediction entropy (confidence)
-        entropy = -np.sum(similarities * np.log(similarities + 1e-10))
-        max_entropy = np.log(len(similarities))
-        confidence = 1.0 - (entropy / max_entropy)  # [0,1], higher = more confident
-
-        self.observation_count[updated_idxs] += 1
-
-        # Add new observation weighted by confidence
-        self.alpha_counts[self.occupied_idxs, updated_idxs] += similarities * confidence
-        self.beta_counts[self.occupied_idxs, updated_idxs] += (1 - similarities) * confidence
+        self.has_been_observed[keys] = 0
+        self.consecutive_hits[keys] = 0.0
+        self.did_not_check_since[keys] = 0
 
     def _get_confirmations(self, updated_idxs):
+        updated_id_probs = self.identity_probabilities[updated_idxs, :]
 
-        confirmable_idxs = self.observation_count[updated_idxs] > self.min_required_proof_to_confirm
-        if not confirmable_idxs.any():
-            return []
+        max_return = updated_id_probs.max(1)
+        identity_idxs = max_return.indices
+        updated_id_prob = max_return.values
+        conf_mask = updated_id_prob > self.strength_ema_baseline
 
-        alphas = self.alpha_counts[confirmable_idxs]
-        betas = self.beta_counts[confirmable_idxs]
-        posterior_means = alphas / (alphas + betas)
+        conf_identity_idxs = identity_idxs[conf_mask]
+        confirmed_idxs = updated_idxs[conf_mask]
 
-        top1_idxs = torch.argmax(posterior_means, dim=1)
-        top1_means = posterior_means[:, top1_idxs].copy()
+        keep = self.consecutive_hits[confirmed_idxs, conf_identity_idxs].clone()
+        self.consecutive_hits[confirmed_idxs] = 0
+        self.consecutive_hits[confirmed_idxs, conf_identity_idxs] = keep + 1
 
-        uncertainty_penalties = (1.0 - top1_means) / np.sqrt(len(confirmable_idxs.shape[0]))
-        epsilons = self.epsilon_base * (1.0 + uncertainty_penalties)
+        hits_mask = self.consecutive_hits[confirmed_idxs, conf_identity_idxs] >= self.min_consecutive_hits
+        self.consecutive_hits[confirmed_idxs[hits_mask], conf_identity_idxs[hits_mask]] = 0
 
-        posterior_means[:, top1_idxs] = -1
-        top2_means = torch.max(posterior_means, dim=1)
-
-        are_confirmed = top1_means > epsilons + top2_means
-
-        return top1_idxs if are_confirmed.any() else []
+        return confirmed_idxs, conf_identity_idxs, hits_mask
 
     def _init_validation(self, tracking_results: dict):
         if "correction_instances" not in tracking_results:
-            tracking_results["correction_instances"] = {"instances_id": [], "corrected_id": []}
+            tracking_results["correction_instances"] = {"instances_id": [], "class_id": [], "corrected_id": []}
+        if "appearance_validation_instances" not in tracking_results:
+            tracking_results["appearance_validation_instances"] = {
+                "labels": [],
+                "instances_id": [],
+                "identity": [],
+            } | {f"{i}_score": [] for i in self.identities}
 
     def __call__(
         self,
         frame: np.ndarray,
         tracking_results: Optional[dict] = None,
     ) -> Optional[Dict[str, List[Tuple]]]:
+
+        frame_id = tracking_results["img_id"]
+        if frame_id in [3512]:
+            stop = True
+
+        if self._frame_size is None:
+            self.frame_size = tracking_results["ori_shape"][:2]
         self._init_validation(tracking_results)
         track_instances = tracking_results["pred_track_instances"]
         priorities = self._build_priority_queue(track_instances)
         to_switch = {}
 
-        similarities, updated_idxs = self._update_features_bank(priorities, frame, to_switch)
-        self._update_memory_collect_proof(similarities, updated_idxs)
-        confirmed_idxs = self._get_confirmations(updated_idxs)
-        for updated_idx, confirmed_idx in zip(updated_idxs, confirmed_idxs):
-            updated_idx = updated_idx.item()
-            confirmed_idx = confirmed_idx.item()
+        updated_idxs = self._update(priorities, frame, to_switch)
+        if len(updated_idxs) == 0:
+            self._register_no_checks(torch.tensor([], dtype=torch.int64, device=self.device))
+            tracking_results["corrected_instances_id"] = to_switch
+            return tracking_results, to_switch
+        confirmed_idxs, conf_identity_idxs, hits_mask = self._get_confirmations(updated_idxs)
 
-            updated_unique_id = self.unique_ids[updated_idx]
-            confirmed_unique_id = self.unique_ids[confirmed_idx]
+        idx_to_reset = []
+
+        for updated_idx, confirmed_identity_idx, is_a_hit in zip(confirmed_idxs, conf_identity_idxs, hits_mask):
+            updated_idx = updated_idx.item()
+            confirmed_identity_idx = confirmed_identity_idx.item()
+
+            updated_unique_id = self.reverse_unique_ids[updated_idx]
+            confirmed_identity = self.identities[confirmed_identity_idx]
+            u_id_linked_to_conf_identity = self.identity2uid.get(confirmed_identity)
 
             updated_cls, updated_inst_id = self._decode_unique_id(updated_unique_id)
-            confirmed_cls, confirmed_inst_id = self._decode_unique_id(confirmed_unique_id)
 
-            if updated_cls == confirmed_cls:
+            label = int(self.cls_to_labels.get(updated_cls, -1))
+            tracking_results["appearance_validation_instances"]["labels"].append(label)
+            tracking_results["appearance_validation_instances"]["instances_id"].append(updated_inst_id)
+            tracking_results["appearance_validation_instances"]["identity"].append(confirmed_identity)
+            for i, identity in enumerate(self.identities):
+                tracking_results["appearance_validation_instances"][f"{identity}_score"].append(self.identity_probabilities[updated_idx, i].item())
 
-                are_oscillating = self._switching_back(to_switch.get(updated_cls, []), updated_inst_id, confirmed_inst_id)
-                if updated_inst_id != confirmed_inst_id and not are_oscillating:
+            if not is_a_hit:  # The identity has not been confirmed enough to be a hit
+                continue
 
-                    to_switch[updated_cls].append((updated_inst_id, confirmed_inst_id))
-                    mask_a = (track_instances["instances_id"] == updated_inst_id) & (track_instances["classes"] == updated_cls)
-                    mask_b = (track_instances["instances_id"] == confirmed_inst_id) & (track_instances["classes"] == confirmed_cls)
-                    if mask_a.any() and mask_b.any():
-                        track_instances["instances_id"][mask_a] = confirmed_inst_id
-                        track_instances["instances_id"][mask_b] = updated_inst_id
-                        self._register_correction(tracking_results, updated_inst_id, confirmed_inst_id)
+            if u_id_linked_to_conf_identity is None:  # First confirmation
+                self.identity2uid[confirmed_identity] = updated_unique_id
+                continue
 
-        self._reset([updated_idxs, confirmed_idxs] + [key for key, delay in self.did_not_check_since.items() if delay >= self.max_check_delay])
+            confirmed_cls, confirmed_inst_id = self._decode_unique_id(u_id_linked_to_conf_identity)
+
+            if updated_cls != confirmed_cls:  # Not same class
+                continue
+
+            are_oscillating = (confirmed_inst_id, updated_inst_id) in to_switch.get(updated_cls, set())
+
+            if updated_inst_id == confirmed_inst_id or are_oscillating:  # No need to switch
+                continue
+
+            to_switch[updated_cls].add((updated_inst_id, confirmed_inst_id))
+            mask_a = (track_instances["instances_id"] == updated_inst_id) & (track_instances["classes"] == updated_cls)
+            mask_b = (track_instances["instances_id"] == confirmed_inst_id) & (track_instances["classes"] == confirmed_cls)
+            if mask_a.any() and mask_b.any():
+                track_instances["instances_id"][mask_a] = confirmed_inst_id
+                track_instances["instances_id"][mask_b] = updated_inst_id
+                self._register_correction(tracking_results, track_instances["labels"][mask_b], updated_inst_id, confirmed_inst_id)
+                idx_to_reset.extend([updated_idx, self.unique_ids[u_id_linked_to_conf_identity]])
+
+        idx_to_reset = torch.tensor(idx_to_reset, dtype=torch.int64, device=self.device)
+        stale_idxs = torch.where(self.did_not_check_since >= self.max_check_delay)[0]
+        self._reset(torch.cat([idx_to_reset, stale_idxs]))
 
         self._register_no_checks(updated_idxs)
         tracking_results["corrected_instances_id"] = to_switch
@@ -242,13 +304,7 @@ class AppearanceValidation(BaseValidation):
         raise ValueError(f"The Appearance Extractor failed to decode the following unique id: {unique_id}.")
 
     @staticmethod
-    def _switching_back(switches: List[tuple], a: int, b: int):
-        for switch in switches:
-            if switch[0] == b and switch[1] == a:
-                return True
-        return False
-
-    @staticmethod
-    def _register_correction(tracking_results: dict, ori_id: int, corrected_id: int):
+    def _register_correction(tracking_results: dict, class_id: int, ori_id: int, corrected_id: int):
         tracking_results["correction_instances"]["instances_id"].append(ori_id)
+        tracking_results["correction_instances"]["class_id"].append(class_id)
         tracking_results["correction_instances"]["corrected_id"].append(corrected_id)

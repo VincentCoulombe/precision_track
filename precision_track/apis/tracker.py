@@ -17,7 +17,7 @@ from tqdm import tqdm
 from precision_track.models.backends import DetectionBackend
 from precision_track.outputs.display import display_latency
 from precision_track.registry import MODELS, TRACKING, OUTPUTS
-from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking
+from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking, filter_outputs
 
 from .association_step import AssociationStep
 from .result import Result
@@ -35,6 +35,7 @@ class Tracker(BaseModel):
         outputs: Optional[List[dict]] = None,
         verbose: Optional[bool] = True,
         batch_size: Optional[int] = 1,
+        profile: Optional[str] = "",
         *args,
         **kwargs,
     ):
@@ -59,6 +60,9 @@ class Tracker(BaseModel):
             self.batch_size = batch_size
         else:
             self.batch_size = 1
+
+        if outputs is not None:
+            outputs = filter_outputs(validator, assigner.stitching_algorithm, analyzer, outputs=outputs)
         self.result = Result(outputs=outputs)
 
         self.analyzer = analyzer
@@ -66,6 +70,9 @@ class Tracker(BaseModel):
         if self.analyzer is not None:
             self.analyzer = MODELS.build(analyzer)
             self._analyzing = True
+
+        assert isinstance(profile, str)
+        self.profile = profile
 
     def _init_association_step(self):
         self.association_step = AssociationStep(**self._assigner)
@@ -147,6 +154,7 @@ class Tracker(BaseModel):
             validator=self.validator,
             analyzer=self.analyzer,
             verbose=self.verbose,
+            profile=self.profile,
         )
         if self.verbose:
             display_latency(
@@ -382,6 +390,7 @@ class PipelinedTracker:
 
         timestamps_output = None
         if outputs is not None:
+            outputs = filter_outputs(validator, assigner.stitching_algorithm, analyzer, outputs=outputs)
             filtered_outputs = []
             for output_cfg in outputs:
                 if output_cfg.get("type") == "CsvTimestamps":

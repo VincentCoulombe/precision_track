@@ -47,10 +47,10 @@ assigner = dict(
     num_tentatives=_base_.num_tentatives,
     thresholds_file=hyperparams,
     tracking_algorithm=dict(
-        type="PrecisionTrack" if _base_.with_pose_estimation else "ByteTrack",
+        type="PrecisionTrack",
         obj_score_thrs=dict(high=high_thr, low=low_thr),
         weight_iou_with_det_scores=False,
-        match_iou_thrs=dict(high=0.9, low=0.75, tentative=0.9),
+        match_iou_thrs=dict(high=0.99, low=0.75, tentative=0.9),
         init_track_thr=init_thr,
         with_kpt_weights=True,
         with_kpt_sigmas=False,
@@ -70,12 +70,21 @@ outputs = [
         type="CsvBoundingBoxes",
         path=_base_.saving_directory + "/detected_bboxes.csv",
         instance_data="pred_instances",
+        subtype="detected_bboxes",
         precision=64,
     ),
     dict(
         type="CsvBoundingBoxes",
         path=_base_.saving_directory + "/tracked_bboxes.csv",
         instance_data="pred_track_instances",
+        subtype="tracked_bboxes",
+        precision=64,
+    ),
+    dict(
+        type="CsvBoundingBoxes",
+        path=_base_.saving_directory + "/predicted_bboxes.csv",
+        instance_data="next_frame_pred_track_instances",
+        subtype="predicted_bboxes",
         precision=64,
     ),
     dict(
@@ -92,7 +101,43 @@ outputs = [
     #     type="NpyEmbeddingOutput",
     #     path=_base_.saving_directory + "/features.npy",
     # ),
+    dict(
+        type="CsvSearchAreas",
+        path=_base_.saving_directory + "/stitching_search_areas.csv",
+        instance_data="search_areas",
+        precision=64,
+    ),
+    dict(
+        type="CsvTailtagValidations",
+        path=_base_.saving_directory + "/tracked_tailtag_validations.csv",
+        precision=64,
+    ),
+    dict(
+        type="CsvAppearanceValidations",
+        path=_base_.saving_directory + "/tracked_appearance_validations.csv",
+        precision=64,
+    ),
+    dict(
+        type="CsvCorrections",
+        path=_base_.saving_directory + "/tracked_corrections.csv",
+        instance_data="correction_instances",
+        precision=32,
+    ),
+    dict(
+        type="CsvActions",
+        path=_base_.saving_directory + "/tracked_actions.csv",
+        instance_data="pred_track_instances",
+        metainfo=metainfo,
+        precision=64,
+    ),
+    # dict(
+    #     type="NpyEmbeddingOutput",
+    #     path=_base_.saving_directory + "/action_embeddings.npy",
+    #     ids_field="instances_id",
+    #     embs_field="action_embeddings",
+    # ),
 ]
+
 if _base_.with_pose_estimation:
     outputs += [
         dict(
@@ -102,50 +147,12 @@ if _base_.with_pose_estimation:
             precision=32,
         ),
     ]
-if _base_.stitching_algorithm is not None:
-    outputs += [
-        dict(
-            type="CsvSearchAreas",
-            path=_base_.saving_directory + "/stitching_search_areas.csv",
-            instance_data="search_areas",
-            precision=64,
-        )
-    ]
-if _base_.validator is not None:
-    outputs += [
-        dict(
-            type="CsvValidations",
-            path=_base_.saving_directory + "tracked_validations.csv",
-            instance_data="validation_instances",
-            precision=64,
-        ),
-        dict(
-            type="CsvCorrections",
-            path=_base_.saving_directory + "tracked_corrections.csv",
-            instance_data="correction_instances",
-            precision=32,
-        ),
-    ]
-if _base_.analyzer is not None:
-    outputs += [
-        dict(
-            type="CsvActions",
-            path=_base_.saving_directory + "tracked_actions.csv",
-            instance_data="pred_track_instances",
-            metainfo=metainfo,
-            precision=64,
-        ),
-        # dict(
-        #     type="NpyEmbeddingOutput",
-        #     path=_base_.saving_directory + "/action_embeddings.npy",
-        #     ids_field="instances_id",
-        #     embs_field="action_embeddings",
-        # ),
-    ]
 # /Outputs
 
 
 # Visualization
+bbox_size = 3
+text_size = 2
 painters = []
 if _base_.display_search_zones:
     painters += [
@@ -162,11 +169,11 @@ if _base_.display_untracked_detections:
             annotations=[
                 dict(
                     type="Box",
-                    thickness=3,
+                    thickness=bbox_size,
                     format="cxcywh",
                 )
             ],
-            idx=0,
+            subtype="detected_bboxes",
         ),
     ]
 if _base_.display_bounding_boxes:
@@ -176,11 +183,11 @@ if _base_.display_bounding_boxes:
             annotations=[
                 dict(
                     type="Box",
-                    thickness=3,
+                    thickness=bbox_size,
                     format="cxcywh",
                 )
             ],
-            idx=1,
+            subtype="tracked_bboxes",
         ),
     ]
 if _base_.display_velocities:
@@ -206,11 +213,29 @@ if _base_.display_validations:
     painters += [
         dict(
             type="ValidationPainter",
-            annotations=[dict(type="Dot", radius=10)],
+            radius=20,
             palette=dict(nan_color=[255, 255, 255]),
-        )
+        ),
+        dict(
+            type="AppearanceValidationPainter",
+            thickness=bbox_size * 5,
+            palette=dict(nan_color=[255, 255, 255]),
+        ),
     ]
-
+if _base_.display_predicted_bounding_boxes:
+    painters += [
+        dict(
+            type="BoundingBoxPainter",
+            annotations=[
+                dict(
+                    type="Corner",
+                    thickness=bbox_size,
+                    format="cxcywh",
+                )
+            ],
+            subtype="predicted_bboxes",
+        ),
+    ]
 
 info = []
 if _base_.display_species:
@@ -250,7 +275,10 @@ if _base_.display_validations:
         dict(
             type="TagsDetectionWriter",
             text_color=[0, 0, 0],
-            tag_ids=_base_.valid_tags,
+        ),
+        dict(
+            type="AppearanceDetectionWriter",
+            text_color=[0, 0, 0],
         ),
     ]
 

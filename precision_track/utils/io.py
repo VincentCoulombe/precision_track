@@ -22,6 +22,7 @@ from pathlib import Path
 import cv2
 import mmengine
 import torch
+import yaml
 from cv2 import CAP_PROP_FOURCC, CAP_PROP_FPS, CAP_PROP_FRAME_COUNT, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FRAME_WIDTH, CAP_PROP_POS_FRAMES
 from mmengine.dist import get_dist_info
 from mmengine.fileio import get_file_backend
@@ -30,6 +31,7 @@ from mmengine.logging import print_log
 from mmengine.model import BaseTTAModel, is_model_wrapper
 from mmengine.utils import check_file_exist, digit_version, mkdir_or_exist, track_progress
 from mmengine.utils.dl_utils import load_url
+from mmengine.config import Config
 
 SUPPORTED_IMG_BACKEND = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".pgm", ".pbm", ".ppm", ".ras"]
 SUPPORTED_VIDEO_BACKEND = [".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg"]
@@ -944,7 +946,7 @@ def load_system_config_dict(system_configs_path: str, final_base: str = "./_base
         else:
             raise ValueError(f"Unexpected _base_ encountered when parsing the '{path}' config file.")
 
-        # Is multiple bases, follow the first one. Please enforce this convention in your config files.
+        # Is multiple bases, follow the first one. Enforce this convention in your config files.
         base_file = base_files[0]
         base_path = (path.parent / base_file).resolve()
 
@@ -953,20 +955,27 @@ def load_system_config_dict(system_configs_path: str, final_base: str = "./_base
     return _find_settings(start_path)
 
 
-def load_user_configs(user_configs: dict, system_configs_path: str) -> None:
+def load_user_configs(
+    user_configs: Union[dict, str], system_configs_path: str, dynamic_work_dir_subdir: Optional[str] = None, dynamic_ar_flag: Optional[bool] = None
+) -> None:
+    if isinstance(user_configs, str):
+        with open(user_configs, "r") as f:
+            user_configs = yaml.safe_load(f)
+    assert isinstance(user_configs, dict)
+    if isinstance(dynamic_work_dir_subdir, str):
+        user_configs["tracking"]["saving_directory"] = os.path.join(user_configs["tracking"]["saving_directory"], dynamic_work_dir_subdir)
+    if isinstance(dynamic_ar_flag, bool):
+        user_configs["booleans"]["with_action_recognition"] = dynamic_ar_flag
     system_configs_path, system_configs = load_system_config_dict(system_configs_path)
 
-    # 2) Apply all user overrides
     for section_dict in user_configs.values():
         for user_config_k, user_config_v in section_dict.items():
-            # Python representation of the value (adds quotes for strings, etc.)
             value_repr = repr(user_config_v)
 
             pattern = rf"^{re.escape(user_config_k)}\s*=.*$"
             replacement_line = f"{user_config_k} = {value_repr}"
 
             if re.search(pattern, system_configs, flags=re.MULTILINE):
-                # Replace existing assignment
                 system_configs = re.sub(
                     pattern,
                     replacement_line,
@@ -975,10 +984,94 @@ def load_user_configs(user_configs: dict, system_configs_path: str) -> None:
                     flags=re.MULTILINE,
                 )
             else:
-                # Append new assignment at the end
                 if system_configs and not system_configs.endswith("\n"):
                     system_configs += "\n"
                 system_configs += f"{user_config_k} = {value_repr}\n"
 
-    # 3) Write back to disk once, after all modifications
     system_configs_path.write_text(system_configs, encoding="utf-8")
+
+
+def load_validation_config(config: Config):
+    if not config.with_validation:
+        config["validator"] = None
+        return
+    validation_config_path = os.path.abspath(str(config.validation_configuration_file))
+    if os.path.isfile(validation_config_path):
+        try:
+            with open(validation_config_path, "r") as f:
+                validation_config = yaml.safe_load(f)
+            validated_classes = validation_config.get("validated_classes")
+            assert (
+                validated_classes is not None
+            ), "'validated_classes' must be defined in your validation config. It tells the system which classes to validate."
+            assert isinstance(validated_classes, list), f"{validation_config_path}'s 'validated_classes' must be a list, not: {type(validated_classes)}."
+            num_subjects = config.get("num_subjects", dict())
+            unique_ids = []
+            for validated_class in validation_config["validated_classes"]:
+                assert (
+                    validated_class in num_subjects
+                ), f"The '{validation_config_path}' validation config can not validate the following class: {validated_class}, because it is not defined as a class with a fixed number of individuals in your user_configs."
+                nb_class_subjects = num_subjects[validated_class]
+                assert (
+                    nb_class_subjects > 0
+                ), f"The '{validation_config_path}' validation config can not validate the following class: {validated_class}, because it is not defined as a class with a fixed number of individuals in your user_configs."
+                for i in range(1, nb_class_subjects + 1):
+                    unique_ids.append(f"{validated_class}_{i}")
+            validation_config["unique_ids"] = unique_ids
+            assert "metainfo" in config, f"Your user_configs needs a value for the 'metainfo' key."
+            validation_config["metainfo"] = config["metainfo"]
+            config.validator = validation_config
+        except (OSError, yaml.YAMLError) as e:
+            raise ValueError(f"Failed to open the following validation config: '{os.path.abspath(validation_config_path)}'. {e}.")
+    else:
+        config["validator"] = None
+        if config.with_validation:
+            print_log(
+                f"Automatic disabling of 'with_validation' since the validation's 'configuration_file' ({validation_config_path}) is not a valid path.",
+                logger="curent",
+                level=logging.WARNING,
+            )
+        config.with_validation = False
+
+
+def load_writers(config: Config):
+    writers = config.get("visualizer", dict()).get("writers")
+    if not isinstance(writers, list):
+        return writers
+    if writers:
+        load_validation_config(config)
+        writers_to_remove = []
+        for i, writer in enumerate(writers):
+            if writer.type == "TagsDetectionWriter":
+                if isinstance(config.validator, dict) and config.validator.get("type") == "ArucoValidation":
+                    writer.tag_ids = config.validator.valid_tags
+                else:
+                    writers_to_remove.append(i)
+            elif writer.type == "AppearanceDetectionWriter":
+                if isinstance(config.validator, dict) and config.validator.get("type") == "AppearanceValidation":
+                    writer.unique_ids = config.validator.get("unique_ids", [])
+                    writer.re_id_metainfo = config.validator.re_identificator.metainfo
+                    writer.metainfo = config.metainfo
+                else:
+                    writers_to_remove.append(i)
+        for writer_to_remove in reversed(writers_to_remove):
+            writers.pop(writer_to_remove)
+
+
+def filter_outputs(validator, stitching_algorithm, analyzer, outputs: Optional[list] = None):
+    if not isinstance(outputs, list):
+        return outputs
+    patterns_to_remove = []
+    if validator is None:
+        patterns_to_remove.append(r"valid")
+        patterns_to_remove.append(r"correction")
+    if stitching_algorithm is None:
+        patterns_to_remove.append(r"stitch")
+    if analyzer is None:
+        patterns_to_remove.append(r"analy")
+        patterns_to_remove.append(r"action")
+
+    if patterns_to_remove:
+        combined_pattern = re.compile("|".join(patterns_to_remove), re.IGNORECASE)
+        outputs = [d for d in outputs if not combined_pattern.search(d.get("type", "").lower())]
+    return outputs

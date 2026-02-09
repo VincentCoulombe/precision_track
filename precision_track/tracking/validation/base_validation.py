@@ -1,11 +1,15 @@
 from abc import ABCMeta, abstractmethod
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
 class BaseValidation(metaclass=ABCMeta):
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, validated_classes: List[str], *args, **kwargs) -> None:
         self._frame_size = None
+        assert isinstance(validated_classes, list)
+        for cls in validated_classes:
+            assert isinstance(cls, str)
+        self.validated_classes = validated_classes
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> List[Tuple]:

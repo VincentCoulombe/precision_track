@@ -45,7 +45,7 @@ class BaseCsvOutput(BaseOutput, metaclass=abc.ABCMeta):
         self.precision = precision
         self.columns = columns
         self.confidence_threshold = confidence_threshold
-        self.supported_instance_data = ["pred_track_instances", "pred_instances"]
+        self.supported_instance_data = ["pred_track_instances", "pred_instances", "next_frame_pred_track_instances"]
         self.instance_data = instance_data
         self._setup_path(path)
         self.ids_field = ids_field
@@ -190,6 +190,7 @@ class BaseCsvOutput(BaseOutput, metaclass=abc.ABCMeta):
             if self.instance_data
             not in [
                 "pred_track_instances",
+                "next_frame_pred_track_instances",
                 "validation_instances",
                 "correction_instances",
                 "search_areas",
@@ -216,6 +217,7 @@ class CsvBoundingBoxes(BaseCsvOutput):
     def __init__(
         self,
         path: str,
+        subtype: str,
         bbox_format: str = "cxcywh",
         instance_data: str = "pred_instances",
         confidence_threshold: float = 0.1,
@@ -246,6 +248,8 @@ class CsvBoundingBoxes(BaseCsvOutput):
         self.supported_instance_data.append("gt_instances")
         assert self.instance_data in self.supported_instance_data, f"The provided instance_data must be one one {self.supported_instance_data}"
 
+        self.subtype = str(subtype)
+
     def __call__(self, det_data_sample: dict):
         instance_data, frame_id = self._get_ds_info(det_data_sample)
         ids = self._set_ids(instance_data)
@@ -260,7 +264,7 @@ class CsvBoundingBoxes(BaseCsvOutput):
             bbox = to_numpy(bbox)
             score = to_numpy(score)
             if (score >= self.confidence_threshold and self.instance_data in ["pred_instances", "gt_instances"]) or (
-                id_ >= 0 and self.instance_data == "pred_track_instances"
+                id_ >= 0 and self.instance_data in ["pred_track_instances", "next_frame_pred_track_instances"]
             ):
                 if self.bbox_format != self.save_bbox_format_str:
                     bbox = reformat(bbox, self.bbox_format, self.save_bbox_format_str)
@@ -281,7 +285,7 @@ class CsvBoundingBoxes(BaseCsvOutput):
 
 
 @OUTPUTS.register_module()
-class CsvValidations(BaseCsvOutput):
+class CsvTailtagValidations(BaseCsvOutput):
     SUPPORTED_FORMATS = ["cxcywh"]
 
     def __init__(
@@ -308,6 +312,8 @@ class CsvValidations(BaseCsvOutput):
 
     def __call__(self, det_data_sample: dict):
         instance_data, frame_id = self._get_ds_info(det_data_sample)
+        if instance_data is None:
+            return None, None
         ids = self._set_ids(instance_data)
         i = 0
         for id_, label, bbox, precision in zip(
@@ -324,6 +330,74 @@ class CsvValidations(BaseCsvOutput):
             self._add_row(frame_id, label, id_, *bbox, precision)
             i += 1
         self._update_frame_id_mapping(frame_id, i)
+
+    def _get_ds_info(self, data_sample: dict):
+        instance_data = data_sample.get(self.instance_data, None)
+        if instance_data is None:
+            return None, None
+        return instance_data, data_sample["img_id"]
+
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        raise NotImplementedError
+
+
+@OUTPUTS.register_module()
+class CsvAppearanceValidations(BaseCsvOutput):
+    def __init__(
+        self,
+        path: str,
+        instance_data: str = "appearance_validation_instances",
+        precision: int = 32,
+        ids_field: str = "instances_id",
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            path=path,
+            precision=precision,
+            columns=[],
+            instance_data=instance_data,
+            ids_field=ids_field,
+        )
+        self.supported_instance_data = ["appearance_validation_instances"]
+        assert self.instance_data in self.supported_instance_data, f"The provided instance_data must be one one {self.supported_instance_data}"
+
+    def _get_ds_info(self, data_sample: dict):
+        instance_data = data_sample.get(self.instance_data, None)
+        if instance_data is None:
+            return None, None
+        return instance_data, data_sample["img_id"]
+
+    def __call__(self, det_data_sample: dict):
+        instance_data, frame_id = self._get_ds_info(det_data_sample)
+        if instance_data is None and frame_id is None:
+            return
+        self._set_columns(frame_id, instance_data)
+        i = 0
+        for label, id_, identity, *scores in zip(*instance_data.values()):
+            label = to_numpy(label)
+            self._add_row(frame_id, label, id_, identity, *scores)
+            i += 1
+        self._update_frame_id_mapping(frame_id, i)
+
+    def _set_columns(self, frame_id: int, instance_data: dict):
+        score_columns = [k for k in instance_data.keys() if k.endswith("score")]
+        if not self.columns:
+            self.columns = ["identity"] + score_columns
+        else:
+            assert len(score_columns) + 1 == len(
+                self.columns
+            ), f"Inconsistent number of unique ids: {len(score_columns)+1}, expected: {len(self.columns)} at frame{frame_id}"
+
+    def to_dataframe(self) -> pd.DataFrame:
+        df = pd.DataFrame(self._results, columns=["frame_id", "class_id", "instance_id"] + self.columns)
+        df["frame_id"] = df["frame_id"].astype("uint32")
+        df["class_id"] = df["class_id"].astype("uint16")
+        df["instance_id"] = df["instance_id"].astype("int16")
+        for col in self.columns:
+            if col != "identity":
+                df[col] = df[col].astype(self.SUPPORTED_PRECISION[self.precision])
+        return df
 
     def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
         raise NotImplementedError
@@ -357,7 +431,7 @@ class CsvCorrections(BaseCsvOutput):
         i = 0
         for id_, label, corrected_id in zip(
             ids,
-            instance_data["tags_id"],
+            instance_data.get("tags_id", instance_data.get("class_id", [])),
             instance_data["corrected_id"],
         ):
             label = to_numpy(label)
@@ -506,7 +580,7 @@ class CsvVelocities(BaseCsvOutput):
             path=path,
             precision=precision,
             confidence_threshold=confidence_threshold,
-            columns=["vx", "vy"],
+            columns=["vx", "vy", "erraticity"],
             instance_data="pred_track_instances",
             ids_field=ids_field,
         )
@@ -515,15 +589,16 @@ class CsvVelocities(BaseCsvOutput):
         instance_data, frame_id = self._get_ds_info(det_data_sample)
         ids = self._set_ids(instance_data)
         i = 0
-        for id_, label, vel in zip(
+        for id_, label, vel, err in zip(
             ids,
             instance_data["labels"],
             instance_data["velocities"],
+            instance_data["erraticity"],
         ):
             label = to_numpy(label)
             vel = to_numpy(vel)
             if id_ >= 0:
-                self._add_row(frame_id, label, id_, *vel)
+                self._add_row(frame_id, label, id_, *vel, err)
                 i += 1
         self._update_frame_id_mapping(frame_id, i)
 

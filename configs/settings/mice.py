@@ -15,6 +15,8 @@ deepen_factor = 0.33
 data_mode = _base_.data_mode
 data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
+deploying_directory = '../checkpoints/mice/'
+deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
 training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
@@ -50,7 +52,7 @@ else:
 
 #   1.2) Testing
 testing_work_dir = _base_.work_dir + "testing_runs/" + dataset_name + "/"
-testing_checkpoint = "../work_dir/training_runs/mice/epoch_" + str(num_epochs) + ".pth"
+testing_checkpoint = deploying_directory + deployed_name
 
 testing_anns_path = validation_anns_path
 testing_imgs_path = validation_imgs_path
@@ -75,8 +77,6 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 deploying_sanity_check_img_path = 'images/0000003435.jpg'
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
-deploying_directory = '../checkpoints/mice/'
-deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 #   1.5) /Deployment
 # 1) /Detection
 
@@ -91,7 +91,7 @@ tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = True
+with_action_recognition = False
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -100,35 +100,6 @@ stitching_algorithm = dict(
     beta=0.5,
     match_thr=0.9,
 )
-if with_validation:
-    valid_tags = [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 22, 23, 25]
-    validator = dict(
-        type="ArucoValidation",
-        num_tags=32,
-        tags_size=3,
-        predefined_dict=None,
-        parameters=dict(
-            minMarkerPerimeterRate=0.1,
-            maxMarkerPerimeterRate=0.9,
-            adaptiveThreshWinSizeMin=7,
-            adaptiveThreshWinSizeMax=23,
-            adaptiveThreshWinSizeStep=10,
-            polygonalApproxAccuracyRate=0.14,
-            minOtsuStdDev=1,
-            perspectiveRemovePixelPerCell=13,
-            perspectiveRemoveIgnoredMarginPerCell=0.35,
-        ),
-        refinement="none",
-        tag_kpt=7,
-        kpt_conf_thr=0.5,
-        estimation_range=120,
-        timeout_after=0.02,
-        min_sample_size=25,
-        valid_tags=valid_tags,
-    )
-else:
-    validator = None
-    valid_tags = []
 
 #   2.1) Tuning
 low_thr_range = [0.05, 0.1]
@@ -144,9 +115,15 @@ hyperparams = deploying_directory + "hyperparameters.json"
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
-testing_tracking_data_root = data_root + "/benchmark/"
-testing_tracking_output_file = testing_work_dir + "CLEAR_metrics.csv"
+mot_testing_data_root = '../../datasets/MICE/pose-estimation/benchmark/'
+testing_tracking_output_file = testing_work_dir + "mean_CLEAR_metrics_over_all_videos.csv"
 #   2.2) /Testing
+
+
+#   2.3) Validation
+validation_configuration_file = '../configs/settings/validation/appearance.yaml'
+#   2.3) /Validation
+
 # 2) /Tracking
 
 
@@ -296,13 +273,14 @@ mart_deployed_name = "mart_DEPLOYED.pth"
 
 
 # 4) Visualization
-display_bounding_boxes = True
+display_bounding_boxes = False
 display_poses = True
-display_velocities = True
-display_species = True
-display_confidence_scores = True
+display_velocities = False
+display_species = False
+display_confidence_scores = False
 display_actions = False
-display_search_zones = True
+display_search_zones = False
 display_validations = False
-display_untracked_detections = True
+display_untracked_detections = False
 # 4) /Visualization
+display_predicted_bounding_boxes = False

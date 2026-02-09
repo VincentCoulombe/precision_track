@@ -83,100 +83,14 @@ class InferencePreprocessor(ImgDataPreprocessor):
 
 
 @MODELS.register_module()
-class WildLifeReIDPreprocessor(BaseDataPreprocessor):
-    def __init__(
-        self,
-        batch_size: int,
-        input_shape: Optional[Tuple] = (224, 224),
-    ):
-        super().__init__()
-
-        assert len(input_shape) == 2
-        self.input_shape = []
-        for shape in input_shape:
-            assert shape > 0
-            self.input_shape.append(int(shape))
-        self.input_shape = tuple(input_shape)
-
+class WildLifeReIDPreprocessor:
+    def __init__(self):
         self.transforms = T.Compose(
             [
-                T.Resize(size=self.input_shape),
                 T.ToTensor(),
                 T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ]
         )
-        self.transformed_inputs = torch.empty(
-            batch_size,
-            3,
-            input_shape[0],
-            input_shape[1],
-            dtype=torch.float32,
-        )
-        assert batch_size > 0
-        self.batch_size = int(batch_size)
 
-    def forward(self, data: dict, *args, **kwargs) -> dict:
-        inputs = data["inputs"]
-        running_batch_size = len(inputs)
-        assert running_batch_size <= self.batch_size
-
-        for i, input_ in enumerate(inputs):
-            self.transformed_inputs[i] = self.transforms(input_)
-
-        data["inputs"] = self.transformed_inputs[:running_batch_size]
-        return data
-
-    def to(self, *args, **kwargs) -> nn.Module:
-        out = super().to(*args, **kwargs)
-        self.transformed_inputs = self.transformed_inputs.to(self._device)
-        return out
-
-    def cuda(self, *args, **kwargs) -> nn.Module:
-        """Overrides this method to set the :attr:`device`
-
-        Returns:
-            nn.Module: The model itself.
-        """
-        self._device = torch.device(torch.cuda.current_device())
-        self.transformed_inputs = self.transformed_inputs.to(self._device)
-        return super().cuda()
-
-    def musa(self, *args, **kwargs) -> nn.Module:
-        """Overrides this method to set the :attr:`device`
-
-        Returns:
-            nn.Module: The model itself.
-        """
-        self._device = torch.device(torch.musa.current_device())
-        self.transformed_inputs = self.transformed_inputs.to(self._device)
-        return super().musa()
-
-    def npu(self, *args, **kwargs) -> nn.Module:
-        """Overrides this method to set the :attr:`device`
-
-        Returns:
-            nn.Module: The model itself.
-        """
-        self._device = torch.device(torch.npu.current_device())
-        self.transformed_inputs = self.transformed_inputs.to(self._device)
-        return super().npu()
-
-    def mlu(self, *args, **kwargs) -> nn.Module:
-        """Overrides this method to set the :attr:`device`
-
-        Returns:
-            nn.Module: The model itself.
-        """
-        self._device = torch.device(torch.mlu.current_device())
-        self.transformed_inputs = self.transformed_inputs.to(self._device)
-        return super().mlu()
-
-    def cpu(self, *args, **kwargs) -> nn.Module:
-        """Overrides this method to set the :attr:`device`
-
-        Returns:
-            nn.Module: The model itself.
-        """
-        self._device = torch.device("cpu")
-        self.transformed_inputs = self.transformed_inputs.to(self._device)
-        return super().cpu()
+    def __call__(self, data: np.ndarray, *args, **kwargs) -> torch.Tensor:
+        return self.transforms(data)

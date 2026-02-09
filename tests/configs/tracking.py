@@ -30,7 +30,7 @@ data_preprocessor = dict(
 detector = dict(
     runtime=dict(
         model=_base_.model,
-        checkpoint="./tests/configs/model_mice_clustering_DEPLOYED.pth",
+        checkpoint="./tests/configs/model_mice_DEPLOYED.pth",
         half_precision=half_precision,
         input_shapes=[dict(type="ImageShape", n_channels=3, width=input_size[0], height=input_size[1])],
         output_names=[
