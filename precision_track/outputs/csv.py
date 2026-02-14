@@ -597,6 +597,7 @@ class CsvVelocities(BaseCsvOutput):
         ):
             label = to_numpy(label)
             vel = to_numpy(vel)
+            err = err[0] if isinstance(err, list) else err
             if id_ >= 0:
                 self._add_row(frame_id, label, id_, *vel, err)
                 i += 1

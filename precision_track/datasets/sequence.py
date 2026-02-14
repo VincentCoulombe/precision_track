@@ -155,7 +155,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
             full_dir = os.path.join(self.data_root, seq)
             sequences.append(full_dir)
 
-            bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "path": os.path.join(self.data_root, bboxes_path)})
+            bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "subtype": "tracked_bboxes", "path": os.path.join(self.data_root, bboxes_path)})
             bboxes_output.read()
             bboxes_outputs.append(bboxes_output)
 
@@ -363,7 +363,7 @@ class OnlineRandomSequenceDataset(BaseDataset):
         os.makedirs(save_dir, exist_ok=True)
 
         outputs = dict(
-            bboxes=OUTPUTS.build({"type": self.bboxes_gt_format, "path": ""}),
+            bboxes=OUTPUTS.build({"type": self.bboxes_gt_format, "subtype": "tracked_bboxes", "path": ""}),
             keypoints=OUTPUTS.build({"type": self.keypoints_gt_format, "path": ""}),
             actions=OUTPUTS.build({"type": self.actions_gt_format, "path": ""}),
         )
@@ -671,7 +671,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
             full_dir = os.path.join(self.data_root, seq)
             sequences.append(full_dir)
 
-            bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "path": os.path.join(self.data_root, bboxes_path)})
+            bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "subtype": "tracked_bboxes", "path": os.path.join(self.data_root, bboxes_path)})
             bboxes_output.read()
             bboxes_outputs.append(bboxes_output)
 
@@ -1261,7 +1261,7 @@ class MAEDataset(OfflineRandomSequenceDataset):
             for seq, bboxes_path, kpts_path in zip(*[self.data_prefix[k] for k in prefix_keys]):
                 sequences.append(seq)
 
-                bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "path": bboxes_path})
+                bboxes_output = OUTPUTS.build({"type": self.bboxes_gt_format, "subtype": "tracked_bboxes", "path": bboxes_path})
                 bboxes_output.read()
                 bboxes_outputs.append(bboxes_output)
 

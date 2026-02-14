@@ -25,6 +25,7 @@ dummy_one_data_sample = {
         keypoints=[np.array([[35, 35], [45, 45]])],
         keypoint_scores=[np.array([0.8, 0.4])],
         velocities=[[-2, 3]],
+        erraticity=[[0.0]],
     ),
     "correction_instances": dict(instances_id=[0], tags_id=[5], corrected_id=[9]),
     "search_areas": dict(
@@ -44,7 +45,6 @@ dummy_empty_data_sample = {
         scores=[],
         keypoints=[],
         keypoint_scores=[],
-        velocities=[],
     ),
     "pred_track_instances": dict(
         instances_id=[],
@@ -54,6 +54,7 @@ dummy_empty_data_sample = {
         keypoints=[],
         keypoint_scores=[],
         velocities=[],
+        erraticity=[],
     ),
     "correction_instances": dict(instances_id=[], tags_id=[], corrected_id=[]),
     "search_areas": dict(
@@ -73,7 +74,6 @@ dummy_data_sample = {
         scores=[0.5, 0.9],
         keypoints=[np.array([[35, 35], [45, 45]]), np.array([[30, 30], [40, 40]])],
         keypoint_scores=[np.array([0.8, 0.4]), np.array([0.7, 0.5])],
-        velocities=[[-2, 3], [2, -1]],
     ),
     "pred_track_instances": dict(
         instances_id=[0, 1],
@@ -83,6 +83,7 @@ dummy_data_sample = {
         keypoints=[np.array([[35, 35], [45, 45]]), np.array([[30, 30], [40, 40]])],
         keypoint_scores=[np.array([0.8, 0.4]), np.array([0.7, 0.5])],
         velocities=[[-2, 3], [2, -1]],
+        erraticity=[[0.0], [0.5]],
     ),
     "correction_instances": dict(instances_id=[0, 1], tags_id=[5, 155], corrected_id=[9, 4]),
     "search_areas": dict(
@@ -106,29 +107,29 @@ def dummy_data_samples():
 
 
 @pytest.mark.parametrize(
-    "CsvClass, path",
+    "CsvClass, path, subtype",
     [
-        (CsvBoundingBoxes, "test_bboxes.csv"),
-        (CsvKeypoints, "test_kpts.csv"),
-        (CsvTailtagValidations, "test_vals.csv"),
-        (CsvSearchAreas, "test_searchs.csv"),
-        (CsvCorrections, "test_corrections.csv"),
+        (CsvBoundingBoxes, "test_bboxes.csv", "tracked_bboxes"),
+        (CsvKeypoints, "test_kpts.csv", None),
+        (CsvTailtagValidations, "test_vals.csv", None),
+        (CsvSearchAreas, "test_searchs.csv", None),
+        (CsvCorrections, "test_corrections.csv", None),
     ],
 )
-def test_init(CsvClass, path):
+def test_init(CsvClass, path, subtype):
     with temp_csv_file(path):
         with pytest.raises(ValueError):
             for precision in [1, 16, -5, 0.5, 1000, 34, 65]:
-                CsvClass(path, precision=precision)
+                CsvClass(path, precision=precision, subtype=subtype)
 
         with pytest.raises(AssertionError):
             for inst_data in ["labels", "classes", "tracks", "ids"]:
-                CsvClass(path, instance_data=inst_data)
+                CsvClass(path, instance_data=inst_data, subtype=subtype)
 
         if CsvClass is CsvBoundingBoxes:
             with pytest.raises(AssertionError):
                 for unsup_frmt in ["xyxy", "cxcyah", "xywh", "bounding boxes"]:
-                    CsvClass(path, bbox_format=unsup_frmt)
+                    CsvClass(path, bbox_format=unsup_frmt, subtype=subtype)
                 CsvClass(path, bbox_format="unsupported_format")
         if CsvClass in [CsvBoundingBoxes, CsvKeypoints]:
             with pytest.raises(AssertionError):
@@ -137,9 +138,9 @@ def test_init(CsvClass, path):
                     "correction_instances",
                     "search_areas",
                 ]:
-                    CsvClass(path, instance_data=unsup_inst_data)
+                    CsvClass(path, instance_data=unsup_inst_data, subtype=subtype)
             for sup_inst_data in ["pred_instances", "pred_track_instances"]:
-                CsvClass(path, instance_data=sup_inst_data)
+                CsvClass(path, instance_data=sup_inst_data, subtype=subtype)
         else:
             with pytest.raises(AssertionError):
                 for unsup_inst_data in ["pred_instances", "pred_track_instances"]:
@@ -151,7 +152,7 @@ def test_init(CsvClass, path):
         if CsvClass is CsvTailtagValidations:
             CsvClass(path, instance_data="validation_instances")
 
-        obj = CsvClass(path)
+        obj = CsvClass(path, subtype=subtype)
         assert obj.path.endswith(path)
         assert obj.precision == 32
         if CsvClass is CsvBoundingBoxes:
@@ -168,18 +169,18 @@ def test_init(CsvClass, path):
 
 
 @pytest.mark.parametrize(
-    "CsvClass, path",
+    "CsvClass, path, subtype",
     [
-        (CsvBoundingBoxes, "test_bboxes.csv"),
-        (CsvKeypoints, "test_kpts.csv"),
-        (CsvTailtagValidations, "test_vals.csv"),
-        (CsvSearchAreas, "test_searchs.csv"),
-        (CsvCorrections, "test_corrections.csv"),
-        (CsvVelocities, "test_vels.csv"),
+        (CsvBoundingBoxes, "test_bboxes.csv", "tracked_bboxes"),
+        (CsvKeypoints, "test_kpts.csv", None),
+        (CsvTailtagValidations, "test_vals.csv", None),
+        (CsvSearchAreas, "test_searchs.csv", None),
+        (CsvCorrections, "test_corrections.csv", None),
+        (CsvVelocities, "test_vels.csv", None),
     ],
 )
-def test_call(CsvClass, path, dummy_data_samples):
-    obj = CsvClass(path)
+def test_call(CsvClass, path, subtype, dummy_data_samples):
+    obj = CsvClass(path, subtype=subtype)
     data_sample = dummy_data_samples[0]
     obj(data_sample)
     assert len(obj.results) == 2
@@ -197,19 +198,19 @@ def test_call(CsvClass, path, dummy_data_samples):
 
 
 @pytest.mark.parametrize(
-    "CsvClass, path",
+    "CsvClass, path, subtype",
     [
-        (CsvBoundingBoxes, "test_bboxes.csv"),
-        (CsvKeypoints, "test_kpts.csv"),
-        (CsvTailtagValidations, "test_vals.csv"),
-        (CsvSearchAreas, "test_searchs.csv"),
-        (CsvCorrections, "test_corrections.csv"),
-        (CsvVelocities, "test_vels.csv"),
+        (CsvBoundingBoxes, "test_bboxes.csv", "tracked_bboxes"),
+        (CsvKeypoints, "test_kpts.csv", None),
+        (CsvTailtagValidations, "test_vals.csv", None),
+        (CsvSearchAreas, "test_searchs.csv", None),
+        (CsvCorrections, "test_corrections.csv", None),
+        (CsvVelocities, "test_vels.csv", None),
     ],
 )
-def test_save_and_read(CsvClass, path, dummy_data_samples):
+def test_save_and_read(CsvClass, path, subtype, dummy_data_samples):
     with temp_csv_file(path):
-        obj = CsvClass(path)
+        obj = CsvClass(path, subtype=subtype)
         for data_sample in dummy_data_samples:
             obj(data_sample)
         obj.save()
@@ -217,7 +218,7 @@ def test_save_and_read(CsvClass, path, dummy_data_samples):
         assert os.path.exists(path)
         assert os.path.exists(obj.path)
 
-        obj_read = CsvClass(path)
+        obj_read = CsvClass(path, subtype=subtype)
         obj_read.read()
         assert len(obj_read.results) == len(obj.results)
         assert obj.frame_id_mapping == obj_read.frame_id_mapping or obj_read.frame_id_mapping == OrderedDict([(0, (0, 2)), (2, (2, 3))])
@@ -228,19 +229,19 @@ def test_save_and_read(CsvClass, path, dummy_data_samples):
 
 
 @pytest.mark.parametrize(
-    "CsvClass, path",
+    "CsvClass, path, subtype",
     [
-        (CsvBoundingBoxes, "test_bboxes.csv"),
-        (CsvKeypoints, "test_kpts.csv"),
-        (CsvTailtagValidations, "test_vals.csv"),
-        (CsvSearchAreas, "test_searchs.csv"),
-        (CsvCorrections, "test_corrections.csv"),
-        (CsvVelocities, "test_vels.csv"),
+        (CsvBoundingBoxes, "test_bboxes.csv", "tracked_bboxes"),
+        (CsvKeypoints, "test_kpts.csv", None),
+        (CsvTailtagValidations, "test_vals.csv", None),
+        (CsvSearchAreas, "test_searchs.csv", None),
+        (CsvCorrections, "test_corrections.csv", None),
+        (CsvVelocities, "test_vels.csv", None),
     ],
 )
-def test_getitem(CsvClass, path, dummy_data_samples):
+def test_getitem(CsvClass, path, subtype, dummy_data_samples):
     with temp_csv_file(path):
-        obj = CsvClass(path)
+        obj = CsvClass(path, subtype=subtype)
         for data_sample in dummy_data_samples:
             obj(data_sample)
 
@@ -256,9 +257,9 @@ def test_getitem(CsvClass, path, dummy_data_samples):
             assert obj[1] == []
             assert obj[2] == [[2, 5, -1, 35, 35, 0.8, 45, 45, 0.4]]
         elif isinstance(obj, CsvVelocities):
-            assert obj[0] == [[0, 5, 0, -2, 3], [0, 6, 1, 2, -1]]
+            assert obj[0] == [[0, 5, 0, -2, 3, 0.0], [0, 6, 1, 2, -1, 0.5]]
             assert obj[1] == []
-            assert obj[2] == [[2, 5, 0, -2, 3]]
+            assert obj[2] == [[2, 5, 0, -2, 3, 0.0]]
         elif isinstance(obj, CsvTailtagValidations):
             assert obj[0] == [
                 [0, 5, 0, 30, 30, 40, 40, 0.9],

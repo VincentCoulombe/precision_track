@@ -300,7 +300,8 @@ def infer_paths(path_or_dir: Union[List[str], str]) -> Union[List[str], str]:
         root = osp.abspath(osp.normpath(path_or_dir))
         paths = []
         for file in os.listdir(path_or_dir):
-            paths.append(osp.join(root, file))
+            if osp.isfile(osp.join(root, file)):
+                paths.append(osp.join(root, file))
         if paths:
             return paths
         return root

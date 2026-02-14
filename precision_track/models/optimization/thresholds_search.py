@@ -129,6 +129,7 @@ class ThresholdsGridSearch(GridSearchBase):
                 type="CsvBoundingBoxes",
                 path=self.output_path,
                 instance_data="pred_track_instances",
+                subtype="tracked_bboxes",
                 precision=64,
             )
         ]
@@ -188,6 +189,7 @@ class StitchingHyperparamsGridSearch(GridSearchBase):
                 type="CsvBoundingBoxes",
                 path=self.bboxes_path,
                 instance_data="pred_track_instances",
+                subtype="tracked_bboxes",
                 precision=64,
             ),
             dict(
