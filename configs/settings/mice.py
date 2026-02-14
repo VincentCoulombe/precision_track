@@ -13,7 +13,7 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
+data_root = '../../datasets/MICE/pose-estimation_640x640/'
 dataset_name = 'mice'
 deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"

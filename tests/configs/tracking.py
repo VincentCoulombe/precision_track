@@ -76,6 +76,7 @@ assigner = dict(
     ),
     _delete_=True,
 )
+validator = None
 # /Model
 
 # Dataloader

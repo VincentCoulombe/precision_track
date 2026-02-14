@@ -328,7 +328,7 @@ class AssociationStep(nn.Module):
         if profile is not None:
             profile.setdefault("tracking", []).append(perf_counter() - tracking_start)
 
-        self._register_association(frame_id, data_sample)
+        nb_subjects = self._register_association(frame_id, data_sample)
 
         if self.stitching_algorithm is not None:
             if profile is not None:
@@ -345,17 +345,20 @@ class AssociationStep(nn.Module):
                 profile.setdefault("stitching", []).append(perf_counter() - stitching_start)
 
         if self.return_isolations:
-            relevant_bboxes = data_sample["pred_track_instances"]["bboxes"]
-            search_areas = data_sample.get("search_areas", dict()).get("bboxes", [])
+            if nb_subjects > 0:
+                relevant_bboxes = data_sample["pred_track_instances"]["bboxes"]
+                search_areas = data_sample.get("search_areas", dict()).get("bboxes", [])
 
-            if len(search_areas) > 0:
-                bboxes = np.concatenate([relevant_bboxes, search_areas])
+                if len(search_areas) > 0:
+                    bboxes = np.concatenate([relevant_bboxes, search_areas])
+                else:
+                    bboxes = relevant_bboxes
+
+                bious = biou_batch(relevant_bboxes.copy(), bboxes, 0.5)
+                isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
+                data_sample["pred_track_instances"]["isolated"] = isolated
             else:
-                bboxes = relevant_bboxes
-
-            bious = biou_batch(relevant_bboxes.copy(), bboxes, 0.5)
-            isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
-            data_sample["pred_track_instances"]["isolated"] = isolated
+                data_sample["pred_track_instances"]["isolated"] = data_sample["pred_track_instances"]["instances_id"]
 
         if profile is not None:
             total_time = perf_counter() - t0
@@ -366,7 +369,8 @@ class AssociationStep(nn.Module):
 
     def _register_association(self, frame_id, data_sample):
         if isinstance(data_sample, dict):
-            self.num_tracks += data_sample["pred_track_instances"]["ids"].shape[0] - len(self.tracks)
+            nb_subjects = data_sample["pred_track_instances"]["ids"].shape[0]
+            self.num_tracks += nb_subjects - len(self.tracks)
             self.update(
                 frame_ids=frame_id,
                 ids=data_sample["pred_track_instances"]["ids"],
@@ -389,7 +393,8 @@ class AssociationStep(nn.Module):
             data_sample["pred_track_instances"]["velocities"] = vels
             data_sample["pred_track_instances"]["erraticity"] = err
         elif isinstance(data_sample, PoseDataSample):
-            self.num_tracks += data_sample.pred_track_instances["ids"].shape[0] - len(self.tracks)
+            nb_subjects = data_sample.pred_track_instances["ids"].shape[0]
+            self.num_tracks += nb_subjects - len(self.tracks)
             self.update(
                 frame_ids=frame_id,
                 ids=data_sample.pred_track_instances["ids"],
@@ -415,6 +420,8 @@ class AssociationStep(nn.Module):
 
         else:
             raise ValueError
+
+        return nb_subjects
 
     def _format_tracking_info(self, velocities_list, erraticities_list, classes_list, is_numpy=True):
         if is_numpy:

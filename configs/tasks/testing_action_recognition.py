@@ -8,8 +8,8 @@ block_size = _base_.block_size
 n_embd_features = _base_.n_embd_features
 
 bboxes_gt_format = _base_.action_recognition_bboxes_gt_format
-keypoints_gt_format = _base_.action_recognition_bboxes_gt_format
-actions_gt_format = _base_.action_recognition_bboxes_gt_format
+keypoints_gt_format = _base_.action_recognition_keypoints_gt_format
+actions_gt_format = _base_.action_recognition_actions_gt_format
 
 metainfo = _base_.metainfo
 data_mode = _base_.data_mode
