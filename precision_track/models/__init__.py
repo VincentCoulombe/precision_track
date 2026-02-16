@@ -82,6 +82,8 @@ __all__ = [
     "PoseDataPreprocessor",
     "BatchSyncRandomResize",
     "MART",
+    "MLPAnalyzer",
+    "LSTMAnalyzer",
     "YOLOXPAFPN",
     "ActionRecognitionPreprocessor",
     "ActionRecognitionTrainingPreprocessor",

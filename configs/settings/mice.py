@@ -91,7 +91,7 @@ tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = False
+with_action_recognition = True
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -135,7 +135,7 @@ block_size = 30
 
 n_encoded_dynamics = 2
 n_embd_dynamics = 32
-n_embd_pose = 96
+n_embd_poses = 96
 n_embd_features = 128
 
 action_recognition_bboxes_gt_format = "CsvBoundingBoxes"
@@ -162,7 +162,7 @@ if with_action_recognition:
             _delete_=True,
             block_size=block_size,
             with_actions=False,
-            with_kpts=True,
+            with_kpts=with_pose_estimation,
             with_vels=True,
             velocity_encoder=velocity_encoder,
         ),
@@ -187,11 +187,14 @@ if with_action_recognition:
             model=dict(
                 type="MART",
                 config=dict(
-                    n_embd=n_embd_features,
+                    with_features=True,
+                    with_dynamics=True,
+                    with_poses=with_pose_estimation,
+                    n_embd_features=n_embd_features,
                     block_size=block_size,
                     n_encoded_dynamics=n_encoded_dynamics,
                     n_embd_dynamics=n_embd_dynamics,
-                    n_embd_pose=n_embd_pose,
+                    n_embd_poses=n_embd_poses,
                     n_block=4,
                     causal=True,
                     use_alibi=False,

@@ -4,7 +4,7 @@
 booleans:
   pipelined: false
   with_validation: false
-  with_action_recognition: false
+  with_action_recognition: true
   with_pose_estimation: true
 
 # ================================
