@@ -62,6 +62,8 @@ class DetectionModel(BaseModel):
             self.feature_extraction_head = MODELS.build(feature_extraction_head)
             self.feature_extraction_head.test_cfg = self.test_cfg.copy()
 
+        self.extract_features = self.with_feature_extraction
+
         self._register_load_state_dict_pre_hook(self._load_state_dict_pre_hook)
 
         if use_syncbn and get_world_size() > 1:
@@ -192,7 +194,6 @@ class DetectionModel(BaseModel):
         self,
         inputs: Tensor,
         data_samples: List[PoseDataSample],
-        val_step: Optional[bool] = False,
         return_preds: Optional[bool] = False,
         *args,
         **kwargs,
@@ -201,7 +202,7 @@ class DetectionModel(BaseModel):
 
         losses = dict()
         if self.with_head:
-            losses, head_feats = self.head.loss(
+            losses, head_output = self.head.loss(
                 feats,
                 data_samples,
                 train_cfg=self.train_cfg,
@@ -210,26 +211,18 @@ class DetectionModel(BaseModel):
                 *args,
                 **kwargs,
             )
-            losses["detections"] = head_feats
-            if self.with_feature_extraction:
-                # TODO refactor this hack
-                # loss_feat, feats = self.feature_extraction_head.loss(
-                #     detection_head_features=head_feats,
-                #     priors_features=feats,
-                #     batch_data_samples=data_samples,
-                #     train_cfg=self.train_cfg,
-                #     return_features=True,
-                #     *args,
-                #     **kwargs,
-                # )
-                feats = self.feature_extraction_head.forward(feats)
-                head_feats = head_feats[:5] + (feats,) + head_feats[6:]
-                losses["detections"] = head_feats
-
-                # if val_step:
-                #     losses["extracted_features"] = feats
-                # losses.update(loss_feat)
-
+            if self.with_feature_extraction and self.extract_features:
+                loss_feat, feats = self.feature_extraction_head.loss(
+                    features_map=feats,
+                    detection_head_output=head_output,
+                    batch_data_samples=data_samples,
+                    train_cfg=self.train_cfg,
+                    *args,
+                    **kwargs,
+                )
+                head_output = head_output[:5] + (feats,) + head_output[6:]
+                losses["loss_features"] = loss_feat
+            losses["detections"] = head_output
         return losses
 
     def predict(self, inputs: Tensor, data_samples: List[PoseDataSample] = None) -> Tuple[Tensor]:
@@ -249,15 +242,15 @@ class DetectionModel(BaseModel):
         x = self.extract_feat(inputs)
         if self.with_head:
             y = self.head.forward(x)
-            if self.with_feature_extraction:
+            if self.with_feature_extraction and self.extract_features:
                 feats = self.feature_extraction_head.forward(x)
                 y = y[:5] + (feats,) + y[6:]
             return y
         return x
 
-    def val_step(self, data: Union[tuple, dict, list]) -> list:
+    def val_step(self, data: Union[tuple, dict, list], *args, **kwargs) -> list:
         data = self.data_preprocessor(data, False)
-        return [self.loss(**data, val_step=True)]
+        return [self.loss(**data, val_step=True, return_preds=True, **kwargs)]
 
     def train_step(self, data: Union[dict, tuple, list], optim_wrapper, *args, **kwargs) -> Dict[str, torch.Tensor]:
 

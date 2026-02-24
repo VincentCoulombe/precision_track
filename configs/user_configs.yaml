@@ -4,14 +4,15 @@
 booleans:
   pipelined: false
   with_validation: false
-  with_action_recognition: true
-  with_pose_estimation: true
+  with_action_recognition: false
+  with_pose_estimation: false
 
 # ================================
 # General directories and paths
 # ================================
 general:
   metainfo: "../configs/metadata/mice.py"
+  # metainfo: "../../datasets/stripedmice/stripedmice_corrected_without_tail.py"
 
 # ================================
 # Training parameters, directories and paths
@@ -24,12 +25,13 @@ training:
   resume: false
   training_checkpoint: "../checkpoints/model_ap/model_ap.pth"
 
-  deploying_directory: "../checkpoints/mice/"
+  deploying_directory: "../checkpoints/mice_feature_extraction/"
+  # deploying_directory: "../checkpoints/camille/"
 
   deploying_sanity_check_img_path: "images/0000003435.jpg"
 
   batch_size: 38 # Warning: The training is unstable with batch sizes < 16.
-  wandb_logging: false
+  wandb_logging: true
 
 # ================================
 # Tracking parameters, directories and paths
@@ -37,7 +39,8 @@ training:
 tracking:
   saving_directory: "../work_dir/"
   num_subjects: { "mouse": 20 }
-  tracking_checkpoint_name: "model_mice_DEPLOYED.pth"
+  tracking_checkpoint_name: "best_FeaturesReconstructionMetric_avg_epoch_30.pth"
+  # tracking_checkpoint_name: "model_camille_DEPLOYED.onnx"
   mot_testing_data_root: "../../datasets/MICE/pose-estimation/benchmark/"
 
 # ================================
@@ -57,6 +60,6 @@ visualization:
   display_confidence_scores: false
   display_actions: false
   display_search_zones: false
-  display_validations: false
+  display_validations: true
   display_untracked_detections: false
   display_predicted_bounding_boxes: false

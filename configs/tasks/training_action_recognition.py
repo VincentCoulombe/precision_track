@@ -15,7 +15,7 @@ work_dir = _base_.training_work_dir
 resume = _base_.resume
 
 block_size = _base_.block_size
-n_embd_features = _base_.n_embd_features
+n_input_features = _base_.n_input_features
 
 bboxes_gt_format = _base_.action_recognition_bboxes_gt_format
 keypoints_gt_format = _base_.action_recognition_keypoints_gt_format
@@ -134,7 +134,7 @@ transforms = [
     dict(type="SequenceYOLOXHSVRandomAug", value_delta=15, hue_delta=0, saturation_delta=0),
     dict(type="SequenceRandomContrastAug"),
     dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
-    # dict(type="SequenceRandomOcclusion"),
+    dict(type="SequenceRandomOcclusion"),
 ]
 load_anns = [
     dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False, min_kpt_vis=3),
@@ -153,7 +153,7 @@ train_dataloader = dict(
         type="ActionRecognitionDataset",
         detector=detector,
         from_file=metainfo,
-        n_feats=n_embd_features,
+        n_feats=n_input_features,
         n_velocities=2,
         keypoints_gt_format=keypoints_gt_format,
         bboxes_gt_format=bboxes_gt_format,
@@ -166,7 +166,8 @@ train_dataloader = dict(
             actions_gt_paths=train_actions_gt_paths,
         ),
         block_size=block_size,
-        pipeline=load_img + resize + transforms + load_anns,
+        # pipeline=load_img + resize + transforms + load_anns,
+        pipeline=load_img + resize + load_anns,
         inference_resolution=_base_.inference_resolution,
         training=True,
     ),
@@ -182,7 +183,7 @@ val_dataloader = dict(
         type="ActionRecognitionDataset",
         detector=detector,
         from_file=metainfo,
-        n_feats=n_embd_features,
+        n_feats=n_input_features,
         n_velocities=2,
         keypoints_gt_format=keypoints_gt_format,
         bboxes_gt_format=bboxes_gt_format,

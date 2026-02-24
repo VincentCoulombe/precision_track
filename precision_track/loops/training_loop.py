@@ -267,3 +267,18 @@ class OnlineTrainLoop(EpochBasedTrainLoop):
         out.id = None
         # out.img_shape = data_samples.img_shape
         return out
+
+
+@LOOPS.register_module()
+class FeatureExtractionTrainLoop(EpochBasedTrainLoop):
+    def run_iter(self, idx, data_batch: Sequence[dict]) -> None:
+        """Iterate one min-batch.
+
+        Args:
+            data_batch (Sequence[dict]): Batch of data from dataloader.
+        """
+        self.runner.call_hook("before_train_iter", batch_idx=idx, data_batch=data_batch)
+        outputs = self.runner.model.train_step(data_batch, optim_wrapper=self.runner.optim_wrapper, return_preds=True)[0]
+
+        self.runner.call_hook("after_train_iter", batch_idx=idx, data_batch=data_batch, outputs=outputs)
+        self._iter += 1

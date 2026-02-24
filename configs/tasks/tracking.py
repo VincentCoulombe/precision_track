@@ -136,6 +136,10 @@ outputs = [
     #     ids_field="instances_id",
     #     embs_field="action_embeddings",
     # ),
+    dict(
+        type="PthAppearanceDatabaseOutput",
+        path=_base_.saving_directory + "/appearance_database.pth",
+    ),
 ]
 
 if _base_.with_pose_estimation:

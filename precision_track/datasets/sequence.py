@@ -963,12 +963,13 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         self._ignore_idx = int(ignore_idx)
 
     def prepare_data(self, idx):
-        random_action = np.random.choice(a=self.labels, p=self.p)
+        rng = np.random.default_rng(seed=idx)
+        random_action = rng.choice(a=self.labels, p=self.p)
 
         nb_action_labels = len(self.action_to_sequence_map[random_action])
         assert self.block_size < nb_action_labels, f"An action have less labels ({nb_action_labels}) than the specified block size ({self.block_size})."
 
-        random_action_idx = np.random.randint(0, nb_action_labels)
+        random_action_idx = rng.integers(0, nb_action_labels)
         inputs = torch.zeros((self.block_size, self.n_feats), dtype=torch.float32, device="cpu")
         kpts = torch.zeros((self.block_size, self.n_kpts, 2), dtype=torch.float32, device="cpu")
         kpt_vis = torch.zeros((self.block_size, self.n_kpts), dtype=torch.float32, device="cpu")

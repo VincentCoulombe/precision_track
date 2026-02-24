@@ -1,4 +1,4 @@
-from .training_loop import OnlineTrainLoop
+from .training_loop import OnlineTrainLoop, FeatureExtractionTrainLoop
 from .calibration_loop import CalibrationLoop
 from .testing_loop import SequenceTestingLoop, TestLoop, TrackingTestingLoop
 from .validation_loop import SequenceValidationLoop, ValidationLoop, OnlineValLoop
@@ -11,5 +11,6 @@ __all__ = [
     "ValidationLoop",
     "TrackingTestingLoop",
     "OnlineTrainLoop",
+    "FeatureExtractionTrainLoop",
     "OnlineValLoop",
 ]

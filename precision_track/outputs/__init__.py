@@ -10,6 +10,7 @@ from .csv import (
     CsvVelocities,
 )
 from .npy import NpyEmbeddingOutput
+from .pth import PthAppearanceDatabaseOutput
 from .online import OnlinePthEmbeddingOutput
 from .base import BaseOutput
 
@@ -23,6 +24,7 @@ __all__ = [
     "CsvCorrections",
     "CsvActions",
     "NpyEmbeddingOutput",
+    "NpyAppearanceDatabaseOutput",
     "OnlinePthEmbeddingOutput",
     "BaseOutput",
     "CsvTimestamps",

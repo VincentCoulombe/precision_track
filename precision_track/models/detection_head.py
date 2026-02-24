@@ -217,6 +217,8 @@ class DetectionHead(BaseModule):
         train_cfg: Config = {},
         return_features: Optional[bool] = False,
         return_preds: Optional[bool] = False,
+        *args,
+        **kwargs,
     ) -> dict:
         """Calculate losses from a batch of inputs and data samples.
 

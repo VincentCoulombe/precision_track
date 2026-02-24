@@ -7,7 +7,6 @@ from addict import Dict
 from mmengine import Config
 from mmengine.evaluator import Evaluator
 from mmengine.registry import LOOPS
-from mmengine.structures import InstanceData
 from mmengine.runner.amp import autocast
 from mmengine.runner.loops import ValLoop
 from torch.utils.data import DataLoader

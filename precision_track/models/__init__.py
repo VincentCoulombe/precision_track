@@ -17,7 +17,7 @@ from .modules.necks.cspnext import CSPNeXtNeck
 from .modules.necks.sam2_fpn import SAM2FpnNeck
 from .modules.necks.yolox import YOLOXPAFPN
 from .optimization.assigners import BBoxOverlaps2D, DynamicSoftLabelAssigner, PoseOKS, SimOTAAssigner, TaskAlignedAssigner
-from .optimization.losses import ArcFaceLoss, BCELoss, CircleLoss, IoULoss, L1Loss, OKSLoss, TripletLoss
+from .optimization.losses import ArcFaceLoss, BCELoss, CircleLoss, IoULoss, L1Loss, OKSLoss, TripletLoss, MSELoss
 from .optimization.schedulers import QuadraticWarmupLR, QuadraticWarmupParamScheduler
 from .oracles import ActionRecognitionOracle
 from .postprocessing.filtering import LowScoresFiltering, NearnessBasedActionFiltering
@@ -27,7 +27,7 @@ from .postprocessing.steps import ActionPostProcessingSteps, PostProcessingSteps
 from .postprocessing.base import BasePostProcessor, BaseActionPostProcessor
 from .preprocessing.action_recognition_preprocessor import ActionRecognitionPreprocessor, ActionRecognitionTrainingPreprocessor
 from .preprocessing.inference_preprocessor import InferencePreprocessor, WildLifeReIDPreprocessor
-from .preprocessing.training_preprocessor import BatchSyncRandomResize, PoseDataPreprocessor
+from .preprocessing.training_preprocessor import BatchSyncRandomResize, PoseDataPreprocessor, DoublePoseDataPreprocessor
 
 __all__ = [
     "RTMDetPoseHead",
@@ -55,6 +55,7 @@ __all__ = [
     "ArcFaceLoss",
     "TripletLoss",
     "CircleLoss",
+    "MSELoss",
     "BBoxOverlaps2D",
     "PoseOKS",
     "SimOTAAssigner",
@@ -80,6 +81,7 @@ __all__ = [
     "QuadraticWarmupLR",
     "QuadraticWarmupParamScheduler",
     "PoseDataPreprocessor",
+    "DoublePoseDataPreprocessor",
     "BatchSyncRandomResize",
     "MART",
     "MLPAnalyzer",

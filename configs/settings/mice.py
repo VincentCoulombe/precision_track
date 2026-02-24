@@ -2,20 +2,20 @@ _base_ = "./_base_.py"
 
 # Common
 metainfo = '../configs/metadata/mice.py'
-wandb_logging = False
+wandb_logging = True
 # /Common
 
 # 1) Detection
-with_pose_estimation = True
+with_pose_estimation = False
 half_precision = True
 
 widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation_640x640/'
+data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
-deploying_directory = '../checkpoints/mice/'
+deploying_directory = '../checkpoints/mice_feature_extraction/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -82,7 +82,7 @@ deployment_device = "auto"
 
 
 # 2) Tracking
-tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
+tracking_checkpoint_name = 'best_FeaturesReconstructionMetric_avg_epoch_30.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
@@ -91,7 +91,7 @@ tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = True
+with_action_recognition = False
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -137,6 +137,8 @@ n_encoded_dynamics = 2
 n_embd_dynamics = 32
 n_embd_poses = 96
 n_embd_features = 128
+n_input_features = 128
+
 
 action_recognition_bboxes_gt_format = "CsvBoundingBoxes"
 action_recognition_keypoints_gt_format = "CsvKeypoints"
@@ -153,17 +155,21 @@ if with_action_recognition:
     velocity_encoder = dict(type="BaseVelocityEncoder")
     # velocity_encoder = dict(type="VelocityNormEncoder")
 
+    action_recognition_with_velocities = n_embd_dynamics > 0
+    action_recognition_with_poses = n_embd_poses > 0 and with_pose_estimation
+    action_recognition_with_features = n_embd_features > 0
+
     analyzer = dict(
         type="ActionRecognitionBackend",
         data_preprocessor=dict(
             type="ActionRecognitionPreprocessor",
-            embd_size=n_embd_features,
+            embd_size=n_input_features,
             metainfo=metainfo,
             _delete_=True,
             block_size=block_size,
             with_actions=False,
-            with_kpts=with_pose_estimation,
-            with_vels=True,
+            with_kpts=action_recognition_with_poses,
+            with_vels=action_recognition_with_velocities,
             velocity_encoder=velocity_encoder,
         ),
         metainfo=metainfo,
@@ -187,9 +193,9 @@ if with_action_recognition:
             model=dict(
                 type="MART",
                 config=dict(
-                    with_features=True,
-                    with_dynamics=True,
-                    with_poses=with_pose_estimation,
+                    with_features=action_recognition_with_features,
+                    with_dynamics=action_recognition_with_velocities,
+                    with_poses=action_recognition_with_poses,
                     n_embd_features=n_embd_features,
                     block_size=block_size,
                     n_encoded_dynamics=n_encoded_dynamics,
@@ -253,10 +259,22 @@ action_recognition_train_actions_gt_paths = [
     "actions/train/13-40-02.csv",
 ]
 
+# action_recognition_data_root = "../../datasets/MICE/sequential_nano/"
+
+# action_recognition_train_sequences = ["videos/14-20-02.avi"]
+# action_recognition_train_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
+# action_recognition_train_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
+# action_recognition_train_actions_gt_paths = ["actions/14-20-02.csv"]
+
 action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
 action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
 action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
 action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
+# action_recognition_val_sequences = action_recognition_train_sequences
+# action_recognition_val_bboxes_gt_paths = action_recognition_train_bboxes_gt_paths
+# action_recognition_val_keypoints_gt_paths = action_recognition_train_keypoints_gt_paths
+# action_recognition_val_actions_gt_paths = action_recognition_train_actions_gt_paths
+
 #   3.1) /Training
 
 #   3.2) Testing
@@ -283,7 +301,7 @@ display_species = False
 display_confidence_scores = False
 display_actions = False
 display_search_zones = False
-display_validations = False
+display_validations = True
 display_untracked_detections = False
 # 4) /Visualization
 display_predicted_bounding_boxes = False

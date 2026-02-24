@@ -97,6 +97,7 @@ class BaseMARModel(BaseModel):
             feature_config = config.copy()
             feature_config.n_embd = self.n_embd_feats
             self.feature_encoder = nn.Sequential(
+                ProjLN(feature_config.n_embd, feature_config.n_embd, bias=feature_config.bias),
                 TransformerMLP(feature_config),
                 nn.LayerNorm(feature_config.n_embd, bias=feature_config.bias),
             )

@@ -12,7 +12,7 @@ data_postprocessor = [
         type="NMSPostProcessor",
         score_thr=0.01,
         nms_thr=0.5,
-        pool_thr=0.9,
+        pool_thr=1.0,
     ),
 ]
 
@@ -97,6 +97,8 @@ model = dict(
     ),
     feature_extraction_head=dict(
         type="FeatureExtractionHead",
+        data_postprocessor=data_postprocessor,
+        loss_config=dict(type="MSELoss"),
         featmap_strides=(8, 16, 32),
         in_channels=256,
         feat_channels=256,

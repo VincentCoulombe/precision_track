@@ -12,3 +12,4 @@ from .postprocessing import *
 from .encoding import *
 from .tracking import *
 from .finding import *
+from .re_identification import *

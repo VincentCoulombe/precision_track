@@ -14,7 +14,7 @@ from itertools import chain, filterfalse, groupby
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-from mmengine.dataset import BaseDataset, force_full_init
+from mmengine.dataset import BaseDataset, force_full_init, Compose
 from mmengine.fileio import exists, get_local_path, load
 from mmengine.logging import MessageHub
 from mmengine.utils import is_list_of
@@ -490,3 +490,106 @@ class COCODataset(BaseDataset):
             data_list = list(filterfalse(lambda ann: ann["bbox_score"] < thr, data_list))
 
         return data_list
+
+
+@DATASETS.register_module()
+class COCOSimaeseDataset(COCODataset):
+    def __init__(
+        self,
+        from_file: str,
+        ann_file: str = "",
+        bbox_file: Optional[str] = None,
+        data_mode: str = "topdown",
+        metainfo: Optional[dict] = None,
+        data_root: Optional[str] = None,
+        data_prefix: dict = dict(img=""),
+        filter_cfg: Optional[dict] = None,
+        indices: Optional[Union[int, Sequence[int]]] = None,
+        serialize_data: bool = True,
+        pipeline: List[Union[dict, Callable]] = [],
+        augmented_pipeline: List[Union[dict, Callable]] = [],
+        test_mode: bool = False,
+        lazy_init: bool = False,
+        max_refetch: int = 1000,
+        sample_interval: int = 1,
+    ):
+        super().__init__(
+            from_file,
+            ann_file,
+            bbox_file,
+            data_mode,
+            metainfo,
+            data_root,
+            data_prefix,
+            filter_cfg,
+            indices,
+            serialize_data,
+            pipeline,
+            test_mode,
+            lazy_init,
+            max_refetch,
+            sample_interval,
+        )
+        self.augmented_pipeline = Compose(augmented_pipeline)
+
+    @force_full_init
+    def prepare_data(self, idx) -> Any:
+        import torch
+
+        data = self.get_data_info(idx)
+        augmented_data = self.get_data_info(idx)
+
+        N = len(data["bbox"])
+        assert np.allclose(data["bbox"], augmented_data["bbox"])
+        instances_id = np.arange(N)
+        data["instance_id"] = instances_id
+        augmented_data["instance_id"] = instances_id
+
+        data = self.pipeline(data)
+        augmented_data = self.augmented_pipeline(augmented_data)
+
+        # self._visualize_augmentations(data, augmented_data, idx)
+
+        return dict(
+            inputs=torch.stack((data["inputs"], augmented_data["inputs"])),
+            data_samples=[data["data_samples"], augmented_data["data_samples"]],
+        )
+
+    def _visualize_augmentations(self, data: dict, augmented_data: dict, idx: int) -> None:
+        """Temporary hack to visualize original and augmented images with annotations."""
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+
+        for ax, d, title in zip(axes, [data, augmented_data], ["Original", "Augmented"]):
+            # Get image tensor and convert to numpy (C, H, W) -> (H, W, C)
+            img = d["inputs"].permute(1, 2, 0).numpy().astype(np.uint8)
+            ax.imshow(img)
+
+            gt_instances = d["data_samples"].gt_instances
+
+            # Draw bounding boxes (xyxy format) with instance_id labels
+            if hasattr(gt_instances, "bboxes") and len(gt_instances.bboxes) > 0:
+                bboxes = gt_instances.bboxes.numpy() if hasattr(gt_instances.bboxes, "numpy") else np.array(gt_instances.bboxes)
+                instance_ids = gt_instances.instance_id if hasattr(gt_instances, "instance_id") else range(len(bboxes))
+                for i, bbox in enumerate(bboxes):
+                    x1, y1, x2, y2 = bbox
+                    rect = patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2, edgecolor="lime", facecolor="none")
+                    ax.add_patch(rect)
+                    # Draw instance_id above the bounding box
+                    instance_id = instance_ids[i] if hasattr(instance_ids, "__getitem__") else i
+                    ax.text(x1, y1 - 5, f"id={instance_id}", color="lime", fontsize=10, fontweight="bold", verticalalignment="bottom")
+
+            # Draw keypoints
+            if hasattr(gt_instances, "keypoints") and len(gt_instances.keypoints) > 0:
+                keypoints = gt_instances.keypoints.numpy() if hasattr(gt_instances.keypoints, "numpy") else np.array(gt_instances.keypoints)
+                for kpts in keypoints:  # (N, K, 2)
+                    ax.scatter(kpts[:, 0], kpts[:, 1], c="red", s=20, zorder=5)
+
+            ax.set_title(f"{title} (idx={idx})")
+            ax.axis("off")
+
+        plt.tight_layout()
+        plt.savefig(f"./augmentation_debug_{idx}.png", dpi=150)
+        print(f"Saved visualization to ./augmentation_debug_{idx}.png")

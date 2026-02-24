@@ -357,7 +357,7 @@ def split_combined_ann_file(ann_dir, val_split=0.2):
     print_log(f"Created {train_path} and {val_path}")
 
 
-def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name="train.json"):
+def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name="train.json", pad_value=114):
     os.makedirs(output_path, exist_ok=True)
     os.makedirs(os.path.join(output_path, "images"), exist_ok=True)
     os.makedirs(os.path.join(output_path, "annotations"), exist_ok=True)
@@ -365,9 +365,14 @@ def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name
     with open(os.path.join(coco_path, "annotations", ann_name), "r") as f:
         coco_data = json.load(f)
 
+    if isinstance(pad_value, tuple):
+        assert len(pad_value) == 3
+    else:
+        pad_value = (int(pad_value), int(pad_value), int(pad_value))
+
     width_target, height_target = target_size
 
-    scales = dict()
+    transforms = dict()
 
     for img in tqdm(coco_data["images"], desc="Resizing images"):
         img_path = os.path.join(coco_path, "images", img["file_name"])
@@ -378,30 +383,39 @@ def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name
             raise FileNotFoundError(f"An image from your {ann_name} file is either not found or unreadable: {os.path.abspath(img_path)}")
 
         height_orig, width_orig = image.shape[:2]
-        scale_x = width_target / width_orig
-        scale_y = height_target / height_orig
 
-        scales[int(img["id"])] = (scale_x, scale_y)
+        max_dim = max(width_orig, height_orig)
+        pad_x = (max_dim - width_orig) // 2
+        pad_y = (max_dim - height_orig) // 2
 
-        resized_image = cv2.resize(image, target_size, interpolation=cv2.INTER_LINEAR)
+        padded_image = np.full((max_dim, max_dim, 3), pad_value, dtype=image.dtype)
+        padded_image[pad_y : pad_y + height_orig, pad_x : pad_x + width_orig] = image
+
+        scale_x = width_target / max_dim
+        scale_y = height_target / max_dim
+
+        transforms[int(img["id"])] = (pad_x, pad_y, scale_x, scale_y)
+
+        resized_image = cv2.resize(padded_image, target_size, interpolation=cv2.INTER_LINEAR)
         cv2.imwrite(new_img_path, resized_image)
 
         img["width"] = width_target
         img["height"] = height_target
 
     for ann in tqdm(coco_data["annotations"], desc="Resizing annotations"):
-        image_scale = scales.get(int(ann["image_id"]))
-        assert image_scale is not None
-        scale_x, scale_y = image_scale
-        ann["bbox"][0] *= scale_x
-        ann["bbox"][1] *= scale_y
+        transform = transforms.get(int(ann["image_id"]))
+        assert transform is not None
+        pad_x, pad_y, scale_x, scale_y = transform
+
+        ann["bbox"][0] = (ann["bbox"][0] + pad_x) * scale_x
+        ann["bbox"][1] = (ann["bbox"][1] + pad_y) * scale_y
         ann["bbox"][2] *= scale_x
         ann["bbox"][3] *= scale_y
 
         if "keypoints" in ann and len(ann["keypoints"]) > 0:
             for i in range(0, len(ann["keypoints"]), 3):
-                ann["keypoints"][i] *= scale_x
-                ann["keypoints"][i + 1] *= scale_y
+                ann["keypoints"][i] = (ann["keypoints"][i] + pad_x) * scale_x
+                ann["keypoints"][i + 1] = (ann["keypoints"][i + 1] + pad_y) * scale_y
 
     with open(os.path.join(output_path, "annotations", ann_name), "w") as f:
         json.dump(coco_data, f, indent=4)
