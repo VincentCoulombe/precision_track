@@ -211,10 +211,7 @@ def plot_profiling_data(json_path: str, std_threshold: float = 2.0) -> None:
     user_system_configs_path = "../configs/user_configs.yaml"
     load_user_configs(user_system_configs_path, system_configs_path)
 
-    config = Config.fromfile(system_configs_path)
-
-    output_dir = os.path.join(config.work_dir, "profiles", "graphs")
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = os.path.dirname(json_path)
 
     with open(json_path, "r") as f:
         data = json.load(f)

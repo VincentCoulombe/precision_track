@@ -60,7 +60,7 @@ def main(args):
     else:
         if args.profile:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            profile = os.path.join(config.work_dir, "profiles", f"profile_{timestamp}.json")
+            profile = os.path.join(config.saving_directory, f"profile_{timestamp}.json")
         else:
             profile = ""
         tracker = Tracker(
@@ -78,7 +78,4 @@ def main(args):
 
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
-    # main(parse_args())
-    from addict import Dict
-
-    main(Dict(dict(video="../../datasets/stripedmice/mot/videos/val/mosaic_2025-12-22T09_08_33.mp4")))
+    main(parse_args())

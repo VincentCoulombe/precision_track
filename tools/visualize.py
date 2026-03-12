@@ -30,14 +30,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # main(parse_args())
-    from addict import Dict
-
-    main(
-        Dict(
-            dict(
-                source="../../datasets/stripedmice/mot/videos/val/mosaic_2025-12-22T09_08_33.mp4",
-                sink="../work_dir/mosaic_2025-12-22T09_08_33/pt_vis_metric.mp4",
-            )
-        )
-    )
+    main(parse_args())

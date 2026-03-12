@@ -35,11 +35,14 @@ def main(args):
     user_system_configs_path = "../configs/user_configs.yaml"
     load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
 
-    runner = Runner(system_configs_path, args.launcher, mode="train")
-    runner()
-    checkpoint_hook = find_checkpoint_hook(runner)
+    # runner = Runner(system_configs_path, args.launcher, mode="train")
+    # runner()
+    # checkpoint_hook = find_checkpoint_hook(runner)
 
-    best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
+    # best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
+
+    best_ckpt_path = "../checkpoints/mice/mart.pth"
+
     assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
     "This is either because you deleted it manually or because the training run stopped before a validation step took place."
 
@@ -53,8 +56,21 @@ def main(args):
         device = get_device()
 
     args.config = "../configs/tasks/testing_action_recognition.py"
-    if args.test:
-        test_ar_main(args=args)
+    # if args.test:
+    #     test_ar_main(args=args)
+
+    if deploy_cfg.with_group_action_recognition:
+        system_configs_path = "../configs/tasks/training_group_action_recognition.py"
+        load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
+        runner = Runner(system_configs_path, args.launcher, mode="train")
+        runner()
+        checkpoint_hook = find_checkpoint_hook(runner)
+        best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
+        assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
+        "This is either because you deleted it manually or because the training run stopped before a validation step took place."
+        deployed_path = deploy(deploy_cfg, "mart_runtime_config", best_ckpt_path, logger)
+        tracking_config = load_config(deploy_cfg.tracking_cfg)
+        tracking_config.load_from = deployed_path
 
     if args.deploy:
         if deploy_cfg["mart_runtime_config"]["type"] in ["onnxruntime", "tensorrt"]:

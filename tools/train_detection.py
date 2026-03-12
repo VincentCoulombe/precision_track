@@ -102,25 +102,22 @@ def main(args):
         load_user_configs(formatted_dataset_cfg, system_configs_path)
 
     runner = Runner(system_configs_path, args.launcher, mode="train")
-    # runner()
-
-    best_ckpt_path = "../work_dir/training_runs/mice/without_feature_extraction.pth"
-
-    # checkpoint_hook = find_checkpoint_hook(runner)
-
-    # best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
-    # assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
-    # "This is either because you deleted it manually or because the detection training run stopped before a validation step took place."
+    runner()
+    checkpoint_hook = find_checkpoint_hook(runner)
+    best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
+    assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
+    "This is either because you deleted it manually or because the detection training run stopped before a validation step took place."
 
     if args.feature_extraction:
         feature_extraction_cfg = load_config("../configs/tasks/training_feature_extraction.py")
+        feature_extraction_cfg.wandb_logging = False
         feature_extraction_cfg.load_from = best_ckpt_path
         runner = Runner(feature_extraction_cfg, args.launcher, mode="train")
         runner()
-        # checkpoint_hook = find_checkpoint_hook(runner)
-        # best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
-        # assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
-        # "This is either because you deleted it manually or because the feature extraction training run stopped before a validation step took place."
+        checkpoint_hook = find_checkpoint_hook(runner)
+        best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
+        assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
+        "This is either because you deleted it manually or because the feature extraction training run stopped before a validation step took place."
 
     deploy_cfg = load_config("../configs/tasks/deploying.py")
     deployed_path = deploy(deploy_cfg, "runtime_config", best_ckpt_path, logger)
