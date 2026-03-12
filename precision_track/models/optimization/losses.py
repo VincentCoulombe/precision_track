@@ -563,3 +563,11 @@ class MSELoss(nn.Module):
             loss = self.criterion(output, target)
 
         return loss * self.loss_weight
+
+
+def focal_loss(logits, targets, gamma=2.0, alpha=0.9, loss_weight=1.0):
+    bce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
+    pt = torch.exp(-bce)
+    alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
+    focal_weight = alpha_t * (1 - pt) ** gamma
+    return (focal_weight * bce).mean() * loss_weight

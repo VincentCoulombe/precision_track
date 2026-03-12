@@ -1,2 +1,2 @@
-project = "feature_extraction"
-entity = "vincent-coulombe"
+project = ""
+entity = ""

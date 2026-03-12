@@ -488,3 +488,197 @@ class ActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
         features = data["inputs"][0].view(N, T, -1).to(self.device)
 
         return dict(features=features, poses=skeletons, dynamics=dynamics, labels=labels)
+
+
+@MODELS.register_module()
+class GroupActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
+    def __init__(
+        self,
+        metainfo: str,
+        block_size: int,
+        velocity_encoder: Optional[dict] = None,
+        kpts_conf_thr: Optional[float] = 0.5,
+        with_distance_priors: bool = True,
+        with_vel_coherence: bool = True,
+        with_vel_approach: bool = True,
+        with_orientation_priors: bool = True,
+        device: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__()
+        assert 0 <= kpts_conf_thr < 1
+        assert block_size > 0
+
+        self._device = device or get_device()
+        self.kpts_conf_thr = kpts_conf_thr
+        self.block_size = block_size
+        self.with_distance_priors = with_distance_priors
+        self.with_vel_coherence = with_vel_coherence
+        self.with_vel_approach = with_vel_approach
+        self.with_orientation_priors = with_orientation_priors
+
+        pose_meta = parse_pose_metainfo(dict(from_file=metainfo))
+        self.skeleton_links = pose_meta.get("skeleton_links")
+        self.skeleton_sources = torch.tensor([s for s, _ in self.skeleton_links], device=self._device)
+        self.skeleton_targets = torch.tensor([t for _, t in self.skeleton_links], device=self._device)
+
+        if self.with_orientation_priors:
+            kpt_name_to_idx = pose_meta["keypoint_name2id"]
+            named_pairs = pose_meta.get("orientation_keypoint_pairs", [])
+            assert (
+                named_pairs
+            ), "If you want to train a group action recognition model with orientation priors, you must populate the 'orientation_keypoint_pairs' in your metadata file. Please refer to documentation."
+            self.orientation_keypoint_pairs = [(kpt_name_to_idx[ant], kpt_name_to_idx[post]) for ant, post in named_pairs]
+
+        self.vel_encoder = None
+        if velocity_encoder is not None:
+            self.vel_encoder = MODELS.build(velocity_encoder)
+
+    def _get_orientation(
+        self,
+        kpts_t: torch.Tensor,
+        kpt_vis_t: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        N = kpts_t.shape[0]
+        body_orientation = torch.zeros(N, 2, device=kpts_t.device)
+        assigned = torch.zeros(N, dtype=torch.bool, device=kpts_t.device)
+
+        for ant_idx, post_idx in self.orientation_keypoint_pairs:
+            if assigned.all():
+                break
+            valid = (kpt_vis_t[:, ant_idx] > 0) & (kpt_vis_t[:, post_idx] > 0) & ~assigned
+            if valid.any():
+                vec = kpts_t[valid, ant_idx] - kpts_t[valid, post_idx]
+                body_orientation[valid] = vec / (vec.norm(dim=-1, keepdim=True) + 1e-6)
+                assigned |= valid
+
+        return body_orientation, assigned
+
+    def forward(self, data: dict, *args, **kwargs) -> dict:
+        return self.loss(data)
+
+    def loss(self, data: dict, *args, **kwargs) -> dict:
+        all_features, all_poses, all_dynamics, all_node_labels = [], [], [], []
+        all_classification_matrices, all_relationship_matrices, all_masks = [], [], []
+        all_distance_priors, all_coherence, all_vel_approach = [], [], []
+        all_orientations_alignment, all_gate_ij = [], []
+
+        for sample_idx, data_sample in enumerate(data["data_samples"]):
+            inputs = data["inputs"][sample_idx].to(self._device)
+            kpts = data_sample.pred_track_instances.kpts.to(self._device)
+            kpt_vis = data_sample.pred_track_instances.kpt_vis.to(self._device)
+            velocities = data_sample.pred_track_instances.velocities.to(self._device)
+            group_matrix = data_sample.gt_instance_labels.group_action_matrix.to(self._device)
+            valid_mask = data_sample.pred_track_instances.valid_mask.to(self._device)
+            N = inputs.shape[0]
+
+            inst_poses, inst_scales = [], []
+            for i in range(N):
+                skeleton, scale = kpts_to_poses(
+                    kpts[i],
+                    kpt_vis[i],
+                    self.skeleton_sources,
+                    self.skeleton_targets,
+                    self.kpts_conf_thr,
+                    normalize=True,
+                )
+                inst_poses.append(skeleton.view(self.block_size, -1))
+                inst_scales.append(scale)
+
+            poses = torch.stack(inst_poses, dim=0)
+            scales = torch.stack(inst_scales, dim=0).view(N, self.block_size, 1)
+
+            dynamics = velocities / scales
+            if self.vel_encoder is not None:
+                dynamics = self.vel_encoder(dynamics)
+
+            # Relationship priors (based on the last timestep only)
+            kpts_t = kpts[:, -1, :, :]
+            vis_t = (kpt_vis[:, -1, :] > self.kpts_conf_thr).float()
+            centroids = (kpts_t * vis_t.unsqueeze(-1)).sum(-2) / vis_t.sum(-1, keepdim=True).clamp(min=1)
+            vels_t = velocities[:, -1, :]
+
+            if self.with_distance_priors:
+                dist = (centroids.unsqueeze(0) - centroids.unsqueeze(1)).norm(dim=-1)
+                scale_t = scales[:, -1, 0]
+                sij = (scale_t.unsqueeze(0) + scale_t.unsqueeze(1)) / 2
+                d_norm = dist / (sij + 1e-6)
+                all_distance_priors.append(2.0 / (1.0 + d_norm) - 1.0)  # Weight it back to the [-1, 1] range
+
+            if self.with_vel_coherence or self.with_vel_approach:
+                v_norm = vels_t / (vels_t.norm(dim=-1, keepdim=True) + 1e-6)
+
+            if self.with_vel_coherence:
+                all_coherence.append((v_norm.unsqueeze(0) * v_norm.unsqueeze(1)).sum(-1))
+
+            if self.with_vel_approach or self.with_orientation_priors:
+                centroid_edges = centroids.unsqueeze(0) - centroids.unsqueeze(1)
+                disp_norm = centroid_edges / (centroid_edges.norm(dim=-1, keepdim=True) + 1e-6)
+
+            if self.with_vel_approach:
+                all_vel_approach.append((v_norm.unsqueeze(1) * disp_norm).sum(-1))
+
+            if self.with_orientation_priors:
+                body_orientation, assigned = self._get_orientation(kpts_t, vis_t)
+
+                # 1 = j in front of i, 0= lateral, -1=behind
+                orientations_alignment = (body_orientation.unsqueeze(1) * disp_norm).sum(-1)
+
+                # Keep track of where the orientation could not be estimated (to differenciate with lateral)
+                gate = assigned.float()
+                gate_ij = gate.unsqueeze(1) * gate.unsqueeze(0)
+
+                all_orientations_alignment.append(orientations_alignment * gate_ij)
+                all_gate_ij.append(gate_ij)
+
+            all_features.append(inputs)
+            all_poses.append(poses)
+            all_dynamics.append(dynamics)
+            all_node_labels.append(data_sample.gt_instance_labels.node_labels.to(self._device))
+            all_classification_matrices.append(group_matrix)
+            all_relationship_matrices.append((group_matrix >= 0).to(torch.int64))
+            all_masks.append(valid_mask)
+
+        labels = torch.stack(all_classification_matrices, dim=0)
+        out = dict(
+            features=torch.stack(all_features, dim=0),
+            poses=torch.stack(all_poses, dim=0),
+            dynamics=torch.stack(all_dynamics, dim=0),
+            node_labels=torch.stack(all_node_labels, dim=0),
+            labels=labels,
+            binary_labels=(labels >= 0).long(),
+            valid_mask=torch.stack(all_masks, dim=0),
+        )
+        if self.with_distance_priors:
+            out["distance_priors"] = torch.stack(all_distance_priors, dim=0)
+        if self.with_vel_coherence:
+            out["vel_coherence"] = torch.stack(all_coherence, dim=0)
+        if self.with_vel_approach:
+            out["vel_approach"] = torch.stack(all_vel_approach, dim=0)
+        if self.with_orientation_priors:
+            out["orientations_alignment"] = torch.stack(all_orientations_alignment, dim=0)
+            out["orientations_valid"] = torch.stack(all_gate_ij, dim=0)
+        return out
+
+
+@MODELS.register_module()
+class RelationshipDetectionBaselinePreprocessor(BaseDataPreprocessor):
+    def __init__(self, actions_of_interest: list, non_blocking=False):
+        super().__init__(non_blocking)
+        self.actions_of_interest = torch.tensor(actions_of_interest, dtype=torch.int64)
+
+    def forward(self, data: dict, *args, **kwargs) -> dict:
+        return self.loss(data)
+
+    def loss(self, data: dict, *args, **kwargs) -> dict:
+        out = dict(
+            query_idxs=[],
+            bboxes=[],
+        )
+        for data_sample in data["data_samples"]:
+            bboxes = data_sample.pred_track_instances.bboxes[:, -1, :]
+            actions = data_sample.gt_instance_labels.node_labels[:, -1]
+            query_idx = torch.where(actions == self.actions_of_interest)[0]
+            out["query_idxs"].append(query_idx)
+            out["bboxes"].append(bboxes)
+        return dict(data_samples=out)

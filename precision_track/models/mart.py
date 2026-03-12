@@ -28,11 +28,11 @@ class BaseMARModel(BaseModel):
         data_preprocessor: Optional[Union[dict, nn.Module]] = None,
         loss_actions: Optional[Config] = None,
         mode: Optional[str] = "loss",
+        class_prior: Optional[List[float]] = None,
         *args,
         **kwargs,
     ):
         assert hasattr(config, "block_size") and config.block_size > 0, "config.block_size must be positive"
-        assert hasattr(config, "n_output") and config.n_output > 0, "config.n_output must be positive"
         assert hasattr(config, "n_block"), "config must have n_block attribute"
 
         super().__init__(
@@ -61,6 +61,7 @@ class BaseMARModel(BaseModel):
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.n_pose = len(metainfo.get("skeleton_links", []))
         self.n_kpts = metainfo.get("num_keypoints", 0)
+        self.n_class = len(metainfo.get("actions", []))
 
         self.loss_actions = loss_actions
         if loss_actions is not None:
@@ -97,7 +98,6 @@ class BaseMARModel(BaseModel):
             feature_config = config.copy()
             feature_config.n_embd = self.n_embd_feats
             self.feature_encoder = nn.Sequential(
-                ProjLN(feature_config.n_embd, feature_config.n_embd, bias=feature_config.bias),
                 TransformerMLP(feature_config),
                 nn.LayerNorm(feature_config.n_embd, bias=feature_config.bias),
             )
@@ -108,6 +108,24 @@ class BaseMARModel(BaseModel):
 
         self.proj = TransformerMLP(config)
         self.config = config
+
+        if class_prior is not None:
+            prior = torch.tensor(class_prior, dtype=torch.float32)
+            self.register_buffer("log_prior", torch.log(prior / prior.sum()))
+        else:
+            self.log_prior = None
+
+    def _get_probs(self, logits: Tensor) -> Tensor:
+        """Apply optional log-prior adjustment then softmax.
+
+        When a class_prior is provided, adjusts logits to account for the
+        mismatch between the (typically balanced) training distribution and
+        the natural inference distribution:
+            adjusted_logit_k = logit_k + log(p_k_natural)
+        """
+        if self.log_prior is not None:
+            logits = logits + self.log_prior
+        return F.softmax(logits, dim=-1)
 
     def train_step(self, data: Union[dict, tuple, list], optim_wrapper: OptimWrapper) -> Dict[str, torch.Tensor]:
         with optim_wrapper.optim_context(self):
@@ -128,19 +146,16 @@ class BaseMARModel(BaseModel):
         if self.feature_encoder is not None:
             feat = features.reshape(-1, self.block_size, self.n_embd_feats)
             feat = self.dropout(feat)
-            assert self.feature_encoder(feat).shape[-1] == 128, f"{self.feature_encoder(feat).shape}"
             embeddings.append(self.feature_encoder(feat))
 
         if self.pose_encoder is not None:
             pose = poses.reshape(-1, self.block_size, self.n_pose * 2)
             pose = self.dropout(pose)
-            assert self.pose_encoder(pose).shape[-1] == 96, f"{self.pose_encoder(pose).shape}"
             embeddings.append(self.pose_encoder(pose))
 
         if self.velocity_encoder is not None:
             dyn = dynamics.reshape(-1, self.block_size, self.n_encoded_dynamics)
             dyn = self.dropout(dyn)
-            assert self.velocity_encoder(dyn).shape[-1] == 32, f"{self.velocity_encoder(dyn).shape}"
             embeddings.append(self.velocity_encoder(dyn))
 
         return self.proj(torch.cat(embeddings, dim=-1))
@@ -174,6 +189,7 @@ class MART(BaseMARModel):
         loss_actions: Optional[Config] = None,
         mask_ratio: Optional[float] = 0.5,
         mode: Optional[str] = "loss",
+        class_prior: Optional[List[float]] = None,
         *args,
         **kwargs,
     ):
@@ -183,6 +199,7 @@ class MART(BaseMARModel):
             data_preprocessor=data_preprocessor,
             loss_actions=loss_actions,
             mode=mode,
+            class_prior=class_prior,
         )
 
         assert mode in self.SUPPORTED_MODES, f"Invalid mode '{mode}'. Must be one of {self.SUPPORTED_MODES}"
@@ -196,7 +213,6 @@ class MART(BaseMARModel):
         self.mask_ratio = mask_ratio
         self.reconstruction_head = nn.Linear(self.config.n_embd, self.config.n_embd, bias=self.config.bias)
 
-        self.n_class = self.config.n_output
         self.classification_head = nn.Sequential(
             TransformerMLP(self.config),
             nn.Linear(self.config.n_embd, self.n_class, bias=self.config.bias),
@@ -274,7 +290,7 @@ class MART(BaseMARModel):
         )
         x = self._get_transformations(x)
         class_logits = self.classification_head(x)
-        return F.softmax(class_logits[:, -1, :], dim=-1), F.normalize(x[:, -1, :], p=2, dim=-1)
+        return self._get_probs(class_logits[:, -1, :]), F.normalize(x[:, -1, :], p=2, dim=-1)
 
     def _get_transformations(
         self,
@@ -298,6 +314,7 @@ class MLPAnalyzer(BaseMARModel):
         metainfo: str,
         data_preprocessor: Optional[Union[dict, nn.Module]] = None,
         loss_actions: Optional[Config] = None,
+        class_prior: Optional[List[float]] = None,
         *args,
         **kwargs,
     ):
@@ -307,8 +324,8 @@ class MLPAnalyzer(BaseMARModel):
             data_preprocessor=data_preprocessor,
             loss_actions=loss_actions,
             mode="loss",
+            class_prior=class_prior,
         )
-        self.n_class = self.config.n_output
         self.classification_head = nn.Sequential(
             TransformerMLP(self.config),
             nn.Linear(self.config.n_embd, self.n_class, bias=self.config.bias),
@@ -355,7 +372,7 @@ class MLPAnalyzer(BaseMARModel):
             dynamics=dynamics,
         )
         class_logits = self.classification_head(x)
-        return F.softmax(class_logits[:, -1, :], dim=-1), F.normalize(x[:, -1, :], p=2, dim=-1)
+        return self._get_probs(class_logits[:, -1, :]), F.normalize(x[:, -1, :], p=2, dim=-1)
 
 
 @MODELS.register_module()
@@ -370,6 +387,7 @@ class LSTMAnalyzer(BaseMARModel):
         metainfo: str,
         data_preprocessor: Optional[Union[dict, nn.Module]] = None,
         loss_actions: Optional[Config] = None,
+        class_prior: Optional[List[float]] = None,
         *args,
         **kwargs,
     ):
@@ -379,6 +397,7 @@ class LSTMAnalyzer(BaseMARModel):
             data_preprocessor=data_preprocessor,
             loss_actions=loss_actions,
             mode="loss",
+            class_prior=class_prior,
         )
 
         self.lstm = nn.LSTM(
@@ -392,7 +411,6 @@ class LSTMAnalyzer(BaseMARModel):
 
         self.ln = nn.LayerNorm(self.config.n_embd, bias=config.bias)
 
-        self.n_class = self.config.n_output
         self.classification_head = nn.Sequential(
             TransformerMLP(self.config),
             nn.Linear(self.config.n_embd, self.n_class, bias=self.config.bias),
@@ -441,7 +459,7 @@ class LSTMAnalyzer(BaseMARModel):
         )
         x = self._get_lstm_output(x)
         class_logits = self.classification_head(x)
-        return F.softmax(class_logits[:, -1, :], dim=-1), F.normalize(x[:, -1, :], p=2, dim=-1)
+        return self._get_probs(class_logits[:, -1, :]), F.normalize(x[:, -1, :], p=2, dim=-1)
 
     def _get_lstm_output(self, x: Tensor) -> Tensor:
         lstm_out, _ = self.lstm(x)

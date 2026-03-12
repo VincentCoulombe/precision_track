@@ -856,6 +856,7 @@ class FilterAnnotations(BaseTransform):
             "id",
             "action",
             "action_label",
+            "action_performed_with",
             "instance_id",
         )
         for key in keys:

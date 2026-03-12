@@ -5,7 +5,7 @@ balanced = True
 work_dir = _base_.training_work_dir
 
 block_size = _base_.block_size
-n_input_features = _base_.n_input_features
+n_input_features = _base_.n_embd_features
 
 bboxes_gt_format = _base_.action_recognition_bboxes_gt_format
 keypoints_gt_format = _base_.action_recognition_keypoints_gt_format
@@ -101,7 +101,6 @@ test_dataloader = dict(
         ),
         block_size=block_size,
         pipeline=load_img + load_anns,
-        inference_resolution=_base_.inference_resolution,
         training=False,
     ),
 )

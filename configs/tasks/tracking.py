@@ -100,6 +100,7 @@ outputs = [
     # dict(
     #     type="NpyEmbeddingOutput",
     #     path=_base_.saving_directory + "/features.npy",
+    #     ids_field="instances_id",
     # ),
     dict(
         type="CsvSearchAreas",
@@ -136,10 +137,10 @@ outputs = [
     #     ids_field="instances_id",
     #     embs_field="action_embeddings",
     # ),
-    dict(
-        type="PthAppearanceDatabaseOutput",
-        path=_base_.saving_directory + "/appearance_database.pth",
-    ),
+    # dict(
+    #     type="PthAppearanceDatabaseOutput",
+    #     path=_base_.saving_directory + "/appearance_database.pth",
+    # ),
 ]
 
 if _base_.with_pose_estimation:
@@ -155,7 +156,7 @@ if _base_.with_pose_estimation:
 
 
 # Visualization
-bbox_size = 3
+bbox_size = 4
 text_size = 2
 painters = []
 if _base_.display_search_zones:
@@ -209,8 +210,8 @@ if _base_.display_poses:
         dict(
             type="KeypointsPainter",
             metafile_path=metainfo,
-            joint_radius=8,
-            link_thickness=4,
+            joint_radius=bbox_size + 6,
+            link_thickness=bbox_size + 2,
         ),
     ]
 if _base_.display_validations:
@@ -255,8 +256,8 @@ painters += [
         metafile_path=metainfo,
         label_position="TOP_CENTER",
         text_color=[0, 0, 0],
-        text_scale=2,
-        text_thickness=2,
+        text_scale=text_size,
+        text_thickness=int(text_size),
         text_padding=1,
         border_radius=1,
         format="cxcywh",

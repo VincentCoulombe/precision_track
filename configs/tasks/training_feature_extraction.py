@@ -30,9 +30,6 @@ validation_imgs_path = _base_.validation_imgs_path
 
 # Model
 model = dict(
-    data_preprocessor=dict(
-        type="DoublePoseDataPreprocessor",
-    ),
     head=dict(
         loss_cls=dict(loss_weight=0.0),
         loss_bbox=dict(loss_weight=0.0),
@@ -47,7 +44,7 @@ model = dict(
 # Loops
 train_cfg = dict(
     _scope_=_base_.default_scope,
-    type="FeatureExtractionTrainLoop",
+    type="EpochBasedTrainLoop",
     max_epochs=fe_num_epochs,
     val_interval=fe_val_interval,
 )
@@ -70,30 +67,32 @@ optim_wrapper = dict(
 # /Optimization
 
 # Dataloaders
-codec = dict(type="FEAnnotationProcessor", input_size=input_size)
+codec = dict(type="YOLOXPoseAnnotationProcessor", input_size=input_size)
 
-load_img = [
-    dict(type="LoadImage"),
-    dict(type="BottomupResize", input_size=input_size, pad_val=pad_value),
-]
+load_img = [dict(type="LoadImage")]
 load_anns = [
     dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False),
-    dict(type="RemoveDuplicateBoundingBoxes"),
     dict(type="GenerateTarget", encoder=codec),
     dict(type="PackPoseInputs"),
 ]
-color_transforms = [
+transforms_stage2 = [
+    dict(
+        type="BottomupRandomAffine",
+        input_size=input_size,
+        shift_prob=0,
+        rotate_prob=0,
+        scale_prob=0,
+        scale_type="long",
+        pad_val=(pad_value, pad_value, pad_value),
+        bbox_keep_corner=False,
+        clip_border=True,
+    ),
     dict(type="YOLOXHSVRandomAug"),
     dict(type="RandomContrastAug"),
+    dict(type="RandomFlip", prob=0.5, direction="horizontal"),
 ]
 
-geometric_transforms = [
-    dict(type="RandomFlip", prob=[0.9, 0.1], direction=["horizontal", "vertical"]),
-]
-
-pipeline_a = load_img + color_transforms + load_anns
-pipeline_b = load_img + color_transforms + geometric_transforms + load_anns
-
+train_pipeline_stage2 = load_img + transforms_stage2 + load_anns
 
 param_scheduler = [
     dict(
@@ -118,56 +117,53 @@ param_scheduler = [
 
 train_dataloader = dict(
     batch_size=fe_batch_size,
-    num_workers=0,
-    # num_workers=8,
-    # persistent_workers=True,
-    # pin_memory=True,
+    num_workers=8,
+    persistent_workers=True,
+    pin_memory=True,
     sampler=dict(type="DefaultSampler", shuffle=True),
     dataset=dict(
-        type="COCOSimaeseDataset",
+        type="COCODataset",
         from_file=metainfo,
         data_mode=data_mode,
         filter_cfg=dict(filter_empty_gt=False, min_size=fe_batch_size),
         ann_file=training_anns_path,
         data_prefix=dict(img=training_imgs_path),
-        pipeline=pipeline_a,
-        augmented_pipeline=pipeline_b,
+        pipeline=train_pipeline_stage2,
     ),
 )
+val_pipeline = load_img + [dict(type="Resize", input_size=input_size, pad_val=(pad_value, pad_value, pad_value))] + load_anns
 val_dataloader = dict(
     batch_size=1,
-    num_workers=0,
-    # num_workers=5,
-    # persistent_workers=True,
-    # pin_memory=True,
+    num_workers=2,
+    persistent_workers=True,
+    pin_memory=True,
     drop_last=False,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(
-        type="COCOSimaeseDataset",
+        type="COCODataset",
         from_file=metainfo,
         ann_file=validation_anns_path,
         data_mode=data_mode,
         filter_cfg=dict(filter_empty_gt=True, min_size=1),
         data_prefix=dict(img=validation_imgs_path),
         test_mode=True,
-        pipeline=pipeline_a,
-        augmented_pipeline=pipeline_b,
+        pipeline=val_pipeline,
     ),
 )
 # /Dataloaders
 
 # Evaluation
-val_evaluator = [dict(type="FeaturesReconstructionMetric")]
+val_evaluator = [dict(type="SilhouetteScore")]
 # /Evaluation
 
 
 # Hooks
 default_hooks = dict(
-    checkpoint=dict(interval=-1, type="CheckpointHook", save_best="FeaturesReconstructionMetric/avg", rule="less"),
+    checkpoint=dict(interval=-1, type="CheckpointHook", save_best="SilhouetteScore/avg", rule="greater"),
 )
 custom_hooks = [
     dict(type="SyncNormHook", priority=48),
-    dict(type="ModuleFreezingHook", modules_to_freeze=["backbone", "neck", "head"], priority=30),
+    dict(type="ModuleFreezingHook", modules_to_freeze=["backbone", "neck", "head"], priority=1),
     dict(type="ValidateBeforeTrainingHook", priority=100),
 ]
 # /Hooks
@@ -182,7 +178,6 @@ if _base_.wandb_logging:
             init_kwargs=dict(
                 project=_base_.project,
                 entity=_base_.entity,
-                allow_val_change=True,
             ),
             save_dir=work_dir + "wandb/",
         ),

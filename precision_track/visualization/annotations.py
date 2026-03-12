@@ -121,7 +121,7 @@ class Label(DetAnnotation):
         assert isinstance(text_color, list)
         for t_c in text_color:
             assert isinstance(t_c, int)
-            assert t_c >= 0 and t_c < 255
+            assert t_c >= 0 and t_c <= 255
         self.label_annotator = sv.LabelAnnotator(
             color=self.palette,
             text_position=sv.Position[label_position],
@@ -156,7 +156,13 @@ class Label(DetAnnotation):
                 additional_track_ids = additionnal_labels[:, 2].astype(int)
                 addtionnal_mask = additional_track_ids == lbl
                 if (additional_track_ids == lbl).any():
-                    additionnal_label = f"| {additionnal_labels[addtionnal_mask][:, 3][0]}"
+                    id_additionnal_label = additionnal_labels[addtionnal_mask][:, 3:]
+                    additionnal_label = f"| {id_additionnal_label[:, 0][0]}"
+                    if id_additionnal_label.shape[1] > 1:
+                        second_id_additionnal_label = id_additionnal_label[:, 1].astype(float).astype(int)[0]
+                        if second_id_additionnal_label >= 0:
+                            additionnal_label += f" with {second_id_additionnal_label}"
+
             cls_ = self.class_id_to_class.get(cls_, int(cls_)) if "class" in self.info else ""
             conf = f": {conf:.2f}" if "score" in self.info else ""
             lbl = f" {int(lbl)}" if "id" in self.info else ""

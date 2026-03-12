@@ -6,12 +6,13 @@ import pickle
 import platform
 import warnings
 from typing import Callable, Dict, List, Optional, Union
-
+from collections import OrderedDict
 import cv2
 import mmengine
 import torch.multiprocessing as mp
 import torch.nn as nn
-from mmengine.config import Config
+from torch.optim import Optimizer
+from mmengine.config import Config, ConfigDict
 from mmengine.hooks import Hook
 from mmengine.logging import print_log
 from mmengine.model import is_model_wrapper
@@ -19,6 +20,7 @@ from mmengine.registry import LOOPS, VISUALIZERS, DefaultScope
 from mmengine.runner import Runner as MMENGINERunner
 from mmengine.utils import digit_version
 from mmengine.visualization import Visualizer
+from mmengine.optim import OptimWrapper, OptimWrapperDict, build_optim_wrapper
 
 from precision_track.registry import MODELS
 from precision_track.utils import CheckpointLoader, get_device, load_checkpoint_to_model
@@ -347,6 +349,45 @@ class Runner(MMENGINERunner):
         self._has_loaded = True
 
         self.logger.info(f"resumed epoch: {self.epoch}, iter: {self.iter}")
+
+    def build_optim_wrapper(self, optim_wrapper: Union[Optimizer, OptimWrapper, Dict]) -> Union[OptimWrapper, OptimWrapperDict]:
+        self.call_hook("before_optim_wrapper")
+
+        if isinstance(optim_wrapper, OptimWrapper):
+            return optim_wrapper
+        if isinstance(optim_wrapper, (dict, ConfigDict, Config)):
+            # optimizer must be defined for single optimizer training.
+            optimizer = optim_wrapper.get("optimizer", None)
+
+            # If optimizer is a built `Optimizer` instance, the optimizer
+            # wrapper should be built by `OPTIM_WRAPPERS` registry.
+            if isinstance(optimizer, Optimizer):
+                optim_wrapper.setdefault("type", "OptimWrapper")
+                return OPTIM_WRAPPERS.build(optim_wrapper)  # type: ignore
+
+            # If `optimizer` is not None or `constructor` is defined, it means,
+            # optimizer wrapper will be built by optimizer wrapper
+            # constructor. Therefore, `build_optim_wrapper` should be called.
+            if optimizer is not None or "constructor" in optim_wrapper:
+                return build_optim_wrapper(self.model, optim_wrapper)
+            else:
+                # if `optimizer` is not defined, it should be the case of
+                # training with multiple optimizers. If `constructor` is not
+                # defined either, each value of `optim_wrapper` must be an
+                # `OptimWrapper` instance since `DefaultOptimizerConstructor`
+                # will not handle the case of training with multiple
+                # optimizers. `build_optim_wrapper` will directly build the
+                # `OptimWrapperDict` instance from `optim_wrapper.`
+                optim_wrappers = OrderedDict()
+                for name, optim in optim_wrapper.items():
+                    if not isinstance(optim, OptimWrapper):
+                        raise ValueError(
+                            "each item mush be an optimizer object when " '"type" and "constructor" are not in ' f"optimizer, but got {name}={optim}"
+                        )
+                    optim_wrappers[name] = optim
+                return OptimWrapperDict(**optim_wrappers)
+        else:
+            raise TypeError("optimizer wrapper should be an OptimWrapper " f"object or dict, but got {optim_wrapper}")
 
 
 def setup_cache_size_limit_of_dynamo():

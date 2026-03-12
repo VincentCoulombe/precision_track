@@ -10,9 +10,9 @@ metainfo = _base_.metainfo
 data_postprocessor = [
     dict(
         type="NMSPostProcessor",
-        score_thr=0.01,
+        score_thr=0.1,
         nms_thr=0.5,
-        pool_thr=1.0,
+        pool_thr=0.9 if _base_.with_action_recognition else 1.0,
     ),
 ]
 
@@ -98,15 +98,15 @@ model = dict(
     feature_extraction_head=dict(
         type="FeatureExtractionHead",
         data_postprocessor=data_postprocessor,
-        loss_config=dict(type="MSELoss"),
+        loss_features=dict(type="TripletLoss", loss_weight=1.0, neg_strategy="semihard", pos_strategy="hard"),
         featmap_strides=(8, 16, 32),
         in_channels=256,
         feat_channels=256,
+        out_channels=256,
         widen_factor=widen_factor,
         stacked_convs=4,
         norm_cfg=dict(type="BN"),
         act_cfg=dict(type="SiLU"),
-        loss_features=dict(type="TripletLoss", loss_weight=1.0, neg_strategy="semihard", pos_strategy="hard"),
     ),
     # feature_extraction_head=None,
     test_cfg=dict(data_postprocessor=data_postprocessor, input_size=input_size),

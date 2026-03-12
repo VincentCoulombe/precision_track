@@ -5,13 +5,15 @@ booleans:
   pipelined: false
   with_validation: false
   with_action_recognition: false
-  with_pose_estimation: false
+  with_group_action_recognition: true
+  with_pose_estimation: true
 
 # ================================
 # General directories and paths
 # ================================
 general:
   metainfo: "../configs/metadata/mice.py"
+  # metainfo: "../../datasets/zebrafish/zebrafish.py"
   # metainfo: "../../datasets/stripedmice/stripedmice_corrected_without_tail.py"
 
 # ================================
@@ -25,13 +27,15 @@ training:
   resume: false
   training_checkpoint: "../checkpoints/model_ap/model_ap.pth"
 
-  deploying_directory: "../checkpoints/mice_feature_extraction/"
+  deploying_directory: "../checkpoints/mice/"
+
+  # deploying_directory: "../checkpoints/zebrafish/"
   # deploying_directory: "../checkpoints/camille/"
 
   deploying_sanity_check_img_path: "images/0000003435.jpg"
 
   batch_size: 38 # Warning: The training is unstable with batch sizes < 16.
-  wandb_logging: true
+  wandb_logging: false
 
 # ================================
 # Tracking parameters, directories and paths
@@ -39,7 +43,10 @@ training:
 tracking:
   saving_directory: "../work_dir/"
   num_subjects: { "mouse": 20 }
-  tracking_checkpoint_name: "best_FeaturesReconstructionMetric_avg_epoch_30.pth"
+  # num_subjects: { "zebrafish": -1 }
+
+  # tracking_checkpoint_name: "zebrafish.pth"
+  tracking_checkpoint_name: "model_mice_DEPLOYED.pth"
   # tracking_checkpoint_name: "model_camille_DEPLOYED.onnx"
   mot_testing_data_root: "../../datasets/MICE/pose-estimation/benchmark/"
 
@@ -53,13 +60,13 @@ validation:
 # Visualization parameters
 # ================================
 visualization:
-  display_bounding_boxes: false
+  display_bounding_boxes: true
   display_poses: true
-  display_velocities: false
-  display_species: false
-  display_confidence_scores: false
-  display_actions: false
-  display_search_zones: false
+  display_velocities: true
+  display_species: true
+  display_confidence_scores: true
+  display_actions: true
+  display_search_zones: true
   display_validations: true
-  display_untracked_detections: false
-  display_predicted_bounding_boxes: false
+  display_untracked_detections: true
+  display_predicted_bounding_boxes: true

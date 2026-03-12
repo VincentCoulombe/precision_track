@@ -14,6 +14,7 @@ class SequenceAnnotationProcessor(YOLOXPoseAnnotationProcessor):
         area="areas",
         id="ids",
         action_label="action_labels",
+        action_performed_with="actions_performed_with",
     )
     instance_mapping_table = dict(
         bbox="bboxes",

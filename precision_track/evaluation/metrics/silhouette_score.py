@@ -33,7 +33,10 @@ class SilhouetteScore(BaseMetric):
                     labels = labels.cpu().numpy()
                     features = features.cpu().numpy()
                     if not np.all(labels == labels[0]):  # More than one individual in the frame.
-                        score = silhouette_score(features, labels, metric="cosine")
+                        if features.shape[0] == np.unique(labels).shape[0] or labels.shape[0] < 2:
+                            score = 1.0
+                        else:
+                            score = silhouette_score(features, labels, metric="cosine")
                         self.results.append(score)
 
     def compute_metrics(self, results: list) -> dict:

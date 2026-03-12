@@ -54,4 +54,16 @@ dataset_info = dict(
         "Rearing",
         "Grooming",
     ],
+    orientation_keypoint_pairs=[
+        # (anterior, posterior) ordered best→worst axis reliability
+        ("Snout", "Base of Tail"),   # full body axis — most reliable
+        ("Snout", "Tailtag"),        # longest axis, but tailtag wobbles
+        ("Snout", "Centroid"),       # front half axis
+        ("Centroid", "Base of Tail"),# rear half axis
+        ("Centroid", "Tailtag"),     # rear half, longer
+        ("Right Ear", "Base of Tail"),
+        ("Left Ear", "Base of Tail"),
+        ("Right Ear", "Centroid"),
+        ("Left Ear", "Centroid"),
+    ],
 )

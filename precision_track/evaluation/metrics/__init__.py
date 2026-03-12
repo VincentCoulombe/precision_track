@@ -1,4 +1,10 @@
-from .classification import MultiClassActionRecognitionMetrics, SearchZoneStitchingMetric, SequentialAverageAccuracy, SequentialSimilarityMetric
+from .classification import (
+    MultiClassActionRecognitionMetrics,
+    SearchZoneStitchingMetric,
+    SequentialAverageAccuracy,
+    SequentialSimilarityMetric,
+    GroupActionRecognitionMetrics,
+)
 from .clear import CLEARMetrics
 from .ece import PoseEstimationECEMetric
 from .pt import PoseTrackingMetric
@@ -13,6 +19,7 @@ __all__ = [
     "SilhouetteScore",
     "SequentialAverageAccuracy",
     "MultiClassActionRecognitionMetrics",
+    "GroupActionRecognitionMetrics",
     "QualitativeActionRecognitionMetric",
     "CLEARMetrics",
     "SearchZoneStitchingMetric",

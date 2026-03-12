@@ -15,7 +15,7 @@ work_dir = _base_.training_work_dir
 resume = _base_.resume
 
 block_size = _base_.block_size
-n_input_features = _base_.n_input_features
+n_embd_features = _base_.n_embd_features
 
 bboxes_gt_format = _base_.action_recognition_bboxes_gt_format
 keypoints_gt_format = _base_.action_recognition_keypoints_gt_format
@@ -131,10 +131,10 @@ load_img = [dict(type="LoadImage")]
 crop = [dict(type="SequenceRandomCrop", crop_size=(0.85, 1.0))]
 resize = [dict(type="BottomupResize", input_size=_base_.input_size, pad_val=(_base_.pad_value, _base_.pad_value, _base_.pad_value))]
 transforms = [
-    dict(type="SequenceYOLOXHSVRandomAug", value_delta=15, hue_delta=0, saturation_delta=0),
-    dict(type="SequenceRandomContrastAug"),
-    dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
-    dict(type="SequenceRandomOcclusion"),
+    # dict(type="SequenceYOLOXHSVRandomAug", value_delta=15, hue_delta=0, saturation_delta=0),
+    # dict(type="SequenceRandomContrastAug"),
+    # dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
+    # dict(type="SequenceRandomOcclusion"),
 ]
 load_anns = [
     dict(type="FilterAnnotations", by_kpt=True, by_box=True, keep_empty=False, min_kpt_vis=3),
@@ -145,15 +145,16 @@ load_anns = [
 
 train_dataloader = dict(
     batch_size=batch_size,
-    num_workers=8,
-    persistent_workers=True,
-    pin_memory=True,
+    num_workers=0,
+    # num_workers=8,
+    # persistent_workers=True,
+    # pin_memory=True,
     sampler=dict(type="InfiniteSampler"),
     dataset=dict(
         type="ActionRecognitionDataset",
         detector=detector,
         from_file=metainfo,
-        n_feats=n_input_features,
+        n_feats=n_embd_features,
         n_velocities=2,
         keypoints_gt_format=keypoints_gt_format,
         bboxes_gt_format=bboxes_gt_format,
@@ -166,24 +167,23 @@ train_dataloader = dict(
             actions_gt_paths=train_actions_gt_paths,
         ),
         block_size=block_size,
-        # pipeline=load_img + resize + transforms + load_anns,
-        pipeline=load_img + resize + load_anns,
-        inference_resolution=_base_.inference_resolution,
+        pipeline=load_img + resize + transforms + load_anns,
         training=True,
     ),
 )
 
 val_dataloader = dict(
     batch_size=1,
-    num_workers=2,
-    persistent_workers=True,
-    pin_memory=True,
+    num_workers=0,
+    # num_workers=2,
+    # persistent_workers=True,
+    # pin_memory=True,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(
         type="ActionRecognitionDataset",
         detector=detector,
         from_file=metainfo,
-        n_feats=n_input_features,
+        n_feats=n_embd_features,
         n_velocities=2,
         keypoints_gt_format=keypoints_gt_format,
         bboxes_gt_format=bboxes_gt_format,
@@ -197,7 +197,6 @@ val_dataloader = dict(
         ),
         block_size=block_size,
         pipeline=load_img + resize + load_anns,
-        inference_resolution=_base_.inference_resolution,
         training=False,
     ),
 )
@@ -230,9 +229,9 @@ custom_hooks = [
     #     priority=50,
     # ),
     # dict(
-    # type="SequencesSwitchHook",
-    # priority=51,
-    # generate_every=1000,
+    #     type="SequencesSwitchHook",
+    #     priority=51,
+    #     generate_every=1000,
     # ),
 ]
 # /Hooks
