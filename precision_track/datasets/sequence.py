@@ -1073,8 +1073,8 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
         N = len(valid_ids)
 
         # Shuffle subject order to prevent positional overfitting inside the group matrix.
-        perm = torch.randperm(N, generator=torch.Generator().manual_seed(int(rng.integers(2**31))))
-        valid_ids = valid_ids[perm]
+        # perm = torch.randperm(N, generator=torch.Generator().manual_seed(int(rng.integers(2**31))))
+        # valid_ids = valid_ids[perm]
 
         # Batch padding (all features, poses, dynamics and group matrices have the same nb of subjects)
         if self.max_subjects is not None:

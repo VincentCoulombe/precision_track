@@ -662,6 +662,106 @@ class GroupActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
 
 
 @MODELS.register_module()
+class GroupActionRecognitionPoseTrainingPreprocessor(BaseDataPreprocessor):
+    def __init__(
+        self,
+        metainfo: str,
+        block_size: int,
+        velocity_encoder: Optional[dict] = None,
+        kpts_conf_thr: float = 0.5,
+        device: Optional[str] = None,
+        **_,
+    ):
+        super().__init__()
+        self._device = device or get_device()
+        self.kpts_conf_thr = kpts_conf_thr
+        self.block_size = block_size
+
+        pose_meta = parse_pose_metainfo(dict(from_file=metainfo))
+        self.skeleton_sources = torch.tensor([s for s, _ in pose_meta["skeleton_links"]], device=self._device)
+        self.skeleton_targets = torch.tensor([t for _, t in pose_meta["skeleton_links"]], device=self._device)
+
+        kpt2idx = pose_meta["keypoint_name2id"]
+        pairs = pose_meta.get("distance_keypoint_pairs", [])
+        self.n_pairs = len(pairs)
+        self.src_kpt_idxs = torch.tensor([kpt2idx[s] for s, _ in pairs], device=self._device)
+        self.tgt_kpt_idxs = torch.tensor([kpt2idx[t] for _, t in pairs], device=self._device)
+
+        self.vel_encoder = MODELS.build(velocity_encoder) if velocity_encoder is not None else None
+
+    def forward(self, data: dict, *args, **kwargs) -> dict:
+        return self.loss(data)
+
+    def loss(self, data: dict, *args, **kwargs) -> dict:
+        all_features, all_poses, all_dynamics = [], [], []
+        all_node_labels, all_labels, all_masks, all_kpt_priors = [], [], [], []
+
+        for sample_idx, data_sample in enumerate(data["data_samples"]):
+            inputs = data["inputs"][sample_idx].to(self._device)
+            kpts = data_sample.pred_track_instances.kpts.to(self._device)
+            kpt_vis = data_sample.pred_track_instances.kpt_vis.to(self._device)
+            vels = data_sample.pred_track_instances.velocities.to(self._device)
+            gm = data_sample.gt_instance_labels.group_action_matrix.to(self._device)
+            N = inputs.shape[0]
+
+            inst_poses, inst_scales = [], []
+            for i in range(N):
+                skeleton, scale = kpts_to_poses(
+                    kpts[i],
+                    kpt_vis[i],
+                    self.skeleton_sources,
+                    self.skeleton_targets,
+                    self.kpts_conf_thr,
+                    normalize=True,
+                )
+                inst_poses.append(skeleton.view(self.block_size, -1))
+                inst_scales.append(scale)
+
+            poses = torch.stack(inst_poses)
+            scales = torch.stack(inst_scales).view(N, self.block_size, 1)
+            dynamics = vels / scales
+            if self.vel_encoder is not None:
+                dynamics = self.vel_encoder(dynamics)
+
+            kpts_t = kpts[:, -1]
+            vis_t = kpt_vis[:, -1] > self.kpts_conf_thr
+
+            src_kpts = kpts_t[:, self.src_kpt_idxs]
+            tgt_kpts = kpts_t[:, self.tgt_kpt_idxs]
+            src_vis = vis_t[:, self.src_kpt_idxs]
+            tgt_vis = vis_t[:, self.tgt_kpt_idxs]
+
+            dist = (src_kpts.unsqueeze(1) - tgt_kpts.unsqueeze(0)).norm(dim=-1)
+
+            scale_t = scales[:, -1, 0]
+            sij = (scale_t.unsqueeze(0) + scale_t.unsqueeze(1)) / 2
+            d_norm = dist / (sij.unsqueeze(-1) + 1e-6)
+
+            vis_gate = (src_vis.unsqueeze(1) & tgt_vis.unsqueeze(0)).float()
+            kpt_priors = d_norm * vis_gate
+
+            all_kpt_priors.append(kpt_priors)
+            all_features.append(inputs)
+            all_poses.append(poses)
+            all_dynamics.append(dynamics)
+            all_node_labels.append(data_sample.gt_instance_labels.node_labels.to(self._device))
+            all_labels.append(gm)
+            all_masks.append(data_sample.pred_track_instances.valid_mask.to(self._device))
+
+        labels = torch.stack(all_labels)
+        return dict(
+            features=torch.stack(all_features),
+            poses=torch.stack(all_poses),
+            dynamics=torch.stack(all_dynamics),
+            node_labels=torch.stack(all_node_labels),
+            labels=labels,
+            binary_labels=(labels >= 0).long(),
+            valid_mask=torch.stack(all_masks),
+            keypoint_priors=torch.stack(all_kpt_priors),
+        )
+
+
+@MODELS.register_module()
 class RelationshipDetectionBaselinePreprocessor(BaseDataPreprocessor):
     def __init__(self, actions_of_interest: list, non_blocking=False):
         super().__init__(non_blocking)

@@ -5,10 +5,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmengine.model import BaseModel
 from torch import Tensor
+from addict import Dict
 
 from precision_track.registry import MODELS
 from precision_track.utils import PoseDataSample, load_checkpoint, parse_pose_metainfo, iou_batch
-from precision_track.models.optimization.losses import focal_loss
+from precision_track.models.optimization.losses import weighted_bce_loss
 
 from .modules.blocks.transformers import SelfAttention, TransformerMLP
 
@@ -58,17 +59,20 @@ class GMART(BaseModel):
 
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.n_group_classes = len(metainfo.get("actions", []))
+        n_keypoint_priors = len(metainfo.get("distance_keypoint_pairs", []))
 
         self.with_distance_prior = with_distance_prior
         self.with_vel_coherence = with_vel_coherence
         self.with_vel_approach = with_vel_approach
         self.with_orientation_priors = with_orientation_priors
+        self.n_keypoint_priors = n_keypoint_priors
 
         n_priors = (
             int(with_distance_prior)
             + int(with_vel_coherence)
             + int(with_vel_approach)
             + 2 * int(with_orientation_priors)  # orientations_alignment & orientations_valid
+            + n_keypoint_priors
         )
 
         self.refine_nodes = refine_nodes
@@ -77,7 +81,18 @@ class GMART(BaseModel):
         gnn_config = self.mart.config.copy()
         gnn_config.causal = False
 
-        self.prior_proj = nn.Linear(n_priors, 1, bias=False)
+        self.prior_proj = nn.Sequential(
+            TransformerMLP(
+                Dict(
+                    dict(
+                        n_embd=n_priors,
+                        bias=self.mart.config.bias,
+                        dropout=self.mart.config.dropout,
+                    )
+                )
+            ),
+            nn.Linear(n_priors, 1, bias=False),
+        )
         self.gnn_layers = nn.ModuleList([CrossNodeAttention(gnn_config) for _ in range(n_gnn_layers)])
         self.edge_proj = nn.Sequential(nn.Linear(2 * n_embd, n_embd, bias=self.mart.config.bias), nn.GELU())
         self.bce_head = nn.Linear(n_embd, 1)
@@ -125,6 +140,7 @@ class GMART(BaseModel):
         vel_approach: Optional[Tensor] = None,
         orientations_alignment: Optional[Tensor] = None,
         orientations_valid: Optional[Tensor] = None,
+        keypoint_priors: Optional[Tensor] = None,
         data_samples: Optional[List[PoseDataSample]] = None,
         mode: Optional[str] = "tensor",
         **kwargs,
@@ -145,6 +161,7 @@ class GMART(BaseModel):
                 vel_approach,
                 orientations_alignment,
                 orientations_valid,
+                keypoint_priors,
             )
         elif mode == "predict":
             return self.predict(
@@ -157,6 +174,7 @@ class GMART(BaseModel):
                 vel_approach,
                 orientations_alignment,
                 orientations_valid,
+                keypoint_priors,
             )
         else:
             raise RuntimeError(f'Invalid mode "{mode}". Only supports loss and predict.')
@@ -174,6 +192,7 @@ class GMART(BaseModel):
         vel_approach: Optional[Tensor] = None,
         orientations_alignment: Optional[Tensor] = None,
         orientations_valid: Optional[Tensor] = None,
+        keypoint_priors: Optional[Tensor] = None,
     ) -> Tuple[torch.Tensor]:
         with torch.no_grad():
             node_emb_full = self.mart._get_transformations(
@@ -184,9 +203,7 @@ class GMART(BaseModel):
                 )
             )
             node_emb_last = node_emb_full[:, -1, :]
-            if not self.refine_nodes:
-                node_logits = self.mart.classification_head(node_emb_last)
-                node_logits = node_logits.reshape(batch_size, nb_subjects, -1)
+            mart_node_logits = self.mart.classification_head(node_emb_last).reshape(batch_size, nb_subjects, -1)
 
         node_emb = node_emb_last.reshape(batch_size, nb_subjects, -1)
 
@@ -200,6 +217,8 @@ class GMART(BaseModel):
         if self.with_orientation_priors and orientations_alignment is not None:
             prior_list.append(orientations_alignment.unsqueeze(-1))
             prior_list.append(orientations_valid.unsqueeze(-1))
+        if self.n_keypoint_priors > 0 and keypoint_priors is not None:
+            prior_list.append(keypoint_priors)  # (B, N, N, P) — no unsqueeze needed
 
         attn_bias = None
         if prior_list:
@@ -211,14 +230,13 @@ class GMART(BaseModel):
         for layer in self.gnn_layers:
             x = layer(x, attn_bias=attn_bias)
 
-        if self.refine_nodes:
-            node_logits = self.node_head(x)
+        node_logits = self.node_head(x) if self.refine_nodes else mart_node_logits
 
         hi = x.unsqueeze(2).expand(-1, -1, nb_subjects, -1)
         hj = x.unsqueeze(1).expand(-1, nb_subjects, -1, -1)
         pairs = self.edge_proj(torch.cat([hi, hj], dim=-1))
 
-        return node_logits, F.normalize(x, p=2, dim=-1), self.bce_head(pairs).squeeze(-1), self.ce_head(pairs)
+        return node_logits, mart_node_logits, F.normalize(x, p=2, dim=-1), self.bce_head(pairs).squeeze(-1), self.ce_head(pairs)
 
     def loss(
         self,
@@ -234,9 +252,10 @@ class GMART(BaseModel):
         vel_approach: Optional[Tensor] = None,
         orientations_alignment: Optional[Tensor] = None,
         orientations_valid: Optional[Tensor] = None,
+        keypoint_priors: Optional[Tensor] = None,
     ) -> dict:
         B, N, T = features.shape[:3]
-        node_logits, _, bce_logits, ce_logits = self._forward(
+        node_logits, mart_node_logits, _, bce_logits, ce_logits = self._forward(
             B,
             N,
             T,
@@ -248,13 +267,14 @@ class GMART(BaseModel):
             vel_approach,
             orientations_alignment,
             orientations_valid,
+            keypoint_priors,
         )
 
         pair_valid = valid_mask.unsqueeze(2) & valid_mask.unsqueeze(1)
         diag_mask = ~torch.eye(N, dtype=torch.bool, device=bce_logits.device).unsqueeze(0).expand(B, -1, -1)
         pair_valid = pair_valid & diag_mask
 
-        relationship_loss = focal_loss(
+        relationship_loss = weighted_bce_loss(
             bce_logits[pair_valid],
             binary_labels[pair_valid].float(),
         )
@@ -268,9 +288,11 @@ class GMART(BaseModel):
         losses = dict(relationship_loss=relationship_loss * self.relationship_loss_weight, classification_loss=classification_loss)
 
         if self.refine_nodes:
+            has_relationship = (binary_labels == 1).any(dim=-1) | (binary_labels == 1).any(dim=-2)  # (B, N)
+            refine_mask = valid_mask & has_relationship
             node_classification_loss = F.cross_entropy(
-                node_logits[valid_mask],
-                node_labels[:, :, -1][valid_mask],
+                node_logits[refine_mask],
+                node_labels[:, :, -1][refine_mask],
             )
             losses["node_classification_loss"] = node_classification_loss
 
@@ -287,10 +309,11 @@ class GMART(BaseModel):
         vel_approach: Optional[Tensor] = None,
         orientations_alignment: Optional[Tensor] = None,
         orientations_valid: Optional[Tensor] = None,
+        keypoint_priors: Optional[Tensor] = None,
         data_samples=None,
     ) -> GMARTPredictions:
         B, N, T = features.shape[:3]
-        node_logits, node_emb, edge_logits, ce_logits = self._forward(
+        node_logits, mart_node_logits, node_emb, edge_logits, ce_logits = self._forward(
             B,
             N,
             T,
@@ -302,10 +325,16 @@ class GMART(BaseModel):
             vel_approach,
             orientations_alignment,
             orientations_valid,
+            keypoint_priors,
         )
 
-        node_pred = F.softmax(node_logits, dim=-1)
         edge_probs = torch.sigmoid(edge_logits)
+
+        if self.refine_nodes:
+            has_relationship = edge_probs.gt(0.5).any(dim=-1) | edge_probs.gt(0.5).any(dim=-2)
+            node_logits = torch.where(has_relationship.unsqueeze(-1), node_logits, mart_node_logits)
+
+        node_pred = F.softmax(node_logits, dim=-1)
         edge_class_probs = F.softmax(ce_logits, dim=-1)
 
         diag = torch.eye(N, dtype=torch.bool, device=edge_probs.device).unsqueeze(0)

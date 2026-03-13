@@ -145,6 +145,7 @@ def parse_pose_metainfo(metainfo: dict):
     parsed["skeleton_link_colors"] = np.array(parsed["skeleton_link_colors"], dtype=np.uint8)
 
     parsed["orientation_keypoint_pairs"] = metainfo.get("orientation_keypoint_pairs", [])
+    parsed["distance_keypoint_pairs"] = metainfo.get("distance_keypoint_pairs", [])
 
     return parsed
 

@@ -1,7 +1,7 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../configs/metadata/mice.py'
+metainfo = "../configs/metadata/mice.py"
 wandb_logging = False
 # /Common
 
@@ -13,13 +13,13 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
-dataset_name = 'mice'
-deploying_directory = '../checkpoints/mice/'
+data_root = "../../datasets/MICE/pose-estimation/"
+dataset_name = "mice"
+deploying_directory = "../checkpoints/mice/"
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
-training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
+training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
 
 input_size = (640, 640)
 pad_value = 114
@@ -74,7 +74,7 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 #   1.4) /Feature Extraction
 
 #   1.5) Deployment
-deploying_sanity_check_img_path = 'images/0000003435.jpg'
+deploying_sanity_check_img_path = "images/0000003435.jpg"
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
 #   1.5) /Deployment
@@ -82,18 +82,18 @@ deployment_device = "auto"
 
 
 # 2) Tracking
-tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
+tracking_checkpoint_name = "model_mice_DEPLOYED.pth"
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
-saving_directory = '../work_dir/20mice_sanity_check'
+saving_directory = "../work_dir/"
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
 with_action_recognition = True
 
-num_subjects = {'mouse': 20}
+num_subjects = {"mouse": 20}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
@@ -115,13 +115,13 @@ hyperparams = deploying_directory + "hyperparameters.json"
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
-mot_testing_data_root = '../../datasets/MICE/pose-estimation/benchmark/'
+mot_testing_data_root = "../../datasets/MICE/pose-estimation/benchmark/"
 testing_tracking_output_file = testing_work_dir + "mean_CLEAR_metrics_over_all_videos.csv"
 #   2.2) /Testing
 
 
 #   2.3) Validation
-validation_configuration_file = '../configs/settings/validation/appearance.yaml'
+validation_configuration_file = "../configs/settings/validation/appearance.yaml"
 #   2.3) /Validation
 
 # 2) /Tracking
@@ -228,6 +228,7 @@ else:
 action_recognition_batch_size = 32
 
 action_recognition_base_lr = 3e-5
+
 action_recognition_weight_decay = 0.01
 action_recognition_dropout = 0
 action_recognition_num_iter = 100000
@@ -258,21 +259,21 @@ action_recognition_train_actions_gt_paths = [
     "actions/train/13-40-02.csv",
 ]
 
-# action_recognition_data_root = "../../datasets/MICE/sequential_nano/"
-# action_recognition_val_sequences = ["videos/14-20-02.avi"]
-# action_recognition_val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
-# action_recognition_val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
-# action_recognition_val_actions_gt_paths = ["actions/14-20-02.csv"]
+action_recognition_data_root = "../../datasets/MICE/sequential_nano/"
+action_recognition_val_sequences = ["videos/14-20-02.avi"]
+action_recognition_val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
+action_recognition_val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
+action_recognition_val_actions_gt_paths = ["actions/14-20-02.csv"]
 
-action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
-action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
-action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
-action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
+# action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
+# action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
+# action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
+# action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
 
-# action_recognition_train_sequences = action_recognition_val_sequences
-# action_recognition_train_bboxes_gt_paths = action_recognition_val_bboxes_gt_paths
-# action_recognition_train_keypoints_gt_paths = action_recognition_val_keypoints_gt_paths
-# action_recognition_train_actions_gt_paths = action_recognition_val_actions_gt_paths
+action_recognition_train_sequences = action_recognition_val_sequences
+action_recognition_train_bboxes_gt_paths = action_recognition_val_bboxes_gt_paths
+action_recognition_train_keypoints_gt_paths = action_recognition_val_keypoints_gt_paths
+action_recognition_train_actions_gt_paths = action_recognition_val_actions_gt_paths
 
 #   3.1) /Training
 
@@ -304,4 +305,4 @@ display_validations = True
 display_untracked_detections = True
 # 4) /Visualization
 display_predicted_bounding_boxes = True
-with_group_action_recognition = False
+with_group_action_recognition = True

@@ -56,14 +56,23 @@ dataset_info = dict(
     ],
     orientation_keypoint_pairs=[
         # (anterior, posterior) ordered best→worst axis reliability
-        ("Snout", "Base of Tail"),   # full body axis — most reliable
-        ("Snout", "Tailtag"),        # longest axis, but tailtag wobbles
-        ("Snout", "Centroid"),       # front half axis
-        ("Centroid", "Base of Tail"),# rear half axis
-        ("Centroid", "Tailtag"),     # rear half, longer
+        ("Snout", "Base of Tail"),  # full body axis — most reliable
+        ("Snout", "Tailtag"),  # longest axis, but tailtag wobbles
+        ("Snout", "Centroid"),  # front half axis
+        ("Centroid", "Base of Tail"),  # rear half axis
+        ("Centroid", "Tailtag"),  # rear half, longer
         ("Right Ear", "Base of Tail"),
         ("Left Ear", "Base of Tail"),
         ("Right Ear", "Centroid"),
         ("Left Ear", "Centroid"),
+    ],
+    distance_keypoint_pairs=[
+        ("Snout", "Snout"),
+        ("Snout", "Right Ear"),
+        ("Snout", "Left Ear"),
+        ("Snout", "Right Leg"),
+        ("Snout", "Left Leg"),
+        ("Snout", "Base of Tail"),
+        ("Snout", "Tailtag"),
     ],
 )

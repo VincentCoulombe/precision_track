@@ -31,6 +31,7 @@ from .preprocessing.action_recognition_preprocessor import (
     ActionRecognitionTrainingPreprocessor,
     GroupActionRecognitionTrainingPreprocessor,
     RelationshipDetectionBaselinePreprocessor,
+    GroupActionRecognitionPoseTrainingPreprocessor,
 )
 from .preprocessing.inference_preprocessor import InferencePreprocessor, WildLifeReIDPreprocessor
 from .preprocessing.training_preprocessor import BatchSyncRandomResize, PoseDataPreprocessor, DoublePoseDataPreprocessor
@@ -98,6 +99,7 @@ __all__ = [
     "ActionRecognitionPreprocessor",
     "ActionRecognitionTrainingPreprocessor",
     "GroupActionRecognitionTrainingPreprocessor",
+    "GroupActionRecognitionPoseTrainingPreprocessor",
     "RelationshipDetectionBaselinePreprocessor",
     "BasePostProcessor",
     "BaseActionPostProcessor",
