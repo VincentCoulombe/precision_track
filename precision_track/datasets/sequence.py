@@ -1062,6 +1062,10 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
 
 @DATASETS.register_module()
 class GroupActionRecognitionDataset(ActionRecognitionDataset):
+    def __init__(self, require_interaction: bool = False, *args, **kwargs):
+        self.require_interaction = require_interaction
+        super().__init__(*args, **kwargs)
+
     def prepare_data(self, idx):
         rng = np.random.default_rng(seed=idx)
         sampled_action = rng.choice(a=self.group_labels, p=self.p_group)
@@ -1071,10 +1075,6 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
         anchor_frame = self.data_list[s][frame_id]
         valid_ids = anchor_frame.pred_track_instances.instances_id
         N = len(valid_ids)
-
-        # Shuffle subject order to prevent positional overfitting inside the group matrix.
-        # perm = torch.randperm(N, generator=torch.Generator().manual_seed(int(rng.integers(2**31))))
-        # valid_ids = valid_ids[perm]
 
         # Batch padding (all features, poses, dynamics and group matrices have the same nb of subjects)
         if self.max_subjects is not None:
@@ -1114,7 +1114,7 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
         actions_at_t = anchor_frame.gt_instance_labels.action_labels
         anchor_ids = anchor_frame.pred_track_instances.instances_id
 
-        # -1 if there is no relationship between subjects, the action id otherwise.
+        # -1 if there is no relationship between subjects, the action id if otherwise.
         group_matrix = torch.full((N, N), -1, dtype=torch.long)
         for anchor_idx, (action, partner_id) in enumerate(zip(actions_at_t, partners)):
             anchor_id = anchor_ids[anchor_idx].item()
@@ -1144,6 +1144,7 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
 
     def load_data_list(self) -> List[dict]:
         self.group_action_to_sequence_map = defaultdict(list)
+        self.pair_index = defaultdict(list)  # action → [(s, seq_name, frame_id, id_i, id_j)]
         data_list = super().load_data_list()
 
         max_subjects_seen = 0
@@ -1174,6 +1175,7 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
                         if key not in seen_this_frame:  # Remove redundancy (the whole frame is sent in prepare_data() anyway...)
                             self.group_action_to_sequence_map[action].append((s, seq_name, frame_id))
                             seen_this_frame.add(key)
+                        self.pair_index[action].append((s, seq_name, frame_id, id_, partner_id))
                         frame_has_group = True
 
                 if not frame_has_group:
@@ -1210,6 +1212,10 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
         else:
             self.group_labels = [-1]
             self.p_group = np.array([1.0])
+        if self.require_interaction and len(positive_labels) > 0:
+            self.group_labels = positive_labels
+            self.p_group = pos_counts / pos_counts.sum()
+
         if self.max_subjects is None:
             self.max_subjects = max_subjects_seen
         return data_list

@@ -9,7 +9,7 @@ from addict import Dict
 
 from precision_track.registry import MODELS
 from precision_track.utils import PoseDataSample, load_checkpoint, parse_pose_metainfo, iou_batch
-from precision_track.models.optimization.losses import weighted_bce_loss
+from precision_track.models.optimization.losses import semihard_bce_loss
 
 from .modules.blocks.transformers import SelfAttention, TransformerMLP
 
@@ -274,10 +274,7 @@ class GMART(BaseModel):
         diag_mask = ~torch.eye(N, dtype=torch.bool, device=bce_logits.device).unsqueeze(0).expand(B, -1, -1)
         pair_valid = pair_valid & diag_mask
 
-        relationship_loss = weighted_bce_loss(
-            bce_logits[pair_valid],
-            binary_labels[pair_valid].float(),
-        )
+        relationship_loss = semihard_bce_loss(bce_logits, binary_labels, valid_mask, loss_weight=self.relationship_loss_weight)
 
         ce_mask = pair_valid & (labels >= 0)
         classification_loss = F.cross_entropy(
@@ -285,7 +282,7 @@ class GMART(BaseModel):
             labels[ce_mask],
         )
 
-        losses = dict(relationship_loss=relationship_loss * self.relationship_loss_weight, classification_loss=classification_loss)
+        losses = dict(relationship_loss=relationship_loss, classification_loss=classification_loss)
 
         if self.refine_nodes:
             has_relationship = (binary_labels == 1).any(dim=-1) | (binary_labels == 1).any(dim=-2)  # (B, N)

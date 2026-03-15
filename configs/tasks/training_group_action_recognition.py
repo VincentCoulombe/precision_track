@@ -40,6 +40,7 @@ train_dataloader = dict(
     dataset=dict(
         type="GroupActionRecognitionDataset",
         keep_bboxes=True,
+        require_interaction=True,
     ),
 )
 

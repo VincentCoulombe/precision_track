@@ -565,7 +565,7 @@ class MSELoss(nn.Module):
         return loss * self.loss_weight
 
 
-def focal_loss(logits, targets, gamma=2.0, alpha=0.9, loss_weight=1.0):
+def focal_loss(logits, targets, gamma=2.0, alpha=0.5, loss_weight=1.0):
     bce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
     pt = torch.exp(-bce)
     alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
@@ -573,7 +573,49 @@ def focal_loss(logits, targets, gamma=2.0, alpha=0.9, loss_weight=1.0):
     return (focal_weight * bce).mean() * loss_weight
 
 
-def weighted_bce_loss(logits, targets, loss_weight=1.0):
+def weighted_bce_loss(logits, targets, weight_power=0.5, loss_weight=1.0):
     pos_ratio = targets.mean().clamp(min=1e-6)
-    pos_weight = (1.0 - pos_ratio) / pos_ratio
+    pos_weight = ((1.0 - pos_ratio) / pos_ratio) ** weight_power
     return F.binary_cross_entropy_with_logits(logits, targets, pos_weight=pos_weight.expand_as(targets)) * loss_weight
+
+
+def semihard_bce_loss(bce_logits, binary_labels, valid_mask, loss_weight=1.0):
+    B = bce_logits.shape[0]
+    total_loss = bce_logits.new_zeros(())
+    n_pairs = 0
+
+    for b in range(B):  # Mine pairs in each frames
+        logits = bce_logits[b]
+        labels = binary_labels[b]
+        valid = valid_mask[b]
+
+        pos_mask = (labels == 1) & valid.unsqueeze(0) & valid.unsqueeze(1)
+        pos_i, pos_j = torch.where(torch.triu(pos_mask, diagonal=1))
+
+        for pi, pj in zip(pos_i.tolist(), pos_j.tolist()):
+            s_pos = logits[pi, pj]
+
+            neg_logits = []
+            for k in range(logits.shape[0]):
+                if not valid[k] or k == pi or k == pj:
+                    continue
+                if labels[pi, k] == 0:
+                    neg_logits.append(logits[pi, k])
+                if labels[pj, k] == 0:
+                    neg_logits.append(logits[pj, k])
+
+            if not neg_logits:
+                continue
+
+            neg_stack = torch.stack(neg_logits)
+            semi_hard_mask = neg_stack < s_pos
+            s_neg = neg_stack[semi_hard_mask].max() if semi_hard_mask.any() else neg_stack.max()
+
+            loss_pos = F.binary_cross_entropy_with_logits(s_pos.unsqueeze(0), s_pos.new_ones(1))
+            loss_neg = F.binary_cross_entropy_with_logits(s_neg.unsqueeze(0), s_neg.new_zeros(1))
+            total_loss = total_loss + (loss_pos + loss_neg) / 2
+            n_pairs += 1
+
+    if n_pairs == 0:
+        return bce_logits.sum() * 0.0
+    return (total_loss / n_pairs) * loss_weight
