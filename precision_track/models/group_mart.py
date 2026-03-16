@@ -9,7 +9,7 @@ from addict import Dict
 
 from precision_track.registry import MODELS
 from precision_track.utils import PoseDataSample, load_checkpoint, parse_pose_metainfo, iou_batch
-from precision_track.models.optimization.losses import semihard_bce_loss
+from precision_track.models.optimization.losses import weighted_bce_loss
 
 from .modules.blocks.transformers import SelfAttention, TransformerMLP
 
@@ -94,7 +94,8 @@ class GMART(BaseModel):
             nn.Linear(n_priors, 1, bias=False),
         )
         self.gnn_layers = nn.ModuleList([CrossNodeAttention(gnn_config) for _ in range(n_gnn_layers)])
-        self.edge_proj = nn.Sequential(nn.Linear(2 * n_embd, n_embd, bias=self.mart.config.bias), nn.GELU())
+        self.edge_proj = nn.Sequential(nn.Linear(2 * n_embd + n_priors, n_embd, bias=self.mart.config.bias), nn.GELU())
+        # self.edge_proj = nn.Sequential(nn.Linear(2 * n_embd, n_embd, bias=self.mart.config.bias), nn.GELU())
         self.bce_head = nn.Linear(n_embd, 1)
         self.ce_head = nn.Linear(n_embd, self.n_group_classes)
         if self.refine_nodes:
@@ -207,6 +208,7 @@ class GMART(BaseModel):
 
         node_emb = node_emb_last.reshape(batch_size, nb_subjects, -1)
 
+        # Stack priors once — shared by both attention bias and edge injection
         prior_list = []
         if self.with_distance_prior and distance_priors is not None:
             prior_list.append(distance_priors.unsqueeze(-1))
@@ -220,11 +222,13 @@ class GMART(BaseModel):
         if self.n_keypoint_priors > 0 and keypoint_priors is not None:
             prior_list.append(keypoint_priors)  # (B, N, N, P) — no unsqueeze needed
 
+        priors = torch.cat(prior_list, dim=-1) if prior_list else None  # (B, N, N, n_priors)
+
+        # Attention bias — guides node refinement
         attn_bias = None
-        if prior_list:
-            priors = torch.cat(prior_list, dim=-1)
-            attn_bias = self.prior_proj(priors).squeeze(-1)
-            attn_bias = attn_bias.unsqueeze(1)
+        # if priors is not None:
+        #     attn_bias = self.prior_proj(priors).squeeze(-1)  # (B, N, N)
+        #     attn_bias = attn_bias.unsqueeze(1)  # (B, 1, N, N) broadcast over heads
 
         x = node_emb
         for layer in self.gnn_layers:
@@ -232,11 +236,21 @@ class GMART(BaseModel):
 
         node_logits = self.node_head(x) if self.refine_nodes else mart_node_logits
 
-        hi = x.unsqueeze(2).expand(-1, -1, nb_subjects, -1)
-        hj = x.unsqueeze(1).expand(-1, nb_subjects, -1, -1)
-        pairs = self.edge_proj(torch.cat([hi, hj], dim=-1))
+        # Edge embeddings — priors injected directly alongside node representations
+        hi = x.unsqueeze(2).expand(-1, -1, nb_subjects, -1)  # (B, N, N, n_embd)
+        hj = x.unsqueeze(1).expand(-1, nb_subjects, -1, -1)  # (B, N, N, n_embd)
 
-        return node_logits, mart_node_logits, F.normalize(x, p=2, dim=-1), self.bce_head(pairs).squeeze(-1), self.ce_head(pairs)
+        edge_input = torch.cat([hi, hj, priors], dim=-1) if priors is not None else torch.cat([hi, hj], dim=-1)  # (B, N, N, 2*n_embd + n_priors)
+
+        pairs = self.edge_proj(edge_input)  # (B, N, N, n_embd)
+
+        return (
+            node_logits,
+            mart_node_logits,
+            F.normalize(x, p=2, dim=-1),
+            self.bce_head(pairs).squeeze(-1),
+            self.ce_head(pairs),
+        )
 
     def loss(
         self,
@@ -274,7 +288,11 @@ class GMART(BaseModel):
         diag_mask = ~torch.eye(N, dtype=torch.bool, device=bce_logits.device).unsqueeze(0).expand(B, -1, -1)
         pair_valid = pair_valid & diag_mask
 
-        relationship_loss = semihard_bce_loss(bce_logits, binary_labels, valid_mask, loss_weight=self.relationship_loss_weight)
+        relationship_loss = weighted_bce_loss(
+            bce_logits[pair_valid],
+            binary_labels[pair_valid].float(),
+            loss_weight=self.relationship_loss_weight,
+        )
 
         ce_mask = pair_valid & (labels >= 0)
         classification_loss = F.cross_entropy(
@@ -328,7 +346,7 @@ class GMART(BaseModel):
         edge_probs = torch.sigmoid(edge_logits)
 
         if self.refine_nodes:
-            has_relationship = edge_probs.gt(0.5).any(dim=-1) | edge_probs.gt(0.5).any(dim=-2)
+            has_relationship = edge_probs.gt(0.5).any(dim=-1) | edge_probs.gt(0.5).any(dim=-2)  # (B, N)
             node_logits = torch.where(has_relationship.unsqueeze(-1), node_logits, mart_node_logits)
 
         node_pred = F.softmax(node_logits, dim=-1)
