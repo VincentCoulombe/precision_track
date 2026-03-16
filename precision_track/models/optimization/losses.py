@@ -7,6 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import random
 from functools import partial
 from typing import Optional, Sequence
 
@@ -579,12 +580,25 @@ def weighted_bce_loss(logits, targets, weight_power=0.5, loss_weight=1.0):
     return F.binary_cross_entropy_with_logits(logits, targets, pos_weight=pos_weight.expand_as(targets)) * loss_weight
 
 
-def semihard_bce_loss(bce_logits, binary_labels, valid_mask, loss_weight=1.0):
+def _mine_negative(neg_stack, s_pos, strategy):
+    if strategy == "hard":
+        return neg_stack.max()
+    elif strategy == "easy":
+        return neg_stack.min()
+    else:  # semihard
+        mask = neg_stack < s_pos
+        return neg_stack[mask].max() if mask.any() else neg_stack.max()
+
+
+_NEG_STRATEGIES = ["hard", "semihard", "easy"]
+
+
+def mined_bce_loss(bce_logits, binary_labels, valid_mask, loss_weight=1.0):
     B = bce_logits.shape[0]
     total_loss = bce_logits.new_zeros(())
     n_pairs = 0
 
-    for b in range(B):  # Mine pairs in each frames
+    for b in range(B):
         logits = bce_logits[b]
         labels = binary_labels[b]
         valid = valid_mask[b]
@@ -595,25 +609,30 @@ def semihard_bce_loss(bce_logits, binary_labels, valid_mask, loss_weight=1.0):
         for pi, pj in zip(pos_i.tolist(), pos_j.tolist()):
             s_pos = logits[pi, pj]
 
-            neg_logits = []
+            neg_i_list, neg_j_list = [], []
             for k in range(logits.shape[0]):
                 if not valid[k] or k == pi or k == pj:
                     continue
                 if labels[pi, k] == 0:
-                    neg_logits.append(logits[pi, k])
+                    neg_i_list.append(logits[pi, k])
                 if labels[pj, k] == 0:
-                    neg_logits.append(logits[pj, k])
+                    neg_j_list.append(logits[pj, k])
 
-            if not neg_logits:
+            if not neg_i_list and not neg_j_list:
                 continue
 
-            neg_stack = torch.stack(neg_logits)
-            semi_hard_mask = neg_stack < s_pos
-            s_neg = neg_stack[semi_hard_mask].max() if semi_hard_mask.any() else neg_stack.max()
-
             loss_pos = F.binary_cross_entropy_with_logits(s_pos.unsqueeze(0), s_pos.new_ones(1))
-            loss_neg = F.binary_cross_entropy_with_logits(s_neg.unsqueeze(0), s_neg.new_zeros(1))
-            total_loss = total_loss + (loss_pos + loss_neg) / 2
+            pair_loss = 2.0 * loss_pos
+
+            if neg_i_list:
+                s_neg_i = _mine_negative(torch.stack(neg_i_list), s_pos, random.choice(_NEG_STRATEGIES))
+                pair_loss = pair_loss + F.binary_cross_entropy_with_logits(s_neg_i.unsqueeze(0), s_neg_i.new_zeros(1))
+
+            if neg_j_list:
+                s_neg_j = _mine_negative(torch.stack(neg_j_list), s_pos, random.choice(_NEG_STRATEGIES))
+                pair_loss = pair_loss + F.binary_cross_entropy_with_logits(s_neg_j.unsqueeze(0), s_neg_j.new_zeros(1))
+
+            total_loss = total_loss + pair_loss
             n_pairs += 1
 
     if n_pairs == 0:
