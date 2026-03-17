@@ -78,30 +78,36 @@ class GMART(BaseModel):
         self.refine_nodes = refine_nodes
 
         n_embd = self.mart.n_embd
-        gnn_config = self.mart.config.copy()
-        gnn_config.causal = False
 
-        self.prior_proj = nn.Sequential(
-            TransformerMLP(
-                Dict(
-                    dict(
-                        n_embd=n_priors,
-                        bias=self.mart.config.bias,
-                        dropout=self.mart.config.dropout,
-                    )
-                )
-            ),
-            nn.Linear(n_priors, 1, bias=False),
+        self.prior_edge_proj = nn.Sequential(
+            nn.LayerNorm(n_priors, bias=self.mart.config.bias),
+            nn.Linear(n_priors, self.mart.config.n_embd, bias=self.mart.config.bias),
+            nn.GELU(),
+            nn.Linear(self.mart.config.n_embd, self.mart.config.n_embd // 2, bias=self.mart.config.bias),
         )
-        self.gnn_layers = nn.ModuleList([CrossNodeAttention(gnn_config) for _ in range(n_gnn_layers)])
-        self.edge_proj = nn.Sequential(nn.Linear(2 * n_embd + n_priors, n_embd, bias=self.mart.config.bias), nn.GELU())
-        # self.edge_proj = nn.Sequential(nn.Linear(2 * n_embd, n_embd, bias=self.mart.config.bias), nn.GELU())
+
+        self.node_proj = nn.Sequential(
+            nn.LayerNorm(self.mart.config.n_embd, bias=self.mart.config.bias),
+            nn.Linear(self.mart.config.n_embd, self.mart.config.n_embd // 2, bias=self.mart.config.bias),
+            nn.GELU(),
+            nn.Linear(self.mart.config.n_embd // 2, self.mart.config.n_embd // 4, bias=self.mart.config.bias),
+        )
+
+        self.edge_encoder = nn.ModuleList(
+            [
+                nn.Sequential(nn.LayerNorm(self.mart.config.n_embd, bias=self.mart.config.bias), TransformerMLP(self.mart.config), nn.GELU())
+                for _ in range(n_gnn_layers)
+            ]
+        )
+
         self.bce_head = nn.Linear(n_embd, 1)
         self.ce_head = nn.Linear(n_embd, self.n_group_classes)
+
         if self.refine_nodes:
             self.node_head = nn.Sequential(
-                TransformerMLP(gnn_config),
-                nn.Linear(n_embd, self.mart.n_class, bias=gnn_config.bias),
+                nn.LayerNorm(self.mart.config.n_embd, bias=self.mart.config.bias),
+                TransformerMLP(self.mart.config),
+                nn.Linear(n_embd, self.mart.n_class, bias=self.mart.config.bias),
             )
 
         self.apply(self._init_weights)
@@ -195,6 +201,8 @@ class GMART(BaseModel):
         orientations_valid: Optional[Tensor] = None,
         keypoint_priors: Optional[Tensor] = None,
     ) -> Tuple[torch.Tensor]:
+
+        # --- MART node embeddings (frozen) ---
         with torch.no_grad():
             node_emb_full = self.mart._get_transformations(
                 self.mart._get_projections(
@@ -206,9 +214,10 @@ class GMART(BaseModel):
             node_emb_last = node_emb_full[:, -1, :]
             mart_node_logits = self.mart.classification_head(node_emb_last).reshape(batch_size, nb_subjects, -1)
 
-        node_emb = node_emb_last.reshape(batch_size, nb_subjects, -1)
+        node_logits = mart_node_logits
+        node_emb = node_emb_last.reshape(batch_size, nb_subjects, -1)  # (B, N, n_embd)
 
-        # Stack priors once — shared by both attention bias and edge injection
+        # --- Stack priors ---
         prior_list = []
         if self.with_distance_prior and distance_priors is not None:
             prior_list.append(distance_priors.unsqueeze(-1))
@@ -224,32 +233,46 @@ class GMART(BaseModel):
 
         priors = torch.cat(prior_list, dim=-1) if prior_list else None  # (B, N, N, n_priors)
 
-        # Attention bias — guides node refinement
-        attn_bias = None
-        # if priors is not None:
-        #     attn_bias = self.prior_proj(priors).squeeze(-1)  # (B, N, N)
-        #     attn_bias = attn_bias.unsqueeze(1)  # (B, 1, N, N) broadcast over heads
+        # --- Edge construction ---
+        # 1. Encode priors as primary edge signal
+        prior_edge_emb = (
+            self.prior_edge_proj(priors) if priors is not None else torch.zeros(batch_size, nb_subjects, nb_subjects, self.mart.n_embd, device=x.device)
+        )
+        # (B, N, N, n_embd)
 
-        x = node_emb
-        for layer in self.gnn_layers:
-            x = layer(x, attn_bias=attn_bias)
+        # 2. Compress node features to n_embd//2 — equal budget for source and target
+        node_proj = self.node_proj(node_emb)  # (B, N, n_embd//2)
 
-        node_logits = self.node_head(x) if self.refine_nodes else mart_node_logits
+        # 3. Expand rows (source) and columns (target)
+        hi = node_proj.unsqueeze(2).expand(-1, -1, nb_subjects, -1)  # (B, N, N, n_embd//2)
+        hj = node_proj.unsqueeze(1).expand(-1, nb_subjects, -1, -1)  # (B, N, N, n_embd//2)
 
-        # Edge embeddings — priors injected directly alongside node representations
-        hi = x.unsqueeze(2).expand(-1, -1, nb_subjects, -1)  # (B, N, N, n_embd)
-        hj = x.unsqueeze(1).expand(-1, nb_subjects, -1, -1)  # (B, N, N, n_embd)
+        # 4. Concatenate — geometry primary, nodes provide source/target context
+        edges = torch.cat([prior_edge_emb, hi, hj], dim=-1)  # (B, N, N, 2*n_embd)
 
-        edge_input = torch.cat([hi, hj, priors], dim=-1) if priors is not None else torch.cat([hi, hj], dim=-1)  # (B, N, N, 2*n_embd + n_priors)
+        # 5. MLP edge encoder
+        for layer in self.edge_encoder:
+            edges = layer(edges)  # (B, N, N, 2*n_embd)
 
-        pairs = self.edge_proj(edge_input)  # (B, N, N, n_embd)
+        # --- Heads ---
+        # BCE first — its output gates the node pooling
+        bce_logits = self.bce_head(edges).squeeze(-1)  # (B, N, N)
+        ce_logits = self.ce_head(edges)  # (B, N, N, C)
+
+        # --- Soft-gated node pooling for node refinement head ---
+        if self.refine_nodes:
+            edge_weights = torch.sigmoid(bce_logits)  # (B, N, N)
+            weighted_sum = (edges * edge_weights.unsqueeze(-1)).sum(dim=2)  # (B, N, 2*n_embd)
+            weight_total = edge_weights.sum(dim=2, keepdim=True).clamp(min=1e-6)
+            node_emb = weighted_sum / weight_total  # (B, N, 2*n_embd)
+            node_logits = self.node_head(node_emb)  # (B, N, n_classes)
 
         return (
             node_logits,
             mart_node_logits,
-            F.normalize(x, p=2, dim=-1),
-            self.bce_head(pairs).squeeze(-1),
-            self.ce_head(pairs),
+            F.normalize(node_emb, p=2, dim=-1),
+            bce_logits,
+            ce_logits,
         )
 
     def loss(

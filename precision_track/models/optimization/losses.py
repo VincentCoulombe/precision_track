@@ -574,7 +574,7 @@ def focal_loss(logits, targets, gamma=2.0, alpha=0.5, loss_weight=1.0):
     return (focal_weight * bce).mean() * loss_weight
 
 
-def weighted_bce_loss(logits, targets, weight_power=0.5, loss_weight=1.0):
+def weighted_bce_loss(logits, targets, weight_power=0.25, loss_weight=1.0):
     pos_ratio = targets.mean().clamp(min=1e-6)
     pos_weight = ((1.0 - pos_ratio) / pos_ratio) ** weight_power
     return F.binary_cross_entropy_with_logits(logits, targets, pos_weight=pos_weight.expand_as(targets)) * loss_weight
