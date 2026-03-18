@@ -603,7 +603,7 @@ class GroupActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
                 scale_t = scales[:, -1, 0]
                 sij = (scale_t.unsqueeze(0) + scale_t.unsqueeze(1)) / 2
                 d_norm = dist / (sij + 1e-6)
-                all_distance_priors.append(2.0 / (1.0 + d_norm) - 1.0)  # Weight it back to the [-1, 1] range
+                all_distance_priors.append(d_norm)
 
             if self.with_vel_coherence or self.with_vel_approach:
                 v_norm = vels_t / (vels_t.norm(dim=-1, keepdim=True) + 1e-6)
