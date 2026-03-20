@@ -1114,7 +1114,7 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
         actions_at_t = anchor_frame.gt_instance_labels.action_labels
         anchor_ids = anchor_frame.pred_track_instances.instances_id
 
-        # -1 if there is no relationship between subjects, the action id if otherwise.
+        # -1 if there is no relationship between subjects, the action id otherwise.
         group_matrix = torch.full((N, N), -1, dtype=torch.long)
         for anchor_idx, (action, partner_id) in enumerate(zip(actions_at_t, partners)):
             anchor_id = anchor_ids[anchor_idx].item()

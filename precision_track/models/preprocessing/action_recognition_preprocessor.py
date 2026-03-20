@@ -694,13 +694,14 @@ class GroupActionRecognitionPoseTrainingPreprocessor(BaseDataPreprocessor):
 
     def loss(self, data: dict, *args, **kwargs) -> dict:
         all_features, all_poses, all_dynamics = [], [], []
-        all_node_labels, all_labels, all_masks, all_kpt_priors = [], [], [], []
+        all_node_labels, all_labels, all_masks, all_kpt_priors, all_distance_priors = [], [], [], [], []
 
         for sample_idx, data_sample in enumerate(data["data_samples"]):
             inputs = data["inputs"][sample_idx].to(self._device)
             kpts = data_sample.pred_track_instances.kpts.to(self._device)
             kpt_vis = data_sample.pred_track_instances.kpt_vis.to(self._device)
             vels = data_sample.pred_track_instances.velocities.to(self._device)
+
             gm = data_sample.gt_instance_labels.group_action_matrix.to(self._device)
             N = inputs.shape[0]
 
@@ -726,8 +727,8 @@ class GroupActionRecognitionPoseTrainingPreprocessor(BaseDataPreprocessor):
             kpts_t = kpts[:, -1]
             vis_t = kpt_vis[:, -1] > self.kpts_conf_thr
 
-            src_kpts = kpts_t[:, self.src_kpt_idxs]
-            tgt_kpts = kpts_t[:, self.tgt_kpt_idxs]
+            src_kpts = kpts_t[:, self.src_kpt_idxs, :]
+            tgt_kpts = kpts_t[:, self.tgt_kpt_idxs, :]
             src_vis = vis_t[:, self.src_kpt_idxs]
             tgt_vis = vis_t[:, self.tgt_kpt_idxs]
 
@@ -740,6 +741,7 @@ class GroupActionRecognitionPoseTrainingPreprocessor(BaseDataPreprocessor):
             vis_gate = (src_vis.unsqueeze(1) & tgt_vis.unsqueeze(0)).float()
             kpt_priors = d_norm * vis_gate
 
+            all_distance_priors.append(d_norm.min(-1)[0])
             all_kpt_priors.append(kpt_priors)
             all_features.append(inputs)
             all_poses.append(poses)
@@ -754,9 +756,10 @@ class GroupActionRecognitionPoseTrainingPreprocessor(BaseDataPreprocessor):
             poses=torch.stack(all_poses),
             dynamics=torch.stack(all_dynamics),
             node_labels=torch.stack(all_node_labels),
-            labels=labels,
+            labels=labels.max(-1)[0],
             binary_labels=(labels >= 0).long(),
             valid_mask=torch.stack(all_masks),
+            distance_priors=torch.stack(all_distance_priors, dim=0),
             keypoint_priors=torch.stack(all_kpt_priors),
         )
 

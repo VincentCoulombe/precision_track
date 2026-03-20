@@ -293,7 +293,7 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
             data_samples = data_samples[0]
         node_pred = data_samples.node_pred
         edge_probs = data_samples.edge_probs
-        edge_class_probs = data_samples.edge_class_probs
+        encoded_node_probs = data_samples.encoded_node_probs
 
         for b, ds in enumerate(data_batch["data_samples"]):
             valid_mask = ds.pred_track_instances.valid_mask.bool()
@@ -320,7 +320,7 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
             pair_valid = pair_valid & ~diag
 
             edge_b = edge_probs[b].cpu()
-            cls_b = edge_class_probs[b].cpu()
+            cls_b = encoded_node_probs[b].cpu()
             gm = group_matrix.cpu()
 
             flat_valid = pair_valid.cpu().flatten()
@@ -328,13 +328,13 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
             binary_gt_flat = (gm >= 0).flatten()[flat_valid].long()
 
             positive = pair_valid.cpu() & (gm >= 0)
-            cls_pred = cls_b[positive].argmax(-1)
+            cls_pred = cls_b[valid_mask].argmax(-1)
             cls_gt = gm[positive]
 
             self.results.append(
                 {
                     "edge_binary": list(zip(binary_pred_flat.tolist(), binary_gt_flat.tolist())),
-                    "edge_class": list(zip(cls_pred.tolist(), cls_gt.tolist())),
+                    "node_class": list(zip(cls_pred.tolist(), cls_gt.tolist())),
                 }
             )
 
@@ -361,8 +361,8 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
             metrics["Relationship Precision"] = report_bin["rel"]["precision"]
             metrics["Relationship Recall"] = report_bin["rel"]["recall"]
 
-        # Relationship classification
-        cls_pairs = [(p, g) for b in edge_batches for p, g in b["edge_class"]]
+        # Classify nodes group action
+        cls_pairs = [(p, g) for b in edge_batches for p, g in b["node_class"]]
         if cls_pairs:
             y_pred_cls, y_true_cls = zip(*cls_pairs)
             report_cls = classification_report(

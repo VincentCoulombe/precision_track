@@ -166,8 +166,8 @@ class TransformerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = TransformerMLP(config)
 
-    def forward(self, x: Tensor):
-        x = x + self.attn(self.norm1(x))
+    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None):
+        x = x + self.attn(self.norm1(x), attn_mask=attn_mask)
         x = x + self.mlp(self.norm2(x))
         return x
 
