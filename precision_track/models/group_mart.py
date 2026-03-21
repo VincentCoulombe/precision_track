@@ -70,15 +70,16 @@ class GMART(BaseModel):
             nn.Linear(n_embd // 2, n_embd // 2, bias=self.mart.config.bias),
             nn.LayerNorm(n_embd // 2, bias=self.mart.config.bias),
             nn.GELU(),
-            nn.Linear(n_embd // 2, 1, bias=self.mart.config.bias),
         )
+
+        self.edge_proj = nn.Linear(n_embd // 2, 1, bias=self.mart.config.bias)
 
         encoder_config = self.mart.config.copy()
         encoder_config.causal = False
         self.encoder = nn.ModuleList([TransformerBlock(encoder_config) for _ in range(encoder_config.n_block)])
 
         self.bce_head = nn.Sequential(
-            nn.Linear(2 * n_embd, n_embd, bias=self.mart.config.bias),
+            nn.Linear(2 * n_embd + n_embd // 2, n_embd, bias=self.mart.config.bias),
             nn.LayerNorm(n_embd, bias=self.mart.config.bias),
             nn.GELU(),
             nn.Linear(n_embd, n_embd // 2, bias=self.mart.config.bias),
@@ -219,21 +220,23 @@ class GMART(BaseModel):
 
         priors = torch.cat(prior_list, dim=-1) if prior_list else None
 
-        projected_priors = self.edge_mlp(priors).squeeze(-1)
-        edge_weights = F.softmin(projected_priors, dim=-1)
+        projected_edges = self.edge_mlp(priors).squeeze(-1)
+        edge_weights = self.edge_proj(projected_edges).squeeze(-1)
+        # edge_weights = F.softmin(edge_weights, dim=-1)
 
-        eye = torch.eye(nb_subjects, device=node_emb.device, dtype=torch.bool).unsqueeze(0)
-        edge_weights = edge_weights.masked_fill(eye, 1.0)
-        distance_mask = distance_priors < self.radius
-        edge_weights = edge_weights.masked_fill(~distance_mask, 0.0)
+        # eye = torch.eye(nb_subjects, device=node_emb.device, dtype=torch.bool).unsqueeze(0)
+        # edge_weights = edge_weights.masked_fill(eye, 1.0)
+        # distance_mask = distance_priors < self.radius
+        # edge_weights = edge_weights.masked_fill(~distance_mask, 0.0)
 
-        edge_weights.unsqueeze_(1).log()
+        # edge_weights.unsqueeze_(1).log()
+        edge_weights.unsqueeze_(1)
         for encoder_layer in self.encoder:
             node_emb = encoder_layer(node_emb, attn_mask=edge_weights)
 
         h_i = node_emb.unsqueeze(2).expand(-1, -1, nb_subjects, -1)
         h_j = node_emb.unsqueeze(1).expand(-1, nb_subjects, -1, -1)
-        graph = torch.cat([h_i, h_j], dim=-1)
+        graph = torch.cat([h_i, projected_edges, h_j], dim=-1)
 
         bce_logits = self.bce_head(graph).squeeze(-1)
 
@@ -399,9 +402,9 @@ class RelationshipDetectionBaselineModel(BaseModel):
         # This is only a baseline for the relationship detection.
         node_pred = torch.zeros(B, N_max, 1, device=device)
         node_emb = torch.zeros(B, N_max, 1, device=device)
-        edge_class_probs = torch.rand(B, N_max, N_max, self.n_group_classes, device=device)
+        encoded_node_probs = torch.rand(B, N_max, self.n_group_classes, device=device)
 
-        return [GMARTPredictions(node_pred, node_emb, edge_probs_batch, edge_class_probs)]
+        return [GMARTPredictions(node_pred, node_emb, edge_probs_batch, encoded_node_probs)]
 
 
 @MODELS.register_module()
@@ -461,9 +464,9 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
 
         # This is only a baseline for the relationship detection.
         node_emb = torch.zeros(B, N, 1, device=device)
-        edge_class_probs = torch.rand(B, N, N, self.n_group_classes, device=device)
+        encoded_node_probs = torch.rand(B, N, self.n_group_classes, device=device)
 
         if probs.dim() == 2:
             probs = probs.unsqueeze(0)
 
-        return [GMARTPredictions(probs, node_emb, edge_probs, edge_class_probs)]
+        return [GMARTPredictions(probs, node_emb, edge_probs, encoded_node_probs)]
