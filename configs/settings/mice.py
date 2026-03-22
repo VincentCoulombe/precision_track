@@ -92,6 +92,7 @@ num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
 with_action_recognition = True
+with_group_action_recognition = True
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -128,7 +129,7 @@ validation_configuration_file = '../configs/settings/validation/appearance.yaml'
 
 
 # 3) Action Recognition
-mart_checkpoint = deploying_directory + "mart_DEPLOYED.onnx"
+mart_checkpoint = deploying_directory + "mart_DEPLOYED.pth"
 
 block_size = 30
 
@@ -168,9 +169,12 @@ if with_action_recognition:
             with_kpts=action_recognition_with_poses,
             with_vels=action_recognition_with_velocities,
             velocity_encoder=velocity_encoder,
+            with_distance_prior=True,
+            with_keypoint_priors=True,
         ),
         metainfo=metainfo,
-        input_names=action_recognition_input_names,
+        input_names=["features", "poses", "dynamics", "keypoint_priors", "distance_priors"],
+        # input_names=action_recognition_input_names,
         data_postprocessor=dict(
             type="ActionPostProcessingSteps",
             postprocessing_steps=[
@@ -188,24 +192,30 @@ if with_action_recognition:
         ),
         runtime=dict(
             model=dict(
-                type="MART",
-                config=dict(
-                    with_features=action_recognition_with_features,
-                    with_dynamics=action_recognition_with_velocities,
-                    with_poses=action_recognition_with_poses,
-                    n_embd_features=n_embd_features,
-                    block_size=block_size,
-                    n_encoded_dynamics=n_encoded_dynamics,
-                    n_embd_dynamics=n_embd_dynamics,
-                    n_embd_poses=n_embd_poses,
-                    n_block=4,
-                    causal=True,
-                    use_alibi=False,
-                    n_head=4,
-                    bias=False,
-                    dropout=0.0,
-                ),
+                type="GMART",
                 metainfo=metainfo,
+                # actions_of_interest=[2],  # TODO à enlever!
+                mart_checkpoint=mart_checkpoint,
+                mart_config=dict(
+                    type="MART",
+                    config=dict(
+                        with_features=action_recognition_with_features,
+                        with_dynamics=action_recognition_with_velocities,
+                        with_poses=action_recognition_with_poses,
+                        n_embd_features=n_embd_features,
+                        block_size=block_size,
+                        n_encoded_dynamics=n_encoded_dynamics,
+                        n_embd_dynamics=n_embd_dynamics,
+                        n_embd_poses=n_embd_poses,
+                        n_block=4,
+                        causal=True,
+                        use_alibi=False,
+                        n_head=4,
+                        bias=False,
+                        dropout=0.0,
+                    ),
+                    metainfo=metainfo,
+                ),
             ),
             checkpoint=mart_checkpoint,
             half_precision=half_precision,
@@ -234,7 +244,7 @@ action_recognition_dropout = 0
 action_recognition_num_iter = 100000
 # action_recognition_warmup_iter = 25000
 action_recognition_warmup_iter = 10000
-action_recognition_val_interval = 1000
+action_recognition_val_interval = 1
 
 action_recognition_data_root = "../../datasets/MICE/sequential/"
 
@@ -294,15 +304,14 @@ mart_deployed_name = "mart_DEPLOYED.pth"
 
 
 # 4) Visualization
-display_bounding_boxes = True
+display_bounding_boxes = False
 display_poses = True
-display_velocities = True
-display_species = True
-display_confidence_scores = True
+display_velocities = False
+display_species = False
+display_confidence_scores = False
 display_actions = True
-display_search_zones = True
-display_validations = True
-display_untracked_detections = True
+display_search_zones = False
+display_validations = False
+display_untracked_detections = False
+display_predicted_bounding_boxes = False
 # 4) /Visualization
-display_predicted_bounding_boxes = True
-with_group_action_recognition = True

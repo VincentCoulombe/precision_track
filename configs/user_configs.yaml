@@ -60,13 +60,13 @@ validation:
 # Visualization parameters
 # ================================
 visualization:
-  display_bounding_boxes: true
+  display_bounding_boxes: false
   display_poses: true
-  display_velocities: true
-  display_species: true
-  display_confidence_scores: true
+  display_velocities: false
+  display_species: false
+  display_confidence_scores: false
   display_actions: true
-  display_search_zones: true
-  display_validations: true
-  display_untracked_detections: true
-  display_predicted_bounding_boxes: true
+  display_search_zones: false
+  display_validations: false
+  display_untracked_detections: false
+  display_predicted_bounding_boxes: false

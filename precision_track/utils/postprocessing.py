@@ -94,16 +94,30 @@ def postprocess_fpv_action_recognition(
         data_sample = data_samples[0]
     else:
         data_sample = data_samples
-    if isinstance(preds, tuple):
-        # TODO EMA smoothing des action embeddings (temporal consistency)!!!
-        data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
+    if isinstance(preds, list):
         preds = preds[0]
+    if isinstance(preds, tuple):
+        data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
+        edge_probs = None
+        spatially_encoded_preds = None
+        if len(preds) == 2:
+            preds = preds[0]
+        elif len(preds) == 4:
+            edge_probs = preds[2]
+            spatially_encoded_preds = preds[3]
+            preds = preds[0]
+        else:
+            raise ValueError
 
     if isinstance(preds, torch.Tensor):
         preds = preds.detach().cpu().numpy().astype(np.float32)
 
-    actions = actions_map[np.argmax(preds, axis=1).reshape(-1)]
-    action_scores = np.max(preds, axis=1).reshape(-1)
+    # TODO adaptive class-specific thresholds!
+    actions = actions_map[np.argmax(preds, axis=-1).reshape(-1)]
+    action_scores = np.max(preds, axis=-1).reshape(-1)
+
+    # TODO Refine social preds with spatially_encoded_preds
+    # TODO ajouter target_ids (edge_probs) si action dans social actions
 
     valid_context = data_sample["pred_track_instances"]["valid_action_recognition_context"]
     if isinstance(valid_context, torch.Tensor):
@@ -113,6 +127,14 @@ def postprocess_fpv_action_recognition(
 
     data_sample["pred_track_instances"]["actions"] = actions
     data_sample["pred_track_instances"]["action_scores"] = action_scores
+
+    if isinstance(edge_probs, torch.Tensor):
+        idxs = torch.argmax(edge_probs, dim=-1)
+        null_idxs = idxs == 0
+        idxs = (idxs.masked_fill_(null_idxs, -1)).view(-1).cpu().numpy()
+        null_idxs = null_idxs.view(-1).cpu().numpy()
+        idxs[~null_idxs] = data_sample["pred_track_instances"]["instances_id"][idxs[~null_idxs]]
+        data_sample["pred_track_instances"]["target_ids"] = idxs.astype(str)
 
     if post_processor is not None:
         data_sample = post_processor(data_sample)

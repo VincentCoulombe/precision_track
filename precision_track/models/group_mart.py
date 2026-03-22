@@ -202,9 +202,8 @@ class GMART(BaseModel):
                 )
             )
             node_emb_last = node_emb_full[:, -1, :]
-            mart_node_logits = self.mart.classification_head(node_emb_last).reshape(batch_size, nb_subjects, -1)
+            node_logits = self.mart.classification_head(node_emb_last).reshape(batch_size, nb_subjects, -1)
 
-        node_logits = mart_node_logits
         node_emb = node_emb_last.reshape(batch_size, nb_subjects, -1)
 
         prior_list = [distance_priors.unsqueeze(-1)]
@@ -222,15 +221,8 @@ class GMART(BaseModel):
 
         projected_edges = self.edge_mlp(priors).squeeze(-1)
         edge_weights = self.edge_proj(projected_edges).squeeze(-1)
-        # edge_weights = F.softmin(edge_weights, dim=-1)
-
-        # eye = torch.eye(nb_subjects, device=node_emb.device, dtype=torch.bool).unsqueeze(0)
-        # edge_weights = edge_weights.masked_fill(eye, 1.0)
-        # distance_mask = distance_priors < self.radius
-        # edge_weights = edge_weights.masked_fill(~distance_mask, 0.0)
-
-        # edge_weights.unsqueeze_(1).log()
-        edge_weights.unsqueeze_(1)
+        edge_weights = F.softmin(edge_weights, dim=-1)
+        edge_weights = edge_weights.unsqueeze(1).log()
         for encoder_layer in self.encoder:
             node_emb = encoder_layer(node_emb, attn_mask=edge_weights)
 
@@ -244,7 +236,6 @@ class GMART(BaseModel):
 
         return (
             node_logits,
-            mart_node_logits,
             F.normalize(node_emb, p=2, dim=-1),
             bce_logits,
             ce_logits,
@@ -267,7 +258,7 @@ class GMART(BaseModel):
         keypoint_priors: Optional[Tensor] = None,
     ) -> dict:
         B, N, T = features.shape[:3]
-        _, _, _, bce_logits, ce_logits = self._forward(
+        _, _, bce_logits, ce_logits = self._forward(
             B,
             N,
             T,
@@ -317,7 +308,7 @@ class GMART(BaseModel):
         data_samples=None,
     ) -> GMARTPredictions:
         B, N, T = features.shape[:3]
-        node_logits, mart_node_logits, node_emb, edge_logits, ce_logits = self._forward(
+        node_logits, node_emb, edge_logits, ce_logits = self._forward(
             B,
             N,
             T,
@@ -333,17 +324,9 @@ class GMART(BaseModel):
         )
 
         edge_probs = torch.sigmoid(edge_logits)
-
-        node_logits = mart_node_logits
-
-        # TODO en post-processing! (juste raffiner les nodes avec des relations...)
-        # if self.refine_nodes:
-        #     has_relationship = edge_probs.gt(0.5).any(dim=-1) | edge_probs.gt(0.5).any(dim=-2)
-        #     node_ce_logits = ce_logits.mean(dim=2)
-        #     node_logits = torch.where(has_relationship.unsqueeze(-1), node_ce_logits, mart_node_logits)
-
         node_pred = F.softmax(node_logits, dim=-1)
-        encoded_node_probs = F.softmax(ce_logits, dim=-1)
+        # encoded_node_probs = F.softmax(ce_logits, dim=-1)
+        encoded_node_probs = node_pred
 
         diag = torch.eye(N, dtype=torch.bool, device=edge_probs.device).unsqueeze(0)
         edge_probs = edge_probs.masked_fill(diag, 0.0)
@@ -399,7 +382,6 @@ class RelationshipDetectionBaselineModel(BaseModel):
             N = ep.shape[0]
             edge_probs_batch[b, :N, :N] = ep
 
-        # This is only a baseline for the relationship detection.
         node_pred = torch.zeros(B, N_max, 1, device=device)
         node_emb = torch.zeros(B, N_max, 1, device=device)
         encoded_node_probs = torch.rand(B, N_max, self.n_group_classes, device=device)
@@ -421,22 +403,22 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
         poses: Tensor,
         dynamics: Tensor,
         keypoint_priors: Tensor,
+        distance_priors: Tensor,
         mode: Optional[str] = "tensor",
         *args,
         **kwargs,
     ) -> Union[Tensor, Tuple[Tensor], dict]:
         if mode in ("loss", "predict"):
-            return self.predict(features, poses, dynamics, keypoint_priors)
+            return self.predict((features, poses, dynamics, keypoint_priors, distance_priors))
         raise RuntimeError(f'Invalid mode "{mode}". Only supports loss and predict.')
 
-    def predict(
-        self,
-        features: Tensor,
-        poses: Tensor,
-        dynamics: Tensor,
-        keypoint_priors: Tensor,
-    ) -> GMARTPredictions:
-        B, N, T = features.shape[:3]
+    def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> GMARTPredictions:
+        features, poses, dynamics, keypoint_priors, _ = inputs
+        if len(features.shape) == 3:
+            N, T, _ = features.shape
+            B = 1
+        else:
+            B, N, T, _ = features.shape
         device = features.device
         with torch.no_grad():
             probs, _ = self.mart.predict(
@@ -462,11 +444,9 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
                 for b_rel_idx, b_query_idx in zip(rel_idx[batch], query_idx[batch]):
                     edge_probs[batch, b_query_idx, b_rel_idx] = 1
 
-        # This is only a baseline for the relationship detection.
         node_emb = torch.zeros(B, N, 1, device=device)
-        encoded_node_probs = torch.rand(B, N, self.n_group_classes, device=device)
 
         if probs.dim() == 2:
             probs = probs.unsqueeze(0)
 
-        return [GMARTPredictions(probs, node_emb, edge_probs, encoded_node_probs)]
+        return [GMARTPredictions(probs, node_emb, edge_probs, probs)]

@@ -78,4 +78,7 @@ def main(args):
 
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
-    main(parse_args())
+    # main(parse_args())
+    from addict import Dict
+
+    main(Dict(dict(video="../../datasets/MICE/sequential/videos/val/14-20-02.avi")))

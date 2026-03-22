@@ -159,9 +159,11 @@ class Label(DetAnnotation):
                     id_additionnal_label = additionnal_labels[addtionnal_mask][:, 3:]
                     additionnal_label = f"| {id_additionnal_label[:, 0][0]}"
                     if id_additionnal_label.shape[1] > 1:
-                        second_id_additionnal_label = id_additionnal_label[:, 1].astype(float).astype(int)[0]
-                        if second_id_additionnal_label >= 0:
-                            additionnal_label += f" with {second_id_additionnal_label}"
+                        second_id_additionnal_label = id_additionnal_label[:, 1][0].strip()
+                        if second_id_additionnal_label:
+                            second_id_additionnal_label = id_additionnal_label[:, 1].astype(float).astype(int)[0]
+                            if second_id_additionnal_label >= 0:
+                                additionnal_label += f" with {second_id_additionnal_label}"
 
             cls_ = self.class_id_to_class.get(cls_, int(cls_)) if "class" in self.info else ""
             conf = f": {conf:.2f}" if "score" in self.info else ""

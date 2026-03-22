@@ -3,10 +3,10 @@ _base_ = "./training_action_recognition.py"
 # Model
 model = dict(
     type="GMART",
-    mart_config=_base_.analyzer.runtime.model,
+    mart_config=_base_.analyzer.runtime.model.mart_config,
     mart_checkpoint=_base_.mart_testing_checkpoint,
     metainfo=_base_.metainfo,
-    relationship_loss_weight=100.0,
+    relationship_loss_weight=10.0,
     classification_loss_weight=1.0,
     with_vel_coherence=False,
     with_vel_approach=False,
@@ -54,6 +54,7 @@ val_dataloader = dict(
 # Evaluation
 val_evaluator = dict(
     type="GroupActionRecognitionMetrics",
+    group_actions=["Interacting"],  # TODO doit être dans metadata....
     metainfo=_base_.metainfo,
     confusion_matrix_save_dir=_base_.work_dir,
     metric_save_dir=_base_.work_dir,

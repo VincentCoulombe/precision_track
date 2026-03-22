@@ -77,6 +77,8 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         with_kpt_vels: Optional[bool] = False,
         with_actions: Optional[bool] = False,
         ignore_index: Optional[int] = -100,
+        with_distance_prior: bool = False,
+        with_keypoint_priors: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -103,6 +105,9 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         self._with_kpts = with_kpts
         self._with_kpt_vels = with_kpt_vels
         self._with_actions = with_actions
+        self._with_distance_prior = with_distance_prior
+        self._with_keypoint_priors = with_keypoint_priors
+        self._need_kpt_state = with_distance_prior or with_keypoint_priors
 
         self.block_features = torch.zeros((self._max_size, self._block_size, self._embd_size), dtype=torch.float32, device=self._device).contiguous()
 
@@ -131,6 +136,22 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         if with_actions:
             self.block_actions = torch.zeros((self._max_size, self._block_size, 1), dtype=torch.long, device=self._device).contiguous()
 
+        self._cur_kpts = None
+        self._cur_vis = None
+        self._cur_scale = None
+        self.src_kpt_idxs = None
+        self.tgt_kpt_idxs = None
+        if self._need_kpt_state:
+            num_kpts = len(metainfo["keypoint_name2id"])
+            self._cur_kpts = torch.zeros(self._max_size, num_kpts, 2, dtype=torch.float32, device=self._device)
+            self._cur_vis = torch.zeros(self._max_size, num_kpts, dtype=torch.float32, device=self._device)
+            self._cur_scale = torch.ones(self._max_size, dtype=torch.float32, device=self._device)
+            kpt2idx = metainfo["keypoint_name2id"]
+            pairs = metainfo.get("distance_keypoint_pairs", [])
+            assert pairs, "with_distance_prior/with_keypoint_priors requires 'distance_keypoint_pairs' " "to be set in the metainfo file."
+            self.src_kpt_idxs = torch.tensor([kpt2idx[s] for s, _ in pairs], dtype=torch.long, device=self._device)
+            self.tgt_kpt_idxs = torch.tensor([kpt2idx[t] for _, t in pairs], dtype=torch.long, device=self._device)
+
         self.ids2idx = IdIndexMap(max_size=self._max_size)
         self.time_no_see = defaultdict(int)
         self._head = torch.zeros(self._max_size, dtype=torch.long, device=self._device)
@@ -141,6 +162,30 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
     def _init_graph(self):
         self.skeleton_sources = torch.as_tensor([s for s, _ in self.skeleton_links], device=self._device)
         self.skeleton_targets = torch.as_tensor([t for _, t in self.skeleton_links], device=self._device)
+
+    def _compute_priors(self, rows: torch.Tensor) -> dict:
+        kpts_t = self._cur_kpts[rows]
+        vis_t = self._cur_vis[rows] > self.kpts_conf_thr
+        scale_t = self._cur_scale[rows]
+
+        src_kpts = kpts_t[:, self.src_kpt_idxs]
+        tgt_kpts = kpts_t[:, self.tgt_kpt_idxs]
+
+        dist = (src_kpts.unsqueeze(1) - tgt_kpts.unsqueeze(0)).norm(dim=-1)
+        sij = (scale_t.unsqueeze(0) + scale_t.unsqueeze(1)) / 2
+        d_norm = dist / (sij.unsqueeze(-1) + 1e-6)
+
+        out = {}
+        if self._with_distance_prior:
+            out["distance_priors"] = d_norm.min(-1).values
+
+        if self._with_keypoint_priors:
+            src_vis = vis_t[:, self.src_kpt_idxs]
+            tgt_vis = vis_t[:, self.tgt_kpt_idxs]
+            vis_gate = (src_vis.unsqueeze(1) & tgt_vis.unsqueeze(0)).float()
+            out["keypoint_priors"] = d_norm * vis_gate
+
+        return out
 
     def forward(self, data: dict, training: bool = False) -> Union[dict, list]:
         data_sample = data["data_samples"]
@@ -195,7 +240,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         self._ring_write(self.block_features, running_idxs, features)
         self._ring_write(self.block_features, hidden_idxs)
 
-        if self._with_kpts:
+        if self._with_kpts or self._need_kpt_state:
             kpts = pred_track_instances["keypoints"]
             if isinstance(kpts, np.ndarray):
                 kpts = torch.from_numpy(kpts)
@@ -204,7 +249,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
             kpt_vis = pred_track_instances["keypoint_scores"]
             if isinstance(kpt_vis, np.ndarray):
                 kpt_vis = torch.from_numpy(kpt_vis)
-            kpt_vis = kpt_vis.to(self._device)
+            kpt_vis = kpt_vis.to(self._device).float()
 
             if kpts.numel() > 0:
                 poses, scale = kpts_to_poses(
@@ -217,9 +262,16 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
                 )
             else:
                 poses = kpts
-            poses = poses.to(self.block_poses.dtype).view(features.shape[0], len(self.skeleton_links) * 2)
-            self._ring_write(self.block_poses, running_idxs, poses)
-            self._ring_write(self.block_poses, hidden_idxs)
+
+            if self._need_kpt_state and kpts.numel() > 0:
+                self._cur_kpts[running_idxs] = kpts
+                self._cur_vis[running_idxs] = kpt_vis
+                self._cur_scale[running_idxs] = scale.view(-1)
+
+            if self._with_kpts:
+                poses = poses.to(self.block_poses.dtype).view(features.shape[0], len(self.skeleton_links) * 2)
+                self._ring_write(self.block_poses, running_idxs, poses)
+                self._ring_write(self.block_poses, hidden_idxs)
 
         if self._with_vels:
             if scale is not None:
@@ -245,6 +297,8 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
             out["dynamics"] = self.materialize(self.block_vels, running_idxs)
         if self._with_actions:
             out["actions"] = self.materialize(self.block_actions, running_idxs)
+        if self._need_kpt_state and running_idxs.numel() > 1:
+            out.update(self._compute_priors(running_idxs))
         out["data_samples"] = data["data_samples"]
 
         self._update_head(running_idxs)
@@ -766,7 +820,7 @@ class GroupActionRecognitionPoseTrainingPreprocessor(BaseDataPreprocessor):
 
 @MODELS.register_module()
 class RelationshipDetectionBaselinePreprocessor(BaseDataPreprocessor):
-    def __init__(self, actions_of_interest: list, non_blocking=False):
+    def __init__(self, actions_of_interest: list, non_blocking=False, *args, **kwargs):
         super().__init__(non_blocking)
         self.actions_of_interest = torch.tensor(actions_of_interest, dtype=torch.int64)
 

@@ -209,7 +209,7 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         super().__init__(collect_device=collect_device, prefix=prefix)
         self.label_to_action = defaultdict(str)
         for i, acc in enumerate(self.metainfo.get("actions", [])):
-            self.label_to_action[i] = acc
+            self.label_to_action[str(i)] = acc
         self.best_f1 = 0
         assert label_index_mode in self.label_index_modes, f"{label_index_mode} must be one of: {self.label_index_modes}."
         self.label_index_mode = label_index_mode
@@ -287,66 +287,84 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
 class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
     default_prefix = "GroupActionRecognition"
 
+    def __init__(
+        self,
+        group_actions: list,
+        metainfo: str,
+        confusion_matrix_save_dir: str = None,
+        metric_save_dir: str = None,
+        label_index_mode: str = "last",
+        collect_device: str = "cpu",
+        prefix: Optional[str] = None,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            metainfo,
+            confusion_matrix_save_dir,
+            metric_save_dir,
+            label_index_mode,
+            collect_device,
+            prefix,
+        )
+        action_to_label = {v: int(k) for k, v in self.label_to_action.items()}
+        self.group_actions = []
+        for group_action in group_actions:
+            if group_action in action_to_label:
+                self.group_actions.append(action_to_label[group_action])
+
     def process(self, data_batch: Any, data_samples: Any) -> None:
         """Process one batch of GMARTPredictions alongside GT data samples."""
         if isinstance(data_samples, list):
             data_samples = data_samples[0]
-        node_pred = data_samples.node_pred
         edge_probs = data_samples.edge_probs
         encoded_node_probs = data_samples.encoded_node_probs
 
         for b, ds in enumerate(data_batch["data_samples"]):
             valid_mask = ds.pred_track_instances.valid_mask.bool()
-            group_matrix = ds.gt_instance_labels.group_action_matrix
-            node_labels = ds.gt_instance_labels.node_labels[:, -1]
+            group_matrix = ds.gt_instance_labels.group_action_matrix[valid_mask][:, valid_mask]
+            node_labels = ds.gt_instance_labels.node_labels[:, -1][valid_mask]
 
-            for i in range(node_pred.shape[1]):
-                if not valid_mask[i] or node_labels[i] < 0:
-                    continue
-                gt_label = node_labels[i].item()
-                probs_i = node_pred[b, i]
-                pred_i = probs_i.argmax().item()
-                ce = F.cross_entropy(
-                    probs_i.unsqueeze(0).float(),
-                    torch.tensor([gt_label], device=probs_i.device),
-                ).item()
-                action_name = self.label_to_action.get(gt_label, str(gt_label))
-                self.label_to_action[str(gt_label)] = action_name
-                self.results.append((action_name, gt_label, pred_i, ce))
+            node_probs = encoded_node_probs[b][valid_mask].cpu()
+            node_pred_b = torch.argmax(node_probs, dim=-1)
+            edge_pred_b = torch.argmax(edge_probs[b][valid_mask][:, valid_mask], dim=-1).cpu()
+            conf_edge_pred = edge_pred_b > 0.5
 
-            N = valid_mask.shape[0]
-            pair_valid = valid_mask.unsqueeze(1) & valid_mask.unsqueeze(0)
-            diag = torch.eye(N, dtype=torch.bool, device=pair_valid.device)
-            pair_valid = pair_valid & ~diag
+            gt_valid = node_labels >= 0
+            node_labels = node_labels[gt_valid]
+            node_probs = node_probs[gt_valid]
+            node_pred_b = node_pred_b[gt_valid]
+            edge_pred_b = edge_pred_b[gt_valid]
+            conf_edge_pred = conf_edge_pred[gt_valid]
+            group_matrix = group_matrix[gt_valid][:, gt_valid]
 
-            edge_b = edge_probs[b].cpu()
-            cls_b = encoded_node_probs[b].cpu()
-            gm = group_matrix.cpu()
+            node_gt_is_social = torch.isin(node_labels, torch.tensor(self.group_actions, dtype=node_pred_b.dtype, device=node_pred_b.device))
 
-            flat_valid = pair_valid.cpu().flatten()
-            binary_pred_flat = (edge_b.flatten()[flat_valid] > 0.5).long()
-            binary_gt_flat = (gm >= 0).flatten()[flat_valid].long()
+            gt_edges = torch.argmax(group_matrix, dim=-1).cpu()[node_gt_is_social]
+            edge_pred_b = edge_pred_b[node_gt_is_social & conf_edge_pred]
 
-            positive = pair_valid.cpu() & (gm >= 0)
-            cls_pred = cls_b[valid_mask].argmax(-1)
-            cls_gt = gm[positive]
+            ce_per_node = F.cross_entropy(node_probs, node_labels, reduction="none")
 
+            node_class = [
+                (self.label_to_action.get(gt.item(), str(gt.item())), gt.item(), pred.item(), ce.item())
+                for pred, gt, ce in zip(node_pred_b, node_labels, ce_per_node)
+            ]
             self.results.append(
                 {
-                    "edge_binary": list(zip(binary_pred_flat.tolist(), binary_gt_flat.tolist())),
-                    "node_class": list(zip(cls_pred.tolist(), cls_gt.tolist())),
+                    "edge_binary": list(zip(edge_pred_b.tolist(), gt_edges.tolist())),
+                    "node_class": node_class,
                 }
             )
 
     def compute_metrics(self, results: list) -> dict:
-        node_results = [r for r in results if isinstance(r, tuple)]
-        edge_batches = [r for r in results if isinstance(r, dict)]
+        flat_node_results = [entry for r in results for entry in r["node_class"]]
+        metrics = super().compute_metrics(flat_node_results)
 
-        # Node metrics (Macro F1, CE, per-class P/R, confusion matrix)
-        metrics = super().compute_metrics(node_results)
+        binary_pairs = []
+        for r in results:
+            for p, g in r["edge_binary"]:
+                binary_pairs.append((p, g))
 
-        # Relationship detection
-        binary_pairs = [(p, g) for b in edge_batches for p, g in b["edge_binary"]]
         if binary_pairs:
             y_pred_bin, y_true_bin = zip(*binary_pairs)
             report_bin = classification_report(
@@ -360,23 +378,6 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
             metrics["Relationship F1"] = report_bin["rel"]["f1-score"]
             metrics["Relationship Precision"] = report_bin["rel"]["precision"]
             metrics["Relationship Recall"] = report_bin["rel"]["recall"]
-
-        # Classify nodes group action
-        cls_pairs = [(p, g) for b in edge_batches for p, g in b["node_class"]]
-        if cls_pairs:
-            y_pred_cls, y_true_cls = zip(*cls_pairs)
-            report_cls = classification_report(
-                y_true_cls,
-                y_pred_cls,
-                output_dict=True,
-                zero_division=0,
-            )
-            metrics["Group Action Macro F1"] = report_cls["macro avg"]["f1-score"]
-            for k in report_cls:
-                if k in self.label_to_action:
-                    action = self.label_to_action[k]
-                    metrics[f"Group {action} Precision"] = report_cls[k]["precision"]
-                    metrics[f"Group {action} Recall"] = report_cls[k]["recall"]
 
         return metrics
 

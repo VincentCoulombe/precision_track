@@ -67,6 +67,7 @@ class NearnessBasedActionFiltering(BaseActionPostProcessor):
     def forward(self, data_sample: dict):
         actions = data_sample["pred_track_instances"]["actions"]
         bboxes = data_sample["pred_track_instances"]["bboxes"]
+        target_ids = data_sample["pred_track_instances"].get("target_ids")
 
         action_mask = np.isin(actions, self.concerned_labels)
         relevant_bboxes = bboxes[action_mask]
@@ -76,5 +77,8 @@ class NearnessBasedActionFiltering(BaseActionPostProcessor):
             update_indices = np.flatnonzero(action_mask)[isolated]
             actions[update_indices] = self.fallback_label
             data_sample["pred_track_instances"]["actions"] = actions
+            if target_ids is not None:
+                target_ids[update_indices] = ""
+                data_sample["pred_track_instances"]["target_ids"] = target_ids
 
         return data_sample
