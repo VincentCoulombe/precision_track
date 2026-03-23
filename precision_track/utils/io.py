@@ -550,6 +550,11 @@ def load_from_mmcls(filename, map_location=None):
 
 
 def load_checkpoint(model, filename, map_location=None, strict=False, logger=None, revise_keys=[(r"^module\.", "")]):
+    filename = str(filename)
+    if not os.path.isfile(filename):
+        print_log(f"The following checkpoint: '{filename}' could not be loaded as it is not a valid path.", logger="current", level=logging.WARNING)
+        return
+
     checkpoint = CheckpointLoader.load_checkpoint(filename, map_location, logger)
     # OrderedDict is a subclass of dict
     if not isinstance(checkpoint, dict):

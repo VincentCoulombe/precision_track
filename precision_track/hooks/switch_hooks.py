@@ -127,3 +127,35 @@ class SequencesSwitchHook(Hook):
         epoch = runner.epoch
         if epoch > 0 and epoch % self.generate_every == 0:
             self._modify_dataloader(runner)
+
+
+@HOOKS.register_module()
+class LossCurriculumSwitchHook(Hook):
+    """Two-phase curriculum: train relationship_loss only, then enable classification_loss.
+
+    Phase 1 (iters 0 → switch_iter-1): relationship_loss only.
+      model.classification_loss_weight must start at 0.0 in config.
+    Phase 2 (iter >= switch_iter): both losses active.
+      Hook sets model.classification_loss_weight = classification_loss_weight.
+
+    Args:
+        switch_iter (int): Global iteration at which to enable classification_loss.
+        classification_loss_weight (float): Weight to apply in phase 2. Defaults to 1.0.
+    """
+
+    def __init__(self, switch_iter: int, classification_loss_weight: float = 1.0):
+        self.switch_iter = switch_iter
+        self.classification_loss_weight = classification_loss_weight
+        self._switched = False
+
+    def before_train_iter(self, runner: Runner, batch_idx: int, data_batch=None):
+        if not self._switched and runner.iter >= self.switch_iter:
+            model = runner.model
+            if is_model_wrapper(model):
+                model = model.module
+            model.classification_loss_weight = self.classification_loss_weight
+            self._switched = True
+            runner.logger.info(
+                f"[LossCurriculumSwitchHook] Iter {runner.iter}: "
+                f"enabling classification_loss (weight={self.classification_loss_weight})"
+            )

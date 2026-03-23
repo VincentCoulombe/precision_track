@@ -175,7 +175,15 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         sij = (scale_t.unsqueeze(0) + scale_t.unsqueeze(1)) / 2
         d_norm = dist / (sij.unsqueeze(-1) + 1e-6)
 
-        out = {}
+        out = dict(
+            valid_mask=None,
+            distance_priors=None,
+            vel_coherence=None,
+            vel_approach=None,
+            orientations_alignment=None,
+            orientations_valid=None,
+            keypoint_priors=None,
+        )
         if self._with_distance_prior:
             out["distance_priors"] = d_norm.min(-1).values
 
@@ -805,14 +813,24 @@ class GroupActionRecognitionPoseTrainingPreprocessor(BaseDataPreprocessor):
             all_masks.append(data_sample.pred_track_instances.valid_mask.to(self._device))
 
         labels = torch.stack(all_labels)
+        valid_mask = torch.stack(all_masks)
+        node_labels = labels.max(-1)[0]
+
+        social_labels = node_labels.clone()
+        node_is_social = node_labels >= 0
+
+        # Shift the labels by 1 to account for the added null class
+        social_labels[~node_is_social & valid_mask.bool()] = 0
+        social_labels[node_is_social & valid_mask.bool()] += 1
+
         return dict(
             features=torch.stack(all_features),
             poses=torch.stack(all_poses),
             dynamics=torch.stack(all_dynamics),
             node_labels=torch.stack(all_node_labels),
-            labels=labels.max(-1)[0],
+            labels=social_labels,
             binary_labels=(labels >= 0).long(),
-            valid_mask=torch.stack(all_masks),
+            valid_mask=valid_mask,
             distance_priors=torch.stack(all_distance_priors, dim=0),
             keypoint_priors=torch.stack(all_kpt_priors),
         )

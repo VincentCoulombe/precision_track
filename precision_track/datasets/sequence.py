@@ -1065,6 +1065,13 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
     def __init__(self, require_interaction: bool = False, *args, **kwargs):
         self.require_interaction = require_interaction
         super().__init__(*args, **kwargs)
+        social_actions = self.metainfo.get("social_actions", [])
+        self.actions = np.array(self.metainfo.get("actions", []))
+        self.action2social = dict()
+        for i, social_action in enumerate(social_actions):
+            idx = np.where(self.actions == social_action)[0]
+            if idx:
+                self.action2social[idx.item()] = i
 
     def prepare_data(self, idx):
         rng = np.random.default_rng(seed=idx)
@@ -1122,7 +1129,7 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
                 continue
             partner_id = partner_id.item()
             if partner_id != -1 and partner_id in id_to_idx:
-                group_matrix[id_to_idx[anchor_id], id_to_idx[partner_id]] = action.item()
+                group_matrix[id_to_idx[anchor_id], id_to_idx[partner_id]] = self.action2social[action.item()]  # Assume a mapping exists...
 
         inputs_ds = PoseDataSample()
         inputs_ds.gt_instance_labels = InstanceData()

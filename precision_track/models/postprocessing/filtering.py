@@ -53,14 +53,15 @@ class LowScoresFiltering(BasePostProcessor):
 
 @MODELS.register_module()
 class NearnessBasedActionFiltering(BaseActionPostProcessor):
-    def __init__(self, concerned_labels: list, fallback_label: int, metainfo: str):
+    def __init__(self, fallback_label: int, metainfo: str):
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.actions = metainfo.get("actions", [])
-        assert isinstance(concerned_labels, Iterable)
-        for cl in concerned_labels:
+        self.social_actions = self.metainfo.get("social_actions", [])
+        assert isinstance(self.social_actions, Iterable)
+        for cl in self.social_actions:
             assert cl in self.actions, f"{cl} not in {self.actions.tolist()}."
         assert fallback_label in self.actions, f"{fallback_label} not in {self.actions.tolist()}."
-        self.concerned_labels = np.array(concerned_labels)
+        self.concerned_labels = np.array(self.social_actions)
         self.fallback_label = fallback_label
         super().__init__()
 

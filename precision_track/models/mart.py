@@ -59,6 +59,7 @@ class BaseMARModel(BaseModel):
             self.n_embd += self.n_embd_poses
 
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        self.metainfo = metainfo
         self.n_pose = len(metainfo.get("skeleton_links", []))
         self.n_kpts = metainfo.get("num_keypoints", 0)
         self.n_class = len(metainfo.get("actions", []))

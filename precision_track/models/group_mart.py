@@ -1,5 +1,5 @@
 from typing import NamedTuple, Optional, Tuple, Union, List
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,16 +9,16 @@ from addict import Dict
 
 from precision_track.registry import MODELS
 from precision_track.utils import PoseDataSample, load_checkpoint, parse_pose_metainfo
-from precision_track.models.optimization.losses import weighted_bce_loss
+from precision_track.models.optimization.losses import focal_loss, focal_loss_multiclass
 
 from .modules.blocks.transformers import TransformerMLP, TransformerBlock
 
 
 class GMARTPredictions(NamedTuple):
-    node_pred: Tensor
-    node_emb: Tensor
-    edge_probs: Tensor
-    encoded_node_probs: Tensor
+    class_logits: Tensor
+    action_embeddings: Tensor
+    interaction_logits: Tensor
+    social_logits: Tensor
 
 
 @MODELS.register_module()
@@ -35,6 +35,7 @@ class GMART(BaseModel):
         radius: float = 10.0,
         relationship_loss_weight: float = 1.0,
         classification_loss_weight: float = 1.0,
+        classification_alpha: Optional[List[float]] = None,
         data_preprocessor=None,
         init_cfg=None,
     ):
@@ -43,7 +44,7 @@ class GMART(BaseModel):
         self.mart = MODELS.build(mart_config)
 
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
-        self.n_group_classes = len(metainfo.get("actions", []))
+        self.n_group_classes = len(metainfo.get("social_actions", [])) + 1  # Account for added null class
         n_keypoint_priors = len(metainfo.get("distance_keypoint_pairs", []))
 
         self.with_vel_coherence = with_vel_coherence
@@ -107,7 +108,8 @@ class GMART(BaseModel):
         self._prep_mart()
 
         self.relationship_loss_weight = max(relationship_loss_weight, 1.0)
-        self.classification_loss_weight = max(classification_loss_weight, 1.0)
+        self.classification_loss_weight = classification_loss_weight
+        self.classification_alpha = torch.tensor(classification_alpha, dtype=torch.float32) if classification_alpha is not None else None
 
     def _prep_mart(self):
         self.mart.requires_grad_(False)
@@ -163,16 +165,19 @@ class GMART(BaseModel):
             )
         elif mode == "predict":
             return self.predict(
-                features,
-                poses,
-                dynamics,
-                valid_mask,
-                distance_priors,
-                vel_coherence,
-                vel_approach,
-                orientations_alignment,
-                orientations_valid,
-                keypoint_priors,
+                inputs=(
+                    features,
+                    poses,
+                    dynamics,
+                    valid_mask,
+                    distance_priors,
+                    vel_coherence,
+                    vel_approach,
+                    orientations_alignment,
+                    orientations_valid,
+                    keypoint_priors,
+                ),
+                data_samples=data_samples,
             )
         else:
             raise RuntimeError(f'Invalid mode "{mode}". Only supports loss and predict.')
@@ -185,12 +190,12 @@ class GMART(BaseModel):
         features: Tensor,
         poses: Tensor,
         dynamics: Tensor,
-        distance_priors: Tensor,  # (N, S, S)  pairwise distances
-        vel_coherence: Optional[Tensor] = None,  # (N, S, S)
-        vel_approach: Optional[Tensor] = None,  # (N, S, S)
-        orientations_alignment: Optional[Tensor] = None,  # (N, S, S)
-        orientations_valid: Optional[Tensor] = None,  # (N, S, S)
-        keypoint_priors: Optional[Tensor] = None,  # (N, S, S, K)
+        distance_priors: Tensor,
+        vel_coherence: Optional[Tensor] = None,
+        vel_approach: Optional[Tensor] = None,
+        orientations_alignment: Optional[Tensor] = None,
+        orientations_valid: Optional[Tensor] = None,
+        keypoint_priors: Optional[Tensor] = None,
     ) -> Tuple[torch.Tensor]:
 
         with torch.no_grad():
@@ -277,37 +282,52 @@ class GMART(BaseModel):
         diag_mask = ~torch.eye(N, dtype=torch.bool, device=bce_logits.device).unsqueeze(0).expand(B, -1, -1)
         pair_valid = pair_valid & diag_mask
 
-        relationship_loss = weighted_bce_loss(
+        relationship_loss = focal_loss(
             bce_logits[pair_valid],
             binary_labels[pair_valid].float(),
             loss_weight=self.relationship_loss_weight,
         )
 
         ce_mask = labels >= 0
-        classification_loss = F.cross_entropy(
+        classification_loss = focal_loss_multiclass(
             ce_logits[ce_mask],
             labels[ce_mask],
+            alpha=self.classification_alpha.to(ce_logits.device) if self.classification_alpha is not None else None,
+            loss_weight=self.classification_loss_weight,
         )
 
-        losses = dict(relationship_loss=relationship_loss, classification_loss=classification_loss * self.classification_loss_weight)
+        losses = dict(relationship_loss=relationship_loss, classification_loss=classification_loss)
 
         return losses
 
-    def predict(
-        self,
-        features: Tensor,
-        poses: Tensor,
-        dynamics: Tensor,
-        valid_mask: Optional[Tensor] = None,
-        distance_priors: Optional[Tensor] = None,
-        vel_coherence: Optional[Tensor] = None,
-        vel_approach: Optional[Tensor] = None,
-        orientations_alignment: Optional[Tensor] = None,
-        orientations_valid: Optional[Tensor] = None,
-        keypoint_priors: Optional[Tensor] = None,
-        data_samples=None,
-    ) -> GMARTPredictions:
-        B, N, T = features.shape[:3]
+    def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> GMARTPredictions:
+        (
+            features,
+            poses,
+            dynamics,
+            valid_mask,
+            distance_priors,
+            vel_coherence,
+            vel_approach,
+            orientations_alignment,
+            orientations_valid,
+            keypoint_priors,
+        ) = inputs
+        if features.ndim == 3:
+            features = features.unsqueeze(0)
+            if distance_priors is not None:
+                distance_priors = distance_priors.unsqueeze(0)
+            if vel_coherence is not None:
+                vel_coherence = vel_coherence.unsqueeze(0)
+            if vel_approach is not None:
+                vel_approach = vel_approach.unsqueeze(0)
+            if orientations_alignment is not None:
+                orientations_alignment = orientations_alignment.unsqueeze(0)
+            if orientations_valid is not None:
+                orientations_valid = orientations_valid.unsqueeze(0)
+            if keypoint_priors is not None:
+                keypoint_priors = keypoint_priors.unsqueeze(0)
+        B, N, T, _ = features.shape
         node_logits, node_emb, edge_logits, ce_logits = self._forward(
             B,
             N,
@@ -325,8 +345,7 @@ class GMART(BaseModel):
 
         edge_probs = torch.sigmoid(edge_logits)
         node_pred = F.softmax(node_logits, dim=-1)
-        # encoded_node_probs = F.softmax(ce_logits, dim=-1)
-        encoded_node_probs = node_pred
+        social_pred = F.softmax(ce_logits, dim=-1)
 
         diag = torch.eye(N, dtype=torch.bool, device=edge_probs.device).unsqueeze(0)
         edge_probs = edge_probs.masked_fill(diag, 0.0)
@@ -336,16 +355,16 @@ class GMART(BaseModel):
             node_pred = node_pred * valid_mask.unsqueeze(-1)
             node_emb = node_emb * valid_mask.unsqueeze(-1)
             edge_probs = edge_probs * pair_valid
-            encoded_node_probs = encoded_node_probs * valid_mask.unsqueeze(-1)
+            social_pred = social_pred * valid_mask.unsqueeze(-1)
 
-        return GMARTPredictions(node_pred, node_emb, edge_probs, encoded_node_probs)
+        return GMARTPredictions(node_pred, node_emb, edge_probs, social_pred)
 
 
 @MODELS.register_module()
 class RelationshipDetectionBaselineModel(BaseModel):
     def __init__(self, metainfo: str, data_preprocessor=None, *args, **kwargs):
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
-        self.n_group_classes = len(metainfo.get("actions", []))
+        self.n_group_classes = len(metainfo.get("social_actions", [])) + 1
         super().__init__(data_preprocessor=data_preprocessor)
 
     def forward(
@@ -384,18 +403,29 @@ class RelationshipDetectionBaselineModel(BaseModel):
 
         node_pred = torch.zeros(B, N_max, 1, device=device)
         node_emb = torch.zeros(B, N_max, 1, device=device)
-        encoded_node_probs = torch.rand(B, N_max, self.n_group_classes, device=device)
 
-        return [GMARTPredictions(node_pred, node_emb, edge_probs_batch, encoded_node_probs)]
+        return [GMARTPredictions(node_pred, node_emb, edge_probs_batch, node_pred)]
 
 
 @MODELS.register_module()
 class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel):
-    def __init__(self, actions_of_interest: list, mart_config: dict, mart_checkpoint: str, metainfo: str, data_preprocessor=None, *args, **kwargs):
+    def __init__(self, mart_config: dict, mart_checkpoint: str, metainfo: str, data_preprocessor=None, *args, **kwargs):
         super().__init__(metainfo=metainfo, data_preprocessor=data_preprocessor)
         self.mart = MODELS.build(mart_config)
         load_checkpoint(self.mart, mart_checkpoint)
+        self.group_classes = self.mart.metainfo.get("social_actions", [])
+        classes = self.mart.metainfo.get("actions", [])
+        actions_of_interest = []
+        for i, cls_ in enumerate(classes):
+            if cls_ in self.group_classes:
+                actions_of_interest.append(i)
         self.actions_of_interest = torch.tensor(actions_of_interest, dtype=torch.int64)
+
+        self.action2social = dict()
+        for i, social_action in enumerate(self.group_classes):
+            idx = np.where(np.array(classes) == social_action)[0]
+            if idx:
+                self.action2social[idx.item()] = i + 1
 
     def forward(
         self,
@@ -446,7 +476,11 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
 
         node_emb = torch.zeros(B, N, 1, device=device)
 
-        if probs.dim() == 2:
-            probs = probs.unsqueeze(0)
+        social_probs = torch.zeros((B, N, len(self.group_classes) + 1), dtype=torch.float32, device=probs.device)
+        preds = preds.view(B, N)
+        for b in range(B):
+            for i, pred in enumerate(preds[b]):
+                social_idx = self.action2social.get(pred.item(), 0)
+                social_probs[b, i, social_idx] = 1.0
 
-        return [GMARTPredictions(probs, node_emb, edge_probs, probs)]
+        return [GMARTPredictions(probs.view(B, N, -1), node_emb, edge_probs, social_probs)]

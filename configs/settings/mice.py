@@ -129,7 +129,9 @@ validation_configuration_file = '../configs/settings/validation/appearance.yaml'
 
 
 # 3) Action Recognition
-mart_checkpoint = deploying_directory + "mart_DEPLOYED.pth"
+# mart_checkpoint = deploying_directory + "mart_DEPLOYED.pth"
+mart_checkpoint = deploying_directory + "gmart.pth"
+
 
 block_size = 30
 
@@ -148,7 +150,9 @@ assigner = dict(
 
 if with_action_recognition:
     action_recognition_input_names = ["features", "poses", "dynamics"]
+    gar_input_names = ["valid_mask", "distance_priors", "vel_coherence", "vel_approach", "orientations_alignment", "orientations_valid", "keypoint_priors"]
     action_recognition_output_names = ["class_logits", "action_embeddings"]
+    gar_output_names = ["interaction_logits", "social_logits"]
 
     velocity_encoder = dict(type="BaseVelocityEncoder")
     # velocity_encoder = dict(type="VelocityNormEncoder")
@@ -169,16 +173,13 @@ if with_action_recognition:
             with_kpts=action_recognition_with_poses,
             with_vels=action_recognition_with_velocities,
             velocity_encoder=velocity_encoder,
-            with_distance_prior=True,
-            with_keypoint_priors=True,
         ),
         metainfo=metainfo,
-        input_names=["features", "poses", "dynamics", "keypoint_priors", "distance_priors"],
-        # input_names=action_recognition_input_names,
+        input_names=action_recognition_input_names,
         data_postprocessor=dict(
             type="ActionPostProcessingSteps",
             postprocessing_steps=[
-                dict(type="NearnessBasedActionFiltering", concerned_labels=["Interacting"], fallback_label="Other", metainfo=metainfo),
+                dict(type="NearnessBasedActionFiltering", fallback_label="Other", metainfo=metainfo),
                 dict(
                     type="KeypointBasedActionRefinement",
                     action_to_refine="Interacting",
@@ -192,30 +193,25 @@ if with_action_recognition:
         ),
         runtime=dict(
             model=dict(
-                type="GMART",
-                metainfo=metainfo,
-                # actions_of_interest=[2],  # TODO à enlever!
-                mart_checkpoint=mart_checkpoint,
-                mart_config=dict(
-                    type="MART",
-                    config=dict(
-                        with_features=action_recognition_with_features,
-                        with_dynamics=action_recognition_with_velocities,
-                        with_poses=action_recognition_with_poses,
-                        n_embd_features=n_embd_features,
-                        block_size=block_size,
-                        n_encoded_dynamics=n_encoded_dynamics,
-                        n_embd_dynamics=n_embd_dynamics,
-                        n_embd_poses=n_embd_poses,
-                        n_block=4,
-                        causal=True,
-                        use_alibi=False,
-                        n_head=4,
-                        bias=False,
-                        dropout=0.0,
-                    ),
-                    metainfo=metainfo,
+                type="MART",
+                config=dict(
+                    with_features=action_recognition_with_features,
+                    with_dynamics=action_recognition_with_velocities,
+                    with_poses=action_recognition_with_poses,
+                    n_embd_features=n_embd_features,
+                    block_size=block_size,
+                    n_encoded_dynamics=n_encoded_dynamics,
+                    n_embd_dynamics=n_embd_dynamics,
+                    n_embd_poses=n_embd_poses,
+                    n_block=4,
+                    causal=True,
+                    use_alibi=False,
+                    n_head=4,
+                    bias=False,
+                    dropout=0.0,
+                    n_output=5,
                 ),
+                metainfo=metainfo,
             ),
             checkpoint=mart_checkpoint,
             half_precision=half_precision,
@@ -231,19 +227,23 @@ if with_action_recognition:
 else:
     analyzer = None
     action_recognition_input_names = None
+    gar_input_names = None
     action_recognition_output_names = None
+    gar_output_names = None
 
 #   3.1) Training
-# action_recognition_batch_size = 128
-action_recognition_batch_size = 32
+action_recognition_batch_size = 128
+gar_batch_size = 32
 
 action_recognition_base_lr = 3e-5
 
 action_recognition_weight_decay = 0.01
+gar_weight_decay = 0.1
 action_recognition_dropout = 0
 action_recognition_num_iter = 100000
-# action_recognition_warmup_iter = 25000
-action_recognition_warmup_iter = 10000
+gar_num_iter = 50000
+action_recognition_warmup_iter = 25000
+gar_warmup_iter = 10000
 action_recognition_val_interval = 1
 
 action_recognition_data_root = "../../datasets/MICE/sequential/"
@@ -269,16 +269,16 @@ action_recognition_train_actions_gt_paths = [
     "actions/train/13-40-02.csv",
 ]
 
-action_recognition_data_root = "../../datasets/MICE/sequential_nano/"
-action_recognition_val_sequences = ["videos/14-20-02.avi"]
-action_recognition_val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
-action_recognition_val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
-action_recognition_val_actions_gt_paths = ["actions/14-20-02.csv"]
+# action_recognition_data_root = "../../datasets/MICE/sequential_nano/"
+# action_recognition_val_sequences = ["videos/14-20-02.avi"]
+# action_recognition_val_bboxes_gt_paths = ["bboxes/14-20-02.csv"]
+# action_recognition_val_keypoints_gt_paths = ["keypoints/14-20-02.csv"]
+# action_recognition_val_actions_gt_paths = ["actions/14-20-02.csv"]
 
-# action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
-# action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
-# action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
-# action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
+action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
+action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
+action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
+action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
 
 action_recognition_train_sequences = action_recognition_val_sequences
 action_recognition_train_bboxes_gt_paths = action_recognition_val_bboxes_gt_paths
@@ -289,6 +289,7 @@ action_recognition_train_actions_gt_paths = action_recognition_val_actions_gt_pa
 
 #   3.2) Testing
 mart_testing_checkpoint = deploying_directory + "mart.pth"
+gmart_testing_checkpoint = deploying_directory + "gmart.pth"
 
 action_recognition_test_sequences = action_recognition_val_sequences
 action_recognition_test_bboxes_gt_paths = action_recognition_val_bboxes_gt_paths

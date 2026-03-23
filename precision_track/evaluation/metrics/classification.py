@@ -289,7 +289,6 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
 
     def __init__(
         self,
-        group_actions: list,
         metainfo: str,
         confusion_matrix_save_dir: str = None,
         metric_save_dir: str = None,
@@ -308,6 +307,7 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
             prefix,
         )
         action_to_label = {v: int(k) for k, v in self.label_to_action.items()}
+        group_actions = self.metainfo.get("social_actions", [])
         self.group_actions = []
         for group_action in group_actions:
             if group_action in action_to_label:
@@ -317,8 +317,9 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
         """Process one batch of GMARTPredictions alongside GT data samples."""
         if isinstance(data_samples, list):
             data_samples = data_samples[0]
-        edge_probs = data_samples.edge_probs
-        encoded_node_probs = data_samples.encoded_node_probs
+        edge_probs = data_samples.interaction_logits
+        encoded_node_probs = data_samples.class_logits
+        social_logits = data_samples.social_logits
 
         for b, ds in enumerate(data_batch["data_samples"]):
             valid_mask = ds.pred_track_instances.valid_mask.bool()
@@ -327,7 +328,8 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
 
             node_probs = encoded_node_probs[b][valid_mask].cpu()
             node_pred_b = torch.argmax(node_probs, dim=-1)
-            edge_pred_b = torch.argmax(edge_probs[b][valid_mask][:, valid_mask], dim=-1).cpu()
+            edge_probs_valid = edge_probs[b][valid_mask][:, valid_mask].cpu()
+            edge_pred_b = torch.argmax(edge_probs_valid, dim=-1)
             conf_edge_pred = edge_pred_b > 0.5
 
             gt_valid = node_labels >= 0
@@ -349,16 +351,48 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
                 (self.label_to_action.get(gt.item(), str(gt.item())), gt.item(), pred.item(), ce.item())
                 for pred, gt, ce in zip(node_pred_b, node_labels, ce_per_node)
             ]
+
+            social_labels = group_matrix.max(-1)[0]
+            social_labels += 1
+
+            social_classification = []
+            if social_logits is not None:
+                social_probs_gt_valid = social_logits[b][valid_mask].cpu()[gt_valid]
+                max_probs, pred_classes = social_probs_gt_valid.max(dim=-1)
+                social_classification = list(
+                    zip(
+                        pred_classes.tolist(),
+                        max_probs.tolist(),
+                        social_labels.tolist(),
+                    )
+                )
+
             self.results.append(
                 {
                     "edge_binary": list(zip(edge_pred_b.tolist(), gt_edges.tolist())),
                     "node_class": node_class,
+                    "social_classification": social_classification,
                 }
             )
 
     def compute_metrics(self, results: list) -> dict:
         flat_node_results = [entry for r in results for entry in r["node_class"]]
         metrics = super().compute_metrics(flat_node_results)
+
+        classification_data = [entry for r in results for entry in r.get("social_classification", [])]
+        if classification_data:
+            pred_classes = np.array([d[0] for d in classification_data])
+            max_probs = np.array([d[1] for d in classification_data])
+            y_true = [d[2] for d in classification_data]
+            thresholds = np.arange(0.50, 1.00, 0.05)
+            f1_per_thr = {}
+            for thr in thresholds:
+                y_pred_thr = np.where(max_probs >= thr, pred_classes, 0).tolist()
+                report_thr = classification_report(y_true, y_pred_thr, output_dict=True, zero_division=0)
+                f1 = report_thr["macro avg"]["f1-score"]
+                f1_per_thr[thr] = f1
+                metrics[f"Social F1@{thr:.2f}"] = f1
+            metrics["Social mF1@0.5:0.95"] = float(np.mean(list(f1_per_thr.values())))
 
         binary_pairs = []
         for r in results:
