@@ -56,7 +56,7 @@ class NearnessBasedActionFiltering(BaseActionPostProcessor):
     def __init__(self, fallback_label: int, metainfo: str):
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.actions = metainfo.get("actions", [])
-        self.social_actions = self.metainfo.get("social_actions", [])
+        self.social_actions = metainfo.get("social_actions", [])
         assert isinstance(self.social_actions, Iterable)
         for cl in self.social_actions:
             assert cl in self.actions, f"{cl} not in {self.actions.tolist()}."
@@ -72,7 +72,7 @@ class NearnessBasedActionFiltering(BaseActionPostProcessor):
 
         action_mask = np.isin(actions, self.concerned_labels)
         relevant_bboxes = bboxes[action_mask]
-        isolated = data_sample["pred_track_instances"]["isolated"][action_mask]
+        isolated = data_sample["pred_track_instances"]["isolated"][action_mask]  # TODO do not count search zones here...
 
         if relevant_bboxes.size > 0 and any(isolated):
             update_indices = np.flatnonzero(action_mask)[isolated]

@@ -6,12 +6,10 @@ test_cfg = dict(type="SequenceTestingLoop", test_cfg=dict(checkpoint=_base_.gmar
 
 # Model
 model = dict(
-    type="RelationshipDetectionPoseBaselineModel",
+    type="GMART",
     mart_config=_base_.analyzer.runtime.model,
     mart_checkpoint=None,
     metainfo=_base_.metainfo,
-    relationship_loss_weight=10.0,
-    classification_loss_weight=1.0,
     with_vel_coherence=False,
     with_vel_approach=False,
     with_orientation_priors=False,

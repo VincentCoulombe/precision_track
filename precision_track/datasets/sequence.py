@@ -1085,22 +1085,23 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
 
         # Batch padding (all features, poses, dynamics and group matrices have the same nb of subjects)
         if self.max_subjects is not None:
-            valid_mask = torch.zeros(self.max_subjects, dtype=torch.bool)
+            valid_mask = torch.zeros(self.max_subjects, dtype=torch.bool, device="cpu")
             valid_mask[: min(N, self.max_subjects)] = True
             if N < self.max_subjects:
-                valid_ids = torch.cat([valid_ids, valid_ids.new_full((self.max_subjects - N,), -1)])
+                valid_ids = torch.cat([valid_ids, torch.full((self.max_subjects - N,), -1, dtype=valid_ids.dtype, device="cpu")])
             else:
-                valid_ids = valid_ids[: self.max_subjects]
+                valid_ids = valid_ids[: self.max_subjects].clone()
             N = self.max_subjects
         else:
-            valid_mask = torch.ones(N, dtype=torch.bool)
+            valid_mask = torch.ones(N, dtype=torch.bool, device="cpu")
+            valid_ids = valid_ids.clone()
 
-        inputs = torch.zeros((N, self.block_size, self.n_feats), dtype=torch.float32)
-        bboxes = torch.zeros((N, self.block_size, 4), dtype=torch.float32)
-        kpts = torch.zeros((N, self.block_size, self.n_kpts, 2), dtype=torch.float32)
-        kpt_vis = torch.zeros((N, self.block_size, self.n_kpts), dtype=torch.float32)
-        dynamics = torch.zeros((N, self.block_size, self.n_velocities), dtype=torch.float32)
-        node_labels = torch.full((N, self.block_size), -1, dtype=torch.long)
+        inputs = torch.zeros((N, self.block_size, self.n_feats), dtype=torch.float32, device="cpu")
+        bboxes = torch.zeros((N, self.block_size, 4), dtype=torch.float32, device="cpu")
+        kpts = torch.zeros((N, self.block_size, self.n_kpts, 2), dtype=torch.float32, device="cpu")
+        kpt_vis = torch.zeros((N, self.block_size, self.n_kpts), dtype=torch.float32, device="cpu")
+        dynamics = torch.zeros((N, self.block_size, self.n_velocities), dtype=torch.float32, device="cpu")
+        node_labels = torch.full((N, self.block_size), -1, dtype=torch.long, device="cpu")
 
         for i, block_idx in enumerate(reversed(range(self.block_size))):
             data_sample = self.data_list[s][frame_id - i]
@@ -1122,7 +1123,7 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
         anchor_ids = anchor_frame.pred_track_instances.instances_id
 
         # -1 if there is no relationship between subjects, the action id otherwise.
-        group_matrix = torch.full((N, N), -1, dtype=torch.long)
+        group_matrix = torch.full((N, N), -1, dtype=torch.long, device="cpu")
         for anchor_idx, (action, partner_id) in enumerate(zip(actions_at_t, partners)):
             anchor_id = anchor_ids[anchor_idx].item()
             if anchor_id not in id_to_idx:

@@ -329,8 +329,8 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
             node_probs = encoded_node_probs[b][valid_mask].cpu()
             node_pred_b = torch.argmax(node_probs, dim=-1)
             edge_probs_valid = edge_probs[b][valid_mask][:, valid_mask].cpu()
-            edge_pred_b = torch.argmax(edge_probs_valid, dim=-1)
-            conf_edge_pred = edge_pred_b > 0.5
+            edge_probs_b, edge_pred_b = torch.max(edge_probs_valid, dim=-1)
+            conf_edge_pred = edge_probs_b > 0.5
 
             gt_valid = node_labels >= 0
             node_labels = node_labels[gt_valid]
@@ -343,7 +343,8 @@ class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
             node_gt_is_social = torch.isin(node_labels, torch.tensor(self.group_actions, dtype=node_pred_b.dtype, device=node_pred_b.device))
 
             gt_edges = torch.argmax(group_matrix, dim=-1).cpu()[node_gt_is_social]
-            edge_pred_b = edge_pred_b[node_gt_is_social & conf_edge_pred]
+            edge_pred_b[~conf_edge_pred] = -1
+            edge_pred_b = edge_pred_b[node_gt_is_social]
 
             ce_per_node = F.cross_entropy(node_probs, node_labels, reduction="none")
 

@@ -44,6 +44,7 @@ class ActionRecognitionBackend(BaseBackend):
         super(ActionRecognitionBackend, self).__init__(runtime)
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.actions = np.array(metainfo.get("actions", []), dtype="<U32")
+        self.group_actions = np.array(metainfo.get("social_actions", []), dtype="<U32")
         self._set_preprocessor(data_preprocessor)
         if data_postprocessor is not None:
             self.data_postprocessor = MODELS.build(data_postprocessor)
@@ -124,4 +125,5 @@ class ActionRecognitionBackend(BaseBackend):
             data_samples,
             self.actions,
             self.data_postprocessor,
+            group_actions_map=self.group_actions,
         )

@@ -36,6 +36,9 @@ class GMART(BaseModel):
         relationship_loss_weight: float = 1.0,
         classification_loss_weight: float = 1.0,
         classification_alpha: Optional[List[float]] = None,
+        classification_label_smoothing: float = 0.0,
+        heads_dropout: float = 0.0,
+        encoder_dropout: float = 0.0,
         data_preprocessor=None,
         init_cfg=None,
     ):
@@ -77,28 +80,27 @@ class GMART(BaseModel):
 
         encoder_config = self.mart.config.copy()
         encoder_config.causal = False
+        encoder_config.dropout = encoder_dropout
         self.encoder = nn.ModuleList([TransformerBlock(encoder_config) for _ in range(encoder_config.n_block)])
 
         self.bce_head = nn.Sequential(
             nn.Linear(2 * n_embd + n_embd // 2, n_embd, bias=self.mart.config.bias),
             nn.LayerNorm(n_embd, bias=self.mart.config.bias),
             nn.GELU(),
+            nn.Dropout(heads_dropout),
             nn.Linear(n_embd, n_embd // 2, bias=self.mart.config.bias),
             nn.LayerNorm(n_embd // 2, bias=self.mart.config.bias),
             nn.GELU(),
-            nn.Linear(n_embd // 2, n_embd // 4, bias=self.mart.config.bias),
-            nn.LayerNorm(n_embd // 4, bias=self.mart.config.bias),
             nn.GELU(),
-            nn.Linear(n_embd // 4, 1, bias=self.mart.config.bias),
+            nn.Dropout(heads_dropout),
+            nn.Linear(n_embd // 2, 1, bias=self.mart.config.bias),
         )
 
         self.ce_head = nn.Sequential(
             nn.Linear(n_embd, n_embd // 2, bias=self.mart.config.bias),
             nn.LayerNorm(n_embd // 2, bias=self.mart.config.bias),
             nn.GELU(),
-            nn.Linear(n_embd // 2, n_embd // 2, bias=self.mart.config.bias),
-            nn.LayerNorm(n_embd // 2, bias=self.mart.config.bias),
-            nn.GELU(),
+            nn.Dropout(heads_dropout),
             nn.Linear(n_embd // 2, self.n_group_classes),
         )
 
@@ -110,6 +112,7 @@ class GMART(BaseModel):
         self.relationship_loss_weight = max(relationship_loss_weight, 1.0)
         self.classification_loss_weight = classification_loss_weight
         self.classification_alpha = torch.tensor(classification_alpha, dtype=torch.float32) if classification_alpha is not None else None
+        self.classification_label_smoothing = classification_label_smoothing
 
     def _prep_mart(self):
         self.mart.requires_grad_(False)
@@ -293,6 +296,7 @@ class GMART(BaseModel):
             ce_logits[ce_mask],
             labels[ce_mask],
             alpha=self.classification_alpha.to(ce_logits.device) if self.classification_alpha is not None else None,
+            label_smoothing=self.classification_label_smoothing,
             loss_weight=self.classification_loss_weight,
         )
 
@@ -439,11 +443,22 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
         **kwargs,
     ) -> Union[Tensor, Tuple[Tensor], dict]:
         if mode in ("loss", "predict"):
-            return self.predict((features, poses, dynamics, keypoint_priors, distance_priors))
+            return self.predict((features, poses, dynamics, None, None, None, None, None, None, keypoint_priors))
         raise RuntimeError(f'Invalid mode "{mode}". Only supports loss and predict.')
 
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> GMARTPredictions:
-        features, poses, dynamics, keypoint_priors, _ = inputs
+        (
+            features,
+            poses,
+            dynamics,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            keypoint_priors,
+        ) = inputs
         if len(features.shape) == 3:
             N, T, _ = features.shape
             B = 1

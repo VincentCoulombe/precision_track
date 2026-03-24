@@ -1,5 +1,12 @@
 _base_ = "./training_action_recognition.py"
 
+# Settings
+gar_base_lr = _base_.gar_base_lr
+heads_dropout = 0.2
+encoder_dropout = 0.1
+batch_size = _base_.gar_batch_size
+# /Settings
+
 # Model
 model = dict(
     type="GMART",
@@ -9,6 +16,9 @@ model = dict(
     relationship_loss_weight=10.0,
     classification_loss_weight=0.0,
     classification_alpha=None,
+    classification_label_smoothing=0.1,
+    heads_dropout=heads_dropout,
+    encoder_dropout=encoder_dropout,
     with_vel_coherence=False,
     with_vel_approach=False,
     with_orientation_priors=False,
@@ -40,7 +50,7 @@ param_scheduler = [
     ),
     dict(
         type="CosineAnnealingLR",
-        eta_min=_base_.action_recognition_base_lr / 100,
+        eta_min=gar_base_lr / 100,
         begin=_base_.gar_warmup_iter,
         T_max=9 * (_base_.gar_num_iter // 10),
         end=9 * (_base_.gar_num_iter // 10),
@@ -54,7 +64,7 @@ optim_wrapper = dict(
     loss_scale="dynamic",
     type="AmpOptimWrapper",
     dtype="float16",
-    optimizer=dict(type="AdamW", lr=_base_.action_recognition_base_lr, weight_decay=_base_.gar_weight_decay),
+    optimizer=dict(type="AdamW", lr=gar_base_lr, weight_decay=_base_.gar_weight_decay),
     paramwise_cfg=dict(
         norm_decay_mult=0,
         bias_decay_mult=0,
@@ -66,10 +76,7 @@ optim_wrapper = dict(
 
 # Dataloaders
 train_dataloader = dict(
-    batch_size=_base_.gar_batch_size,
-    num_workers=0,
-    persistent_workers=False,
-    pin_memory=False,
+    batch_size=batch_size,
     dataset=dict(
         type="GroupActionRecognitionDataset",
         keep_bboxes=True,
@@ -78,9 +85,6 @@ train_dataloader = dict(
 )
 
 val_dataloader = dict(
-    num_workers=0,
-    persistent_workers=False,
-    pin_memory=False,
     dataset=dict(
         type="GroupActionRecognitionDataset",
         keep_bboxes=True,

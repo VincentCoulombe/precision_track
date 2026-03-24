@@ -83,6 +83,7 @@ if _base_.with_action_recognition and _base_.with_group_action_recognition:
                 with_keypoint_priors=True,
                 _delete_=True,
             ),
+            checkpoint=_base_.gmart_checkpoint,
         ),
     )
 # /Model

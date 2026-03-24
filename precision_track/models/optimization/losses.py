@@ -571,12 +571,13 @@ def focal_loss_multiclass(
     targets,
     gamma=2.0,
     alpha=None,
+    label_smoothing=0.0,
     loss_weight=1.0,
     ignore_index=-100,
 ):
     N, C = logits.shape
-    log_pt = F.log_softmax(logits, dim=1)
-    log_pt = log_pt.gather(1, targets.unsqueeze(1)).squeeze(1)
+    log_pt_full = F.log_softmax(logits, dim=1)
+    log_pt = log_pt_full.gather(1, targets.unsqueeze(1)).squeeze(1)
     pt = log_pt.exp()
 
     focal_weight = (1.0 - pt) ** gamma
@@ -590,11 +591,18 @@ def focal_loss_multiclass(
         focal_weight = focal_weight * alpha_t
 
     mask = targets != ignore_index
-    loss = -focal_weight * log_pt
-    return loss[mask].mean() * loss_weight
+
+    if label_smoothing > 0.0:
+        smooth = torch.full_like(log_pt_full, label_smoothing / (C - 1))
+        smooth.scatter_(1, targets.unsqueeze(1), 1.0 - label_smoothing)
+        loss = -(smooth * log_pt_full).sum(dim=-1)
+    else:
+        loss = -log_pt
+
+    return (focal_weight * loss)[mask].mean() * loss_weight
 
 
-def focal_loss(logits, targets, gamma=2.0, alpha=0.75, loss_weight=1.0):
+def focal_loss(logits, targets, gamma=2.0, alpha=0.95, loss_weight=1.0):
     bce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
     pt = torch.exp(-bce)
     alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
