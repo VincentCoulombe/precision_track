@@ -8,12 +8,11 @@ from test_action_recognition import main as test_ar_main
 from train_detection import deploy, get_device, load_config, parse_device_id, str2bool
 
 from precision_track import AssociationStep, Runner
-from precision_track.registry import TASK_UTILS
-
 from precision_track.deploy.to_onnx import mart_to_onnx
 from precision_track.deploy.to_tensorrt import to_tensorrt
 from precision_track.models.backends import DetectionBackend
-from precision_track.utils import load_user_configs, find_checkpoint_hook, parse_pose_metainfo
+from precision_track.registry import TASK_UTILS
+from precision_track.utils import find_checkpoint_hook, load_user_configs, parse_pose_metainfo
 
 
 def parse_args():

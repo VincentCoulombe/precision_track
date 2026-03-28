@@ -1,13 +1,13 @@
 from abc import ABCMeta, abstractmethod
-from typing import Union, List, Tuple
-import numpy as np
-import cv2
+from typing import List, Tuple, Union
 
-from .common import RandomFlip, RandomCrop
-from .base import BaseTransform
-from .utils import cache_randomness
+import cv2
+import numpy as np
 
 from precision_track.registry import TRANSFORMS
+
+from .base import BaseTransform
+from .common import RandomCrop, RandomFlip
 
 
 class BaseSequenceTransform(metaclass=ABCMeta):

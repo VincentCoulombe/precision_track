@@ -1,7 +1,7 @@
-from collections import deque
-import os
 import json
-import numpy as np
+import os
+from collections import deque
+
 from precision_track.outputs.display import display_progress_bar
 
 

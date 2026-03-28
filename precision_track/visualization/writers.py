@@ -1,16 +1,15 @@
 import abc
-from typing import Dict, List, Optional, Tuple
-
-import yaml
 import os
 import re
+from typing import Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
 import supervision as sv
+import yaml
 
 from precision_track.registry import VISUALIZERS
 from precision_track.utils import parse_pose_metainfo
-
 
 from .palette import ColorPalette
 

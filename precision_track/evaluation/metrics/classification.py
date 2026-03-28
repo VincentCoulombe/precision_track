@@ -6,11 +6,12 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import json
 import operator
 import os
 from collections import defaultdict
 from typing import Any, List, Optional
-import json
+
 import numpy as np
 import pandas as pd
 import torch

@@ -1,8 +1,9 @@
-from collections.abc import Iterable
-from typing import Any, List, Optional
-from time import perf_counter
-import numpy as np
 import os
+from collections.abc import Iterable
+from time import perf_counter
+from typing import Any, List, Optional
+
+import numpy as np
 
 from precision_track.registry import OUTPUTS
 

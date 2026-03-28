@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 from copy import deepcopy
+
 import mmengine
 from mmengine import Config
 from mmengine.logging import MMLogger
@@ -16,6 +17,7 @@ from precision_track.utils import (
     assert_coco_dataset_directory,
     check_if_mot_dataset_is_ok,
     deploy_weights,
+    find_checkpoint_hook,
     get_common_config,
     get_device,
     get_ir_config,
@@ -26,7 +28,6 @@ from precision_track.utils import (
     load_user_configs,
     parse_device_id,
     resize_coco_dataset,
-    find_checkpoint_hook,
 )
 
 if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:

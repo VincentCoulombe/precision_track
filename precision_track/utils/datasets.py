@@ -7,20 +7,20 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from typing import Any, Mapping, Sequence
 import json
 import os
 import os.path as osp
 import textwrap
+from typing import Any, Mapping, Sequence
 
 import cv2
 import numpy as np
 import torch
 from mmengine import Config
 from mmengine.logging import print_log
+from mmengine.registry import FUNCTIONS
 from tqdm import tqdm
 
-from mmengine.registry import FUNCTIONS
 from .io import SUPPORTED_IMG_BACKEND, SUPPORTED_VIDEO_BACKEND
 
 

@@ -1,14 +1,15 @@
-from typing import Optional, Dict, Union, List, Union
 import heapq
-from itertools import chain
 from collections import defaultdict
-from mmengine.structures import InstanceData
+from itertools import chain
+from typing import Dict, List, Optional, Union
+
 import numpy as np
 import torch
 from mmengine.model import BaseDataPreprocessor
+from mmengine.structures import InstanceData
 
 from precision_track.registry import MODELS
-from precision_track.utils import get_device, kpts_to_poses, parse_pose_metainfo, BaseVelocityEncoder
+from precision_track.utils import BaseVelocityEncoder, get_device, kpts_to_poses, parse_pose_metainfo
 
 
 class IdIndexMap:
@@ -583,9 +584,10 @@ class GroupActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
         if self.with_orientation_priors:
             kpt_name_to_idx = pose_meta["keypoint_name2id"]
             named_pairs = pose_meta.get("orientation_keypoint_pairs", [])
-            assert (
-                named_pairs
-            ), "If you want to train a group action recognition model with orientation priors, you must populate the 'orientation_keypoint_pairs' in your metadata file. Please refer to documentation."
+            assert named_pairs, (
+                "If you want to train a group action recognition model with orientation priors, you must populate the 'orientation_keypoint_pairs' "
+                "in your metadata file. Please refer to documentation."
+            )
             self.orientation_keypoint_pairs = [(kpt_name_to_idx[ant], kpt_name_to_idx[post]) for ant, post in named_pairs]
 
         self.vel_encoder = None

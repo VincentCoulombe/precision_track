@@ -8,7 +8,7 @@ from mmengine.config import Config
 from precision_track.registry import VISUALIZERS
 from precision_track.utils import parse_pose_metainfo
 
-from .annotations import Arrow, Dot, Joint, Label, Link, Box
+from .annotations import Arrow, Box, Dot, Joint, Label, Link
 
 
 class BasePainter(metaclass=abc.ABCMeta):

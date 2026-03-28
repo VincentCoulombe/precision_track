@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any, List, Optional, Tuple, Union
 from time import perf_counter
+from typing import Any, List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 from addict import Dict

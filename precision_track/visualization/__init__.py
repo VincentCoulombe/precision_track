@@ -1,8 +1,8 @@
 from .annotations import Box, Corner, Dot, Ellipse
-from .painters import BoundingBoxPainter, KeypointsPainter, LabelPainter, SearchAreaPainter, ValidationPainter, VelocityPainter
-from .writers import FrameIdWriter, TagsDetectionWriter, AppearanceDetectionWriter
-from .palette import ColorPalette
 from .embeddings import visualize_embeddings
+from .painters import BoundingBoxPainter, KeypointsPainter, LabelPainter, SearchAreaPainter, ValidationPainter, VelocityPainter
+from .palette import ColorPalette
+from .writers import AppearanceDetectionWriter, FrameIdWriter, TagsDetectionWriter
 
 __all__ = [
     "Dot",

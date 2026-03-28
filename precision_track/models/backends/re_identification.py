@@ -1,9 +1,9 @@
-from typing import Any, List, Union, Tuple
 import os
+from typing import List, Union
+
 import numpy as np
 import torch
 import yaml
-from mmengine import Config
 
 from precision_track.registry import MODELS
 from precision_track.utils import PoseDataSample

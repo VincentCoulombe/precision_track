@@ -7,14 +7,9 @@ from mmengine import Config
 from mmengine.model import BaseModel
 from torch import Tensor
 
+from precision_track.models.modules.transformers.blocks import TransformerBlock, TransformerMLP
 from precision_track.registry import MODELS
-from precision_track.utils import PoseDataSample, reformat, parse_pose_metainfo
-
-# from .modules.blocks.transformers import ProjLN, TransformerBlock, TransformerMLP
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from precision_track.utils import PoseDataSample, reformat
 
 
 class SpatialRBFAttentionMask(nn.Module):
@@ -60,11 +55,6 @@ class SpatialRBFAttentionMask(nn.Module):
 
         bias = torch.einsum("bijk,hk->bijh", phi, self.Wb)
         return (self.beta * bias).permute(0, 3, 1, 2).contiguous()
-
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 
 class FlexibleRBFAttentionMask(nn.Module):

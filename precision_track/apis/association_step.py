@@ -2,8 +2,9 @@ import json
 import logging
 import os.path as osp
 from collections import deque
-from typing import List, Optional, Tuple, Union
 from time import perf_counter
+from typing import List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,7 +13,7 @@ from mmengine.config import Config
 from mmengine.logging import print_log
 
 from precision_track.registry import TRACKING
-from precision_track.utils import parse_pose_metainfo, PoseDataSample, biou_batch
+from precision_track.utils import PoseDataSample, biou_batch, parse_pose_metainfo
 
 
 class AssociationStep(nn.Module):

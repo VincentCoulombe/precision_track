@@ -1,11 +1,12 @@
 import abc
-import random
-import numpy as np
 import os
+import random
 from collections import defaultdict
-from typing import Dict, List, Tuple, Optional
-from mmengine.logging import print_log
 from logging import WARNING
+from typing import Optional
+
+import numpy as np
+from mmengine.logging import print_log
 
 from precision_track.registry import COACHES
 from precision_track.utils import parse_pose_metainfo

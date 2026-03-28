@@ -5,22 +5,23 @@ import os.path as osp
 import pickle
 import platform
 import warnings
-from typing import Callable, Dict, List, Optional, Union
 from collections import OrderedDict
+from typing import Callable, Dict, List, Optional, Union
+
 import cv2
 import mmengine
 import torch.multiprocessing as mp
 import torch.nn as nn
-from torch.optim import Optimizer
 from mmengine.config import Config, ConfigDict
 from mmengine.hooks import Hook
 from mmengine.logging import print_log
 from mmengine.model import is_model_wrapper
-from mmengine.registry import LOOPS, VISUALIZERS, DefaultScope
+from mmengine.optim import OptimWrapper, OptimWrapperDict, build_optim_wrapper
+from mmengine.registry import LOOPS, OPTIM_WRAPPERS, VISUALIZERS, DefaultScope
 from mmengine.runner import Runner as MMENGINERunner
 from mmengine.utils import digit_version
 from mmengine.visualization import Visualizer
-from mmengine.optim import OptimWrapper, OptimWrapperDict, build_optim_wrapper
+from torch.optim import Optimizer
 
 from precision_track.registry import MODELS
 from precision_track.utils import CheckpointLoader, get_device, load_checkpoint_to_model

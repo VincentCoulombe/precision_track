@@ -1,9 +1,10 @@
 import multiprocessing as mp
 import os
+
 import pandas as pd
 import pytest
-from mmengine import Config
 import yaml
+from mmengine import Config
 
 from precision_track import PipelinedTracker, Tracker
 from precision_track.utils import VideoReader, load_user_configs

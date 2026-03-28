@@ -1,8 +1,9 @@
-from typing import Optional, List, Union, Any
-from addict import Dict
+from typing import Any, List, Optional, Union
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
+from addict import Dict
 
 from precision_track.utils import PoseDataSample, xyxy_cxcywh
 

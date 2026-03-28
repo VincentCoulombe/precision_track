@@ -1,17 +1,15 @@
 import os
-from logging import WARNING
 from typing import List, Optional, Tuple
-from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 import torch
 from addict import Dict
 from mmengine import Config
-from mmengine.logging import MMLogger, print_log
-import logging
+from mmengine.logging import MMLogger
 
 from precision_track.registry import MODELS, TRACKING
-from precision_track.utils import iou_batch, bbox_overlaps, linear_assignment, reformat, PoseDataSample, calculate_pose_velocities, calculate_bbox_velocities
+from precision_track.utils import PoseDataSample, bbox_overlaps, iou_batch, linear_assignment, reformat
 
 from .base import BaseAssignationAlgorithm
 

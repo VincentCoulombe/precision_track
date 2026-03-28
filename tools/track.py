@@ -1,15 +1,16 @@
 import argparse
-from datetime import datetime
 import multiprocessing as mp
-from logging import WARNING
 import os
+from datetime import datetime
+from logging import WARNING
+
 import psutil
 from mmengine import Config
 from mmengine.logging import print_log
+from train_detection import str2bool
 
 from precision_track import PipelinedTracker, Tracker
 from precision_track.utils import VideoReader, load_user_configs, load_validation_config
-from train_detection import str2bool
 
 
 def parse_args():

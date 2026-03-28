@@ -3,9 +3,9 @@ from .sequence import (
     ActionRecognitionDataset,
     ActionRecognitionPerFrameDataset,
     GroupActionRecognitionDataset,
+    MAEDataset,
     ReIDDataset,
     VideoDataset,
-    MAEDataset,
 )
 
 __all__ = [

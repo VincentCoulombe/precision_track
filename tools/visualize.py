@@ -1,5 +1,6 @@
 import argparse
 import os
+
 from mmengine.config import Config
 
 from precision_track import Result, Visualizer

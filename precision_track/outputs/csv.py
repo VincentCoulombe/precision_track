@@ -2,7 +2,7 @@ import abc
 import logging
 import os
 from collections import OrderedDict
-from typing import Any, List, Optional, Union, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd

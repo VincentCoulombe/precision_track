@@ -1,11 +1,11 @@
 import os
-from typing import Optional, Tuple, Union, Dict
+from typing import Dict, Optional, Tuple, Union
 
 import cv2
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 import numpy as np
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+from matplotlib.patches import Patch
 from umap import UMAP
 
 from precision_track.registry import OUTPUTS
@@ -136,7 +136,7 @@ def visualize_embeddings(
         assert len(embeddings_to_plot) == len(labels_to_plot)
 
     max_n_neighbors = int(max_n_neighbors)
-    assert max_n_neighbors >= 25, f"max_n_neighbors must be bigger or equal to 25."
+    assert max_n_neighbors >= 25, "max_n_neighbors must be bigger or equal to 25."
     n_neighbors = max(25, min(max_n_neighbors, int(0.1 * len(ids_to_plot))))
 
     # Apply UMAP dimensionality reduction

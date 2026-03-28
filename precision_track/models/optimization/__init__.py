@@ -1,1 +1,1 @@
-from .coaches import BaseCoach, ActionRecognitionCoach
+from .coaches import ActionRecognitionCoach, BaseCoach

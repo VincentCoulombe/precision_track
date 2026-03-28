@@ -1,6 +1,7 @@
-from typing import Optional, List, Tuple
+from typing import List, Optional
+
 import torch
-import numpy as np
+
 from precision_track.utils import cosine_similarity
 
 

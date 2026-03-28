@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from mmengine.registry import MODELS
 
-from precision_track.utils import biou_batch, parse_pose_metainfo
+from precision_track.utils import parse_pose_metainfo
 
 from .base import BaseActionPostProcessor, BasePostProcessor
 

@@ -1,4 +1,5 @@
 from typing import Any, Optional
+
 import numpy as np
 from mmengine.evaluator import BaseMetric
 

@@ -1,18 +1,19 @@
+import json
 import multiprocessing as mp
 import os
 import subprocess
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 import torch
-import json
 import yaml
-from pathlib import Path
 from mmengine import Config
 from mmengine.structures import InstanceData
 
 from precision_track import PipelinedTracker, Tracker
-from precision_track.registry import MODELS, OUTPUTS, DATASETS
+from precision_track.registry import DATASETS, MODELS, OUTPUTS
 from precision_track.utils import VideoReader, cuda_available, load_user_configs
 
 ROOT = "./tests/"

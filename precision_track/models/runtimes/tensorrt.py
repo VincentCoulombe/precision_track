@@ -58,7 +58,10 @@ class TensorRTRuntime(InferenceOnlyRuntime):
         checkpoint_name = os.path.basename(self.checkpoint)
         if current_gpu_name not in checkpoint_name:
             print_log(
-                f"The '{os.path.abspath(self.checkpoint)}' engine was not built for current GPU ('{current_gpu_name}'). This might lead to unexpected errors or performances.",
+                (
+                    f"The '{os.path.abspath(self.checkpoint)}' engine was not built "
+                    "for current GPU ('{current_gpu_name}'). This might lead to unexpected errors or performances."
+                ),
                 logger="current",
                 level=logging.WARNING,
             )

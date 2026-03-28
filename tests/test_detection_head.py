@@ -1,7 +1,8 @@
-import cv2
 import os
-import torch
+
+import cv2
 import pytest
+import torch
 from mmengine import Config
 
 from precision_track import Tracker

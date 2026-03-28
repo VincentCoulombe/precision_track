@@ -18,7 +18,7 @@ from mmengine.dist import get_dist_info
 
 from precision_track.datasets.codecs import *  # noqa
 from precision_track.registry import KEYPOINT_CODECS, TRANSFORMS
-from precision_track.utils import clip, reformat, iou_batch
+from precision_track.utils import clip, iou_batch, reformat
 
 from .base import BaseTransform
 from .formatting import flip_bbox, flip_keypoints, get_udp_warp_matrix, get_warp_matrix

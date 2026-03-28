@@ -1,16 +1,17 @@
-from typing import List, Tuple, Optional, Dict
-import torch
-import numpy as np
 import heapq
 import re
+from typing import Dict, List, Optional, Tuple
+
 import cv2
+import numpy as np
+import torch
 from mmengine.logging import print_log
 
-from .base_validation import BaseValidation
-
-from precision_track.registry import TRACKING, MODELS
-from precision_track.utils import parse_pose_metainfo, clip, AppearanceClassifier
 from precision_track.models.backends import ReIDBackend
+from precision_track.registry import MODELS, TRACKING
+from precision_track.utils import AppearanceClassifier, clip, parse_pose_metainfo
+
+from .base_validation import BaseValidation
 
 
 @TRACKING.register_module()
@@ -84,9 +85,10 @@ class AppearanceValidation(BaseValidation):
             logger="current",
         )
 
-        assert len(self.identities) == len(
-            unique_ids
-        ), f"The AppearanceValidation module is set to re-identify {len(unique_ids)} distinct subjects ({unique_ids}) with an incoherant number of identities {len(self.identities)} ({self.identities})."
+        assert len(self.identities) == len(unique_ids), (
+            f"The AppearanceValidation module is set to re-identify {len(unique_ids)} distinct subjects "
+            f"({unique_ids}) with an incoherant number of identities {len(self.identities)} ({self.identities})."
+        )
         self.nb_identities = len(unique_ids)
 
         self.has_been_observed = torch.zeros(self.nb_identities, dtype=torch.bool, device=self.device)
@@ -173,9 +175,10 @@ class AppearanceValidation(BaseValidation):
             if inst_id >= 0 and (self.validated_classes is None or cls in self.validated_classes):
                 unique_key = f"{cls}_{inst_id}"
                 idx = self.unique_ids.get(unique_key)
-                assert (
-                    idx is not None
-                ), f"The appearance validator encountered the following not registered unique id at runtime: {unique_key}. The registered unique ids are: {self.unique_ids_list}."
+                assert idx is not None, (
+                    f"The appearance validator encountered the following not registered unique id at runtime: "
+                    f"{unique_key}. The registered unique ids are: {self.unique_ids_list}."
+                )
                 did_not_check_since = self.did_not_check_since[idx] / self.max_check_delay
                 heapq.heappush(priority_queue, (-float(did_not_check_since + score), (cls, int(inst_id), cxcywh.tolist(), score)))
         return priority_queue
@@ -230,10 +233,6 @@ class AppearanceValidation(BaseValidation):
         frame: np.ndarray,
         tracking_results: Optional[dict] = None,
     ) -> Optional[Dict[str, List[Tuple]]]:
-
-        frame_id = tracking_results["img_id"]
-        if frame_id in [585, 730]:
-            stop = True
 
         if self._frame_size is None:
             self.frame_size = tracking_results["ori_shape"][:2]

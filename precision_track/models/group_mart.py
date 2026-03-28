@@ -1,17 +1,17 @@
-from typing import NamedTuple, Optional, Tuple, Union, List
+from typing import List, NamedTuple, Optional, Tuple, Union
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mmengine.model import BaseModel
 from torch import Tensor
-from addict import Dict
 
+from precision_track.models.optimization.losses import focal_loss, focal_loss_multiclass
 from precision_track.registry import MODELS
 from precision_track.utils import PoseDataSample, load_checkpoint, parse_pose_metainfo
-from precision_track.models.optimization.losses import focal_loss, focal_loss_multiclass
 
-from .modules.blocks.transformers import TransformerMLP, TransformerBlock
+from .modules.blocks.transformers import TransformerBlock
 
 
 class GMARTPredictions(NamedTuple):

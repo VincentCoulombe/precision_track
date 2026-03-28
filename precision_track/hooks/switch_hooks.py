@@ -9,7 +9,7 @@
 
 import copy
 import functools
-from typing import Dict, Sequence
+from typing import Sequence
 
 from mmengine.hooks import Hook
 from mmengine.model import is_model_wrapper
@@ -155,7 +155,4 @@ class LossCurriculumSwitchHook(Hook):
                 model = model.module
             model.classification_loss_weight = self.classification_loss_weight
             self._switched = True
-            runner.logger.info(
-                f"[LossCurriculumSwitchHook] Iter {runner.iter}: "
-                f"enabling classification_loss (weight={self.classification_loss_weight})"
-            )
+            runner.logger.info(f"[LossCurriculumSwitchHook] Iter {runner.iter}: " f"enabling classification_loss (weight={self.classification_loss_weight})")

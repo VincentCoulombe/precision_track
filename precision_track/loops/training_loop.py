@@ -1,17 +1,17 @@
-from typing import Sequence, Union, Dict, Optional, List, Tuple
 import itertools
-import torch
-from torch.optim.lr_scheduler import MultiStepLR
 from collections import OrderedDict, defaultdict
-from torch.utils.data import DataLoader
+from typing import Dict, List, Optional, Sequence, Tuple, Union
+
+import torch
+from mmengine.config import Config
 from mmengine.runner import EpochBasedTrainLoop
 from mmengine.structures import InstanceData
-from mmengine.config import Config
-from precision_track.registry import LOOPS
-from precision_track.utils import PoseDataSample, postprocess_one_stage_detections, unflatten_predictions
-from precision_track.models.postprocessing.steps import PostProcessingSteps
-from precision_track.tracking import OnlineGroundTruth
+from torch.utils.data import DataLoader
+
 from precision_track.apis import AssociationStep
+from precision_track.models.postprocessing.steps import PostProcessingSteps
+from precision_track.registry import LOOPS
+from precision_track.utils import PoseDataSample, postprocess_one_stage_detections
 
 
 @LOOPS.register_module()
@@ -203,10 +203,6 @@ class OnlineTrainLoop(EpochBasedTrainLoop):
                 post_processed_frame["img_id"] = ds.frame_id
                 post_processed_frame["ori_shape"] = ds.img_shape
                 frame_anns = self.tracker(post_processed_frame)
-
-                nb_gts = len(post_processed_frame["gt_instances"])
-                if ds.frame_id == 29 and nb_gts == 0:
-                    stop = True
 
                 seq_inputs = self.runner.model.data_preprocessor(
                     dict(inputs=feature_maps, data_samples=frame_anns),

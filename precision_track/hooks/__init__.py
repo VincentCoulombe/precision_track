@@ -3,7 +3,7 @@ from .colab import ColabCheckpointHook
 from .ema_hook import ExpMomentumEMA
 from .evaluation import ValidateBeforeTrainingHook
 from .module_freeze_hook import ModuleFreezingHook
-from .switch_hooks import YOLOXPoseModeSwitchHook, SequencesSwitchHook
+from .switch_hooks import SequencesSwitchHook, YOLOXPoseModeSwitchHook
 from .sync_norm_hook import SyncNormHook
 from .visualization_hook import PoseVisualizationHook
 

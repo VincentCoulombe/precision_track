@@ -21,7 +21,8 @@ class ColorPalette(sv.ColorPalette):
         Args:
             size (Optional[int], optional): The size of the color palette (how many ids do you expect). Defaults to 20.
             names (Optional[List[Any]], optional): A list of seaborn's color palette, they will split the size evenly. Defaults to ["deep", "Spectral"].
-            colors (Optional[List[List[int]]], optional): A list of RGB colors to use. If provided with names=None, only these colors are used. Otherwise, they are combined with seaborn palettes.
+            colors (Optional[List[List[int]]], optional): A list of RGB colors to use. If provided with names=None, only these colors are used. Otherwise,
+            they are combined with seaborn palettes.
         """
         np.random.seed(42)
 

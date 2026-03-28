@@ -14,7 +14,7 @@ from itertools import chain, filterfalse, groupby
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-from mmengine.dataset import BaseDataset, force_full_init, Compose
+from mmengine.dataset import BaseDataset, Compose, force_full_init
 from mmengine.fileio import exists, get_local_path, load
 from mmengine.logging import MessageHub
 from mmengine.utils import is_list_of
@@ -557,8 +557,8 @@ class COCOSimaeseDataset(COCODataset):
 
     def _visualize_augmentations(self, data: dict, augmented_data: dict, idx: int) -> None:
         """Temporary hack to visualize original and augmented images with annotations."""
-        import matplotlib.pyplot as plt
         import matplotlib.patches as patches
+        import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(1, 2, figsize=(16, 8))
 

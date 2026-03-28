@@ -1,8 +1,10 @@
+import os
+
+import numpy as np
 import pytest
 import torch
-import os
-import numpy as np
 from mmengine import Config
+
 from precision_track.models import ActionRecognitionPreprocessor
 
 ROOT = "./tests/"

@@ -1,15 +1,14 @@
 import copy
 import os
-import shutil
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from copy import deepcopy
 from logging import WARNING
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Union
+
 import cv2
 import numpy as np
-import math
 import torch
 from addict import Dict
 from mmengine import Config
@@ -17,19 +16,20 @@ from mmengine.dataset.base_dataset import BaseDataset, force_full_init
 from mmengine.logging import MMLogger, print_log
 from mmengine.structures import InstanceData
 from tqdm import tqdm
-from collections import defaultdict
 
 from precision_track.apis.association_step import AssociationStep
 from precision_track.apis.result import Result
 from precision_track.models.backends import DetectionBackend
 from precision_track.models.optimization.coaches import BaseCoach
-from precision_track.registry import DATASETS, OUTPUTS, COACHES
 from precision_track.outputs import BaseOutput
 from precision_track.outputs.display import display_class_balance
+from precision_track.registry import COACHES, DATASETS, OUTPUTS
 from precision_track.utils import (
     PoseDataSample,
     VideoReader,
+    batch_tracking,
     find_path_in_dir,
+    get_seq_from_img_folder,
     infer_paths,
     iou_batch,
     linear_assignment,
@@ -37,8 +37,6 @@ from precision_track.utils import (
     parse_pose_metainfo,
     reformat,
     update_dynamics_2d,
-    get_seq_from_img_folder,
-    batch_tracking,
 )
 
 from .transforms.formatting import image_to_tensor
@@ -164,7 +162,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
                 kpts_output.read()
             else:
                 self.logger.warning(
-                    f"This training run will not consider the subject poses. To consider it, please provide path to the ground truth's files to the data_prefix dictionnary."
+                    (
+                        "This training run will not consider the subject poses."
+                        "To consider it, please provide path to the ground truth's files to the data_prefix dictionnary."
+                    )
                 )
             keypoints_outputs.append(kpts_output)
 
@@ -173,7 +174,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
                 actions_output.read()
             else:
                 self.logger.warning(
-                    f"This training run will not train the model for action recognition. To do so, please provide path to the ground truth's files to the data_prefix dictionnary."
+                    (
+                        "This training run will not consider the subject poses."
+                        "To consider it, please provide path to the ground truth's files to the data_prefix dictionnary."
+                    )
                 )
             actions_outputs.append(actions_output)
 
@@ -207,7 +211,15 @@ class OnlineRandomSequenceDataset(BaseDataset):
                     block_output = block_output[id_mask]
                 out[output_k] = block_output
 
-        metainfo_keys = ["dataset_name", "upper_body_ids", "lower_body_ids", "flip_pairs", "dataset_keypoint_weights", "flip_indices", "skeleton_links"]
+        metainfo_keys = [
+            "dataset_name",
+            "upper_body_ids",
+            "lower_body_ids",
+            "flip_pairs",
+            "dataset_keypoint_weights",
+            "flip_indices",
+            "skeleton_links",
+        ]
         for key in metainfo_keys:
             out[key] = deepcopy(self._metainfo[key])
         for key, v in zip(["idx", "block_idx", "subject_id"], [idx, block_idx, subject_id]):
@@ -281,12 +293,14 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
             if kpts_out_valid:
                 kpts = kpts_output[running_idx_mask, ...]
-                assert np.all(
-                    kpts[:, 1].astype(int) == sequence["category_id"]
-                ), f"Incoherance found between the keypoints ground truth's class ids and the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
-                assert np.all(
-                    kpts[:, 2].astype(int) == sequence["instance_id"]
-                ), f"Incoherance found between the keypoints ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                assert np.all(kpts[:, 1].astype(int) == sequence["category_id"]), (
+                    "Incoherance found between the keypoints ground truth's class ids and"
+                    f" the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
+                )
+                assert np.all(kpts[:, 2].astype(int) == sequence["instance_id"]), (
+                    "Incoherance found between the keypoints ground truth's instance ids and"
+                    f" the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                )
                 kpts = kpts[:, 3:]
                 num_kpts = kpts.shape[1] // 3
                 kpts = kpts.reshape(-1, num_kpts, 3)
@@ -300,12 +314,14 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
             if actions_out_valid:
                 actions = actions_output[running_idx_mask, ...]
-                assert np.all(
-                    actions[:, 1].astype(int) == sequence["category_id"]
-                ), f"Incoherance found between the actions ground truth's class ids and the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
-                assert np.all(
-                    actions[:, 2].astype(int) == sequence["instance_id"]
-                ), f"Incoherance found between the actions ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                assert np.all(actions[:, 1].astype(int) == sequence["category_id"]), (
+                    "Incoherance found between the actions ground truth's class ids and"
+                    f" the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
+                )
+                assert np.all(actions[:, 2].astype(int) == sequence["instance_id"]), (
+                    "Incoherance found between the actions ground truth's instance ids and"
+                    f" the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                )
                 sequence["action_label"] = actions[:, 3]
                 sequence["action"] = np.array([self.action_to_label_map[a] for a in actions[:, 3]])
             else:
@@ -483,7 +499,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
                     for unique, count in zip(uniques, counts):
                         if unique not in self.action_to_label_map.keys():
                             raise ValueError(
-                                f"The action: {unique} from the dataset, is not in the actions defined in the metadata file: {list(self.action_to_label_map.keys())}"
+                                (
+                                    f"The action: {unique} from the dataset, is not in the actions defined in"
+                                    f" the metadata file: {list(self.action_to_label_map.keys())}"
+                                )
                             )
                         self.action_counter[unique] += count
 
@@ -1195,7 +1214,10 @@ class GroupActionRecognitionDataset(ActionRecognitionDataset):
 
         if self.group_action_to_sequence_map.keys() == {-1}:
             print_log(
-                msg="By setting 'with_group_action_recognition: true' you enabled group action recognition training, but the dataset you provided does not contain group action labels.",
+                msg=(
+                    "By setting 'with_group_action_recognition: true' you enabled group action recognition training, "
+                    "but the dataset you provided does not contain group action labels."
+                ),
                 logger="current",
                 level=WARNING,
             )
@@ -1527,7 +1549,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
         seq_lengths_mean = int(np.mean(seq_lenghts))
         seq_lenghts_median = int(np.median(seq_lenghts))
         self.logger.info(
-            f"The dataset contains {seq_counter} sequences. Sequences mean length: {seq_lengths_mean}, sequences median length: {seq_lenghts_median}, length of all sequences: {self._length}."
+            (
+                f"The dataset contains {seq_counter} sequences. Sequences mean length: {seq_lengths_mean}, "
+                f"sequences median length: {seq_lenghts_median}, length of all sequences: {self._length}."
+            )
         )
         return data_list
 

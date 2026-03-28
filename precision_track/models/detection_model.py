@@ -7,7 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from typing import List, Optional, Tuple, Union, Dict, Any, Iterable
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
 from mmengine.config import Config
