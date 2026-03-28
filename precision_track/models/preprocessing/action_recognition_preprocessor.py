@@ -231,7 +231,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         features = pred_track_instances["features"]
         if isinstance(features, np.ndarray):
             features = torch.from_numpy(features)
-        assert self._device != features.device, f"Expected tensors to be on {self._device}, got {features.device} instead."
+        assert self._device.type == features.device.type, f"Expected tensors to be on {self._device}, got {features.device} instead."
 
         vels = pred_track_instances["velocities"]
         if isinstance(vels, np.ndarray):

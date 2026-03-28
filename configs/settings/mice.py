@@ -13,7 +13,7 @@ widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation_640x640/'
+data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
 deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
@@ -85,14 +85,14 @@ deployment_device = "auto"
 tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
-pipelined = False
-saving_directory = '../work_dir/'
+pipelined = True
+saving_directory = '../work_dir/20mice_sanity_check'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
 with_action_recognition = True
-with_group_action_recognition = True
+with_group_action_recognition = False
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -132,7 +132,7 @@ validation_configuration_file = '../configs/settings/validation/appearance.yaml'
 
 #   3.1) Checkpoints
 mart_deploying_directory = deploying_directory
-mart_checkpoint_name = "mart_DEPLOYED.pth"
+mart_checkpoint_name = 'mart_DEPLOYED.pth'
 gmart_checkpoint_name = 'gmart_DEPLOYED.pth'
 
 mart_checkpoint = deploying_directory + mart_checkpoint_name
@@ -251,7 +251,7 @@ gar_warmup_iter = 10000
 action_recognition_val_interval = 1000
 
 
-action_recognition_data_root = "../../datasets/MICE/sequential/"
+action_recognition_data_root = '../../datasets/MICE/sequential/'
 
 action_recognition_train_sequences = [
     "videos/train/13-10-02.avi",
@@ -296,9 +296,9 @@ action_recognition_test_actions_gt_paths = action_recognition_val_actions_gt_pat
 # 4) Visualization
 display_bounding_boxes = False
 display_poses = True
-display_velocities = False
-display_species = False
-display_confidence_scores = False
+display_velocities = True
+display_species = True
+display_confidence_scores = True
 display_actions = True
 display_search_zones = False
 display_validations = False

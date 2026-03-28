@@ -30,5 +30,6 @@ RUN pip install --no-cache-dir -U pip \
 # Non-root user own the workspace, enables rwx of the container's and the mounted files
 RUN chown -R ${UID}:${GID} /workspace
 ENV HOME=/home/precision_track
+ENV ATEN_CPU_CAPABILITY=default
 USER precision_track
 CMD ["/bin/bash"]
