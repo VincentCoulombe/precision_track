@@ -81,5 +81,5 @@ if __name__ == "__main__":
     # main(parse_args())
     from addict import Dict
 
-    main(Dict(dict(video="../../datasets/MICE/sequential/videos/val/14-20-02.avi")))
-    # main(Dict(dict(video="../../../Downloads/Test 1.mp4")))
+    # main(Dict(dict(video="../../datasets/MICE/sequential/videos/val/14-20-02.avi")))
+    main(Dict(dict(video="../assets/20mice_sanity_check.avi")))

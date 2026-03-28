@@ -22,7 +22,7 @@ def main(args):
     config = load_config(system_configs_path)
     load_validation_config(config)
     config["test_cfg"]["validator"] = config.get("validator")
-    check_if_mot_dataset_is_ok(config["mot_testing_data_root"])
+    check_if_mot_dataset_is_ok(config["mot_data_root"])
     runner = Runner(config, args.launcher, mode="test")
     runner()
 

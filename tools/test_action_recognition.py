@@ -25,14 +25,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # main(parse_args())
-    from addict import Dict
-
-    main(
-        Dict(
-            dict(
-                config="../configs/tasks/testing_group_action_recognition.py",
-                launcher="none",
-            )
-        )
-    )
+    main(parse_args())
