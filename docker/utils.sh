@@ -36,17 +36,23 @@ trap 'err "Failed at line $LINENO"; exit 1' ERR
 
 
 check_system() {
-  # Docker binary installed?
-  if ! have "${DOCKER_BIN%% *}"; then
+  # Docker binary installed? Check the actual docker binary (last word of DOCKER_BIN).
+  if ! have "${DOCKER_BIN##* }"; then
     err "Docker CLI not found. Install Docker first."
     return 1
   fi
 
   # Can we talk to the Docker daemon?
   if ! ${DOCKER_BIN} info >/dev/null 2>&1; then
-    case "$(uname -s)" in
+    local os
+    os="$(uname -s)"
+    case "$os" in
       Linux*)
-        if id -nG "$(id -un)" | grep -qw docker; then
+        # Detect WSL2 — uname reports Linux but the issue is Docker Desktop
+        if grep -qi microsoft /proc/version 2>/dev/null; then
+          err "WSL2 detected. Make sure Docker Desktop is running and WSL integration is enabled."
+          err "  Docker Desktop → Settings → Resources → WSL Integration"
+        elif id -nG "$(id -un)" | grep -qw docker; then
           err "Docker group present but daemon unreachable. Is the service running?"
         else
           err "User not in docker group. Options:"
@@ -74,8 +80,6 @@ nvidia_container_toolkit_missing(){
     err " - PrecisionTrack: https://github.com/VincentCoulombe/precision_track"
     err " - NVIDIA Toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"
 }
-docker_supports_gpus() { ${DOCKER_BIN} run --help | grep -q -- '--gpus'; }
-
 check_docker_gpu() {
   if ! ${DOCKER_BIN} run --rm --gpus all "$GPU_CHECK_IMAGE" nvidia-smi >/dev/null 2>&1; then
     nvidia_container_toolkit_missing
@@ -108,18 +112,13 @@ image_exists(){
 
 ensuring_image_exists(){
     local tag="$1"
-    if ! image_exists $tag; then
+    if ! image_exists "$tag"; then
         warning "The ${IMAGE_NAME}:$tag Docker image was not found, creating it..."
-        info "Building ${IMAGE_NAME}:$tag..."
-        docker_file=""
+        local docker_file=""
         if [[ "$tag" == "${TAG_CPU}" ]]; then
             docker_file="${CPU_DOCKERFILE}"
         else
             docker_file="${CUDA_DOCKERFILE}"
-            if ! docker_supports_gpus; then
-                nvidia_container_toolkit_missing
-                exit 1
-            fi
             check_docker_gpu || exit 1
         fi
         build_image "$docker_file" "$tag"
@@ -132,20 +131,22 @@ ensuring_image_exists(){
 launching_container() {
   local tag="$1"
   local update="$2"
+  local repo_root="$3"
 
   info "Launching the ${IMAGE_NAME}:$tag Docker container..."
   info "The environment will stay active for as long as the terminal remains open."
 
   local base_opts=(
     --rm --ipc=host
-    --mount type=bind,source="$(pwd)/..",target=/workspace/precision_track
+    --mount type=bind,source="${repo_root}",target=/workspace/precision_track
     --user "$(id -u):$(id -g)"
     -w /workspace/precision_track
     -e HOME=/workspace
   )
 
   local gpu_opts=()
-  if [[ "$tag" == "$TAG_CUDA" ]]; then 
+  if [[ "$tag" == "$TAG_CUDA" ]]; then
+    check_docker_gpu || exit 1
     gpu_opts+=(--gpus all --group-add video) # Needed for the container to access the gpus
   fi
 

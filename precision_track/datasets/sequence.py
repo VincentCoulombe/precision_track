@@ -1,15 +1,14 @@
 import copy
 import os
-import shutil
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from copy import deepcopy
 from logging import WARNING
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Union
+
 import cv2
 import numpy as np
-import math
 import torch
 from addict import Dict
 from mmengine import Config
@@ -17,19 +16,20 @@ from mmengine.dataset.base_dataset import BaseDataset, force_full_init
 from mmengine.logging import MMLogger, print_log
 from mmengine.structures import InstanceData
 from tqdm import tqdm
-from collections import defaultdict
 
 from precision_track.apis.association_step import AssociationStep
 from precision_track.apis.result import Result
 from precision_track.models.backends import DetectionBackend
 from precision_track.models.optimization.coaches import BaseCoach
-from precision_track.registry import DATASETS, OUTPUTS, COACHES
 from precision_track.outputs import BaseOutput
 from precision_track.outputs.display import display_class_balance
+from precision_track.registry import COACHES, DATASETS, OUTPUTS
 from precision_track.utils import (
     PoseDataSample,
     VideoReader,
+    batch_tracking,
     find_path_in_dir,
+    get_seq_from_img_folder,
     infer_paths,
     iou_batch,
     linear_assignment,
@@ -37,8 +37,6 @@ from precision_track.utils import (
     parse_pose_metainfo,
     reformat,
     update_dynamics_2d,
-    get_seq_from_img_folder,
-    batch_tracking,
 )
 
 from .transforms.formatting import image_to_tensor
@@ -164,7 +162,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
                 kpts_output.read()
             else:
                 self.logger.warning(
-                    f"This training run will not consider the subject poses. To consider it, please provide path to the ground truth's files to the data_prefix dictionnary."
+                    (
+                        "This training run will not consider the subject poses."
+                        "To consider it, please provide path to the ground truth's files to the data_prefix dictionnary."
+                    )
                 )
             keypoints_outputs.append(kpts_output)
 
@@ -173,7 +174,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
                 actions_output.read()
             else:
                 self.logger.warning(
-                    f"This training run will not train the model for action recognition. To do so, please provide path to the ground truth's files to the data_prefix dictionnary."
+                    (
+                        "This training run will not consider the subject poses."
+                        "To consider it, please provide path to the ground truth's files to the data_prefix dictionnary."
+                    )
                 )
             actions_outputs.append(actions_output)
 
@@ -207,7 +211,15 @@ class OnlineRandomSequenceDataset(BaseDataset):
                     block_output = block_output[id_mask]
                 out[output_k] = block_output
 
-        metainfo_keys = ["dataset_name", "upper_body_ids", "lower_body_ids", "flip_pairs", "dataset_keypoint_weights", "flip_indices", "skeleton_links"]
+        metainfo_keys = [
+            "dataset_name",
+            "upper_body_ids",
+            "lower_body_ids",
+            "flip_pairs",
+            "dataset_keypoint_weights",
+            "flip_indices",
+            "skeleton_links",
+        ]
         for key in metainfo_keys:
             out[key] = deepcopy(self._metainfo[key])
         for key, v in zip(["idx", "block_idx", "subject_id"], [idx, block_idx, subject_id]):
@@ -281,12 +293,14 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
             if kpts_out_valid:
                 kpts = kpts_output[running_idx_mask, ...]
-                assert np.all(
-                    kpts[:, 1].astype(int) == sequence["category_id"]
-                ), f"Incoherance found between the keypoints ground truth's class ids and the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
-                assert np.all(
-                    kpts[:, 2].astype(int) == sequence["instance_id"]
-                ), f"Incoherance found between the keypoints ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                assert np.all(kpts[:, 1].astype(int) == sequence["category_id"]), (
+                    "Incoherance found between the keypoints ground truth's class ids and"
+                    f" the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
+                )
+                assert np.all(kpts[:, 2].astype(int) == sequence["instance_id"]), (
+                    "Incoherance found between the keypoints ground truth's instance ids and"
+                    f" the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                )
                 kpts = kpts[:, 3:]
                 num_kpts = kpts.shape[1] // 3
                 kpts = kpts.reshape(-1, num_kpts, 3)
@@ -300,12 +314,14 @@ class OnlineRandomSequenceDataset(BaseDataset):
 
             if actions_out_valid:
                 actions = actions_output[running_idx_mask, ...]
-                assert np.all(
-                    actions[:, 1].astype(int) == sequence["category_id"]
-                ), f"Incoherance found between the actions ground truth's class ids and the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
-                assert np.all(
-                    actions[:, 2].astype(int) == sequence["instance_id"]
-                ), f"Incoherance found between the actions ground truth's instance ids and the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                assert np.all(actions[:, 1].astype(int) == sequence["category_id"]), (
+                    "Incoherance found between the actions ground truth's class ids and"
+                    f" the bounding boxes ground truth's class ids on frame: {block_idx+running_idx}."
+                )
+                assert np.all(actions[:, 2].astype(int) == sequence["instance_id"]), (
+                    "Incoherance found between the actions ground truth's instance ids and"
+                    f" the bounding boxes ground truth's instance ids on frame: {block_idx+running_idx}."
+                )
                 sequence["action_label"] = actions[:, 3]
                 sequence["action"] = np.array([self.action_to_label_map[a] for a in actions[:, 3]])
             else:
@@ -483,7 +499,10 @@ class OnlineRandomSequenceDataset(BaseDataset):
                     for unique, count in zip(uniques, counts):
                         if unique not in self.action_to_label_map.keys():
                             raise ValueError(
-                                f"The action: {unique} from the dataset, is not in the actions defined in the metadata file: {list(self.action_to_label_map.keys())}"
+                                (
+                                    f"The action: {unique} from the dataset, is not in the actions defined in"
+                                    f" the metadata file: {list(self.action_to_label_map.keys())}"
+                                )
                             )
                         self.action_counter[unique] += count
 
@@ -568,7 +587,6 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
         pipeline: List[Union[dict, Callable]] = [],
         test_mode: bool = False,
         block_size: Optional[int] = 2,
-        inference_resolution: Optional[tuple] = None,
         verbose: Optional[tuple] = False,
         *args,
         **kwargs,
@@ -577,12 +595,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
         self.detector = DetectionBackend(**detector)
         self.actions_gt_format = actions_gt_format
         self.action_to_label_map = dict()
-        self.input_scale = inference_resolution  # TODO rendre dynamique. 1 par video...
-        self.input_center = None
         self.cat_warned = False
-        if isinstance(self.input_scale, (Tuple, list, np.ndarray)):
-            self.input_scale = np.array(self.input_scale)
-            self.input_center = self.input_scale // 2
 
         self.logger = MMLogger.get_current_instance()
         self.METAINFO.update(from_file=from_file)
@@ -721,6 +734,8 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
         for sequence_idx, kpts_idx, bboxes_idx, actions_idx in tqdm(prefix_map):
             self.set_sequence_transforms()
             vid_reader = VideoReader(self.data_prefix["sequences"][sequence_idx])
+            input_scale = np.array(vid_reader.resolution)
+            input_center = input_scale // 2
             sequence_name = sequences_name[sequence_idx]
             kpts_output = self.data_prefix["keypoints_outputs"][kpts_idx]
             bboxes_output = self.data_prefix["bboxes_outputs"][bboxes_idx]
@@ -778,7 +793,9 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                     )
 
                     if actions_idx is not None and actions_idx >= 0:
-                        actions = frame_actions.reshape(-1)
+                        actions = frame_actions[:, 0].reshape(-1)
+                        if frame_actions.shape[1] > 1:
+                            actions_performed_with = frame_actions[:, 1].reshape(-1).astype(int)
                         action_labels = np.zeros_like(actions, dtype=int)
                         for i, action in enumerate(actions):
                             action_label = self.action_to_label_map.get(action)
@@ -790,6 +807,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                             dict(
                                 action=actions,
                                 action_label=action_labels,
+                                action_performed_with=actions_performed_with,
                             )
                         )
                     data = self.pipeline(self.load_metadata(frame_data))
@@ -845,21 +863,23 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                             keypoints_visible = outputs[j]["pred_instances"]["keypoint_scores"][matched_preds][unique_idx].cpu()
                             labels = outputs[j]["pred_instances"]["labels"][matched_preds][unique_idx].cpu()
 
-                            action_labels = []
+                            action_labels = np.array([])
+                            actions_performed_with = np.array([])
                             if hasattr(data_sample.gt_instance_labels, "action_labels"):
                                 action_labels = data_sample.gt_instance_labels.action_labels[matched_gts][unique_idx]
+                                actions_performed_with = data_sample.gt_instance_labels.actions_performed_with[matched_gts][unique_idx]
 
-                            actions = []
+                            actions = np.array([])
                             if hasattr(data_sample.gt_instances, "actions"):
                                 actions = np.array(data_sample.gt_instances.actions[matched_gts]).reshape(len(matched_gts))[unique_idx]
 
                             input_size = data_sample.metainfo["input_size"]
-                            input_scale = data_sample.metainfo["ori_shape"]
+                            ori_shape = data_sample.metainfo["ori_shape"]
 
-                            if isinstance(self.input_scale, np.ndarray) and (self.input_scale != input_scale).all():
-                                scale = torch.tensor(self.input_scale, dtype=torch.float32, device=bboxes.device)
+                            if (input_scale != np.array(ori_shape)).any():
+                                scale = torch.tensor(input_scale, dtype=torch.float32, device=bboxes.device)
                                 rescale = scale / torch.tensor(input_size, dtype=torch.float32, device=bboxes.device)
-                                translation = torch.tensor(self.input_center, dtype=torch.float32, device=bboxes.device) - 0.5 * scale
+                                translation = torch.tensor(input_center, dtype=torch.float32, device=bboxes.device) - 0.5 * scale
 
                                 keypoints = keypoints * rescale.view(1, 1, 2) + translation.view(1, 1, 2)
                                 bboxes = bboxes * torch.tile(rescale, (bboxes.shape[0], 2)) + torch.tile(translation, (bboxes.shape[0], 2))
@@ -872,8 +892,9 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                             pred_track_instances.labels = labels
                             pred_track_instances.features = features
 
-                            gt_instance_labels = InstanceData()
+                            gt_instance_labels = Dict()
                             gt_instance_labels.action_labels = action_labels
+                            gt_instance_labels.actions_performed_with = actions_performed_with
                             gt_instances = InstanceData()
                             gt_instances.actions = actions
 
@@ -924,9 +945,14 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         weighted_selection: Optional[bool] = False,
         inference_resolution: Optional[tuple] = None,
         ignore_idx: Optional[int] = -100,
+        keep_bboxes: Optional[bool] = False,
         *args,
         **kwargs,
     ):
+        self.weighted_selection = weighted_selection
+        self.max_subjects = None
+        self.keep_bboxes = bool(keep_bboxes)
+
         super().__init__(
             from_file=from_file,
             detector=detector,
@@ -963,12 +989,13 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
         self._ignore_idx = int(ignore_idx)
 
     def prepare_data(self, idx):
-        random_action = np.random.choice(a=self.labels, p=self.p)
+        rng = np.random.default_rng(seed=idx)
+        random_action = rng.choice(a=self.labels, p=self.p)
 
         nb_action_labels = len(self.action_to_sequence_map[random_action])
         assert self.block_size < nb_action_labels, f"An action have less labels ({nb_action_labels}) than the specified block size ({self.block_size})."
 
-        random_action_idx = np.random.randint(0, nb_action_labels)
+        random_action_idx = rng.integers(0, nb_action_labels)
         inputs = torch.zeros((self.block_size, self.n_feats), dtype=torch.float32, device="cpu")
         kpts = torch.zeros((self.block_size, self.n_kpts, 2), dtype=torch.float32, device="cpu")
         kpt_vis = torch.zeros((self.block_size, self.n_kpts), dtype=torch.float32, device="cpu")
@@ -1027,7 +1054,8 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
                 frame_id = data_sample.img_id
                 seq_name = data_sample.seq_name
                 bboxes = data_sample.pred_track_instances.bboxes
-                del data_sample.pred_track_instances.bboxes
+                if not self.keep_bboxes:
+                    del data_sample.pred_track_instances.bboxes
                 actions = data_sample.gt_instance_labels.action_labels
                 ids = data_sample.pred_track_instances.instances_id
                 frame_dynamics = torch.zeros((len(ids), 6), device=ids.device, dtype=bboxes.dtype)
@@ -1048,6 +1076,178 @@ class ActionRecognitionDataset(OfflineRandomSequenceDataset):
                     if frame_id >= self.block_size:  # Removing first self.block_size frames from each sequences.
                         self.action_to_sequence_map[action].append((s, seq_name, frame_id, id_))
                 data_sample.pred_track_instances.dynamics = frame_dynamics[:, 2:4]
+        return data_list
+
+
+@DATASETS.register_module()
+class GroupActionRecognitionDataset(ActionRecognitionDataset):
+    def __init__(self, require_interaction: bool = False, *args, **kwargs):
+        self.require_interaction = require_interaction
+        super().__init__(*args, **kwargs)
+        social_actions = self.metainfo.get("social_actions", [])
+        self.actions = np.array(self.metainfo.get("actions", []))
+        self.action2social = dict()
+        for i, social_action in enumerate(social_actions):
+            idx = np.where(self.actions == social_action)[0]
+            if idx:
+                self.action2social[idx.item()] = i
+
+    def prepare_data(self, idx):
+        rng = np.random.default_rng(seed=idx)
+        sampled_action = rng.choice(a=self.group_labels, p=self.p_group)
+        entries = self.group_action_to_sequence_map[sampled_action]
+        s, seq_name, frame_id = entries[rng.integers(0, len(entries))]
+
+        anchor_frame = self.data_list[s][frame_id]
+        valid_ids = anchor_frame.pred_track_instances.instances_id
+        N = len(valid_ids)
+
+        # Batch padding (all features, poses, dynamics and group matrices have the same nb of subjects)
+        if self.max_subjects is not None:
+            valid_mask = torch.zeros(self.max_subjects, dtype=torch.bool, device="cpu")
+            valid_mask[: min(N, self.max_subjects)] = True
+            if N < self.max_subjects:
+                valid_ids = torch.cat([valid_ids, torch.full((self.max_subjects - N,), -1, dtype=valid_ids.dtype, device="cpu")])
+            else:
+                valid_ids = valid_ids[: self.max_subjects].clone()
+            N = self.max_subjects
+        else:
+            valid_mask = torch.ones(N, dtype=torch.bool, device="cpu")
+            valid_ids = valid_ids.clone()
+
+        inputs = torch.zeros((N, self.block_size, self.n_feats), dtype=torch.float32, device="cpu")
+        bboxes = torch.zeros((N, self.block_size, 4), dtype=torch.float32, device="cpu")
+        kpts = torch.zeros((N, self.block_size, self.n_kpts, 2), dtype=torch.float32, device="cpu")
+        kpt_vis = torch.zeros((N, self.block_size, self.n_kpts), dtype=torch.float32, device="cpu")
+        dynamics = torch.zeros((N, self.block_size, self.n_velocities), dtype=torch.float32, device="cpu")
+        node_labels = torch.full((N, self.block_size), -1, dtype=torch.long, device="cpu")
+
+        for i, block_idx in enumerate(reversed(range(self.block_size))):
+            data_sample = self.data_list[s][frame_id - i]
+            for valid_idx, valid_id in enumerate(valid_ids):
+                if valid_id.item() == -1:
+                    continue  # this is batch padding
+                id_idx = torch.where(data_sample.pred_track_instances.instances_id == valid_id)[0]
+                if id_idx.numel() > 0:
+                    inputs[valid_idx, block_idx] = data_sample.pred_track_instances.features[id_idx]
+                    bboxes[valid_idx, block_idx] = data_sample.pred_track_instances.bboxes[id_idx]
+                    kpts[valid_idx, block_idx] = data_sample.pred_track_instances.kpts[id_idx]
+                    kpt_vis[valid_idx, block_idx] = data_sample.pred_track_instances.kpt_vis[id_idx]
+                    dynamics[valid_idx, block_idx] = data_sample.pred_track_instances.dynamics[id_idx]
+                    node_labels[valid_idx, block_idx] = data_sample.gt_instance_labels.action_labels[id_idx]
+
+        id_to_idx = {vid.item(): vi for vi, vid in enumerate(valid_ids) if vid.item() != -1}
+        partners = anchor_frame.gt_instance_labels.actions_performed_with
+        actions_at_t = anchor_frame.gt_instance_labels.action_labels
+        anchor_ids = anchor_frame.pred_track_instances.instances_id
+
+        # -1 if there is no relationship between subjects, the action id otherwise.
+        group_matrix = torch.full((N, N), -1, dtype=torch.long, device="cpu")
+        for anchor_idx, (action, partner_id) in enumerate(zip(actions_at_t, partners)):
+            anchor_id = anchor_ids[anchor_idx].item()
+            if anchor_id not in id_to_idx:
+                continue
+            partner_id = partner_id.item()
+            if partner_id != -1 and partner_id in id_to_idx:
+                group_matrix[id_to_idx[anchor_id], id_to_idx[partner_id]] = self.action2social[action.item()]  # Assume a mapping exists...
+
+        inputs_ds = PoseDataSample()
+        inputs_ds.gt_instance_labels = InstanceData()
+        inputs_ds.pred_track_instances = InstanceData()
+
+        inputs_ds.gt_instance_labels.group_action_matrix = group_matrix
+        inputs_ds.gt_instance_labels.node_labels = node_labels
+        inputs_ds.pred_track_instances.bboxes = bboxes
+        inputs_ds.pred_track_instances.kpts = kpts
+        inputs_ds.pred_track_instances.kpt_vis = kpt_vis
+        inputs_ds.pred_track_instances.velocities = dynamics
+        inputs_ds.pred_track_instances.instances_id = valid_ids
+        inputs_ds.pred_track_instances.valid_mask = valid_mask
+        inputs_ds.img_id = frame_id
+        inputs_ds.seq_id = s
+        inputs_ds.seq_name = seq_name
+
+        return dict(inputs=inputs, data_samples=inputs_ds)
+
+    def load_data_list(self) -> List[dict]:
+        self.group_action_to_sequence_map = defaultdict(list)
+        self.pair_index = defaultdict(list)  # action → [(s, seq_name, frame_id, id_i, id_j)]
+        data_list = super().load_data_list()
+
+        max_subjects_seen = 0
+        total_subject_frames = 0
+        group_subject_frames = 0
+        for s, sequence in enumerate(data_list):
+            for data_sample in sequence:
+                frame_id = data_sample.img_id
+                seq_name = data_sample.seq_name
+                ids = data_sample.pred_track_instances.instances_id
+                actions = data_sample.gt_instance_labels.action_labels
+                partners = data_sample.gt_instance_labels.actions_performed_with
+
+                if frame_id < self.block_size:
+                    continue
+
+                max_subjects_seen = max(max_subjects_seen, len(ids))
+                id_set = set(ids.tolist())
+                frame_has_group = False
+                seen_this_frame = set()
+
+                for id_, action, partner_id in zip(ids, actions, partners):
+                    id_ = id_.item()
+                    action = action.item()
+                    partner_id = partner_id.item()
+                    if partner_id >= 0 and partner_id in id_set:
+                        key = (action, s, frame_id)
+                        if key not in seen_this_frame:  # Remove redundancy (the whole frame is sent in prepare_data() anyway...)
+                            self.group_action_to_sequence_map[action].append((s, seq_name, frame_id))
+                            seen_this_frame.add(key)
+                        self.pair_index[action].append((s, seq_name, frame_id, id_, partner_id))
+                        frame_has_group = True
+
+                if not frame_has_group:
+                    self.group_action_to_sequence_map[-1].append((s, seq_name, frame_id))
+
+                total_subject_frames += len(ids)
+                group_subjects_this_frame = {id_.item() for id_, partner_id in zip(ids, partners) if partner_id.item() != -1 and partner_id.item() in id_set}
+                group_subject_frames += len(group_subjects_this_frame)
+
+        if self.group_action_to_sequence_map.keys() == {-1}:
+            print_log(
+                msg=(
+                    "By setting 'with_group_action_recognition: true' you enabled group action recognition training, "
+                    "but the dataset you provided does not contain group action labels."
+                ),
+                logger="current",
+                level=WARNING,
+            )
+
+        p_subject_in_groups = group_subject_frames / max(total_subject_frames, 1)
+        p_neg = p_subject_in_groups / 2  # Go towards 50/50 if p_subject_in_groups == 1
+
+        positive_labels = [k for k in self.group_action_to_sequence_map if k != -1]
+        if self.weighted_selection:
+            pos_counts = np.array([len(self.group_action_to_sequence_map[k]) for k in positive_labels], dtype=float)
+        else:
+            pos_counts = np.ones(len(positive_labels), dtype=float)
+
+        if len(positive_labels) > 0:
+            pos_weights = pos_counts / pos_counts.sum() * (1 - p_neg)
+            if -1 in self.group_action_to_sequence_map:
+                self.group_labels = [-1] + positive_labels
+                self.p_group = np.array([p_neg] + list(pos_weights))
+            else:
+                self.group_labels = positive_labels
+                self.p_group = pos_weights
+        else:
+            self.group_labels = [-1]
+            self.p_group = np.array([1.0])
+        if self.require_interaction and len(positive_labels) > 0:
+            self.group_labels = positive_labels
+            self.p_group = pos_counts / pos_counts.sum()
+
+        if self.max_subjects is None:
+            self.max_subjects = max_subjects_seen
         return data_list
 
 
@@ -1349,7 +1549,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
         seq_lengths_mean = int(np.mean(seq_lenghts))
         seq_lenghts_median = int(np.median(seq_lenghts))
         self.logger.info(
-            f"The dataset contains {seq_counter} sequences. Sequences mean length: {seq_lengths_mean}, sequences median length: {seq_lenghts_median}, length of all sequences: {self._length}."
+            (
+                f"The dataset contains {seq_counter} sequences. Sequences mean length: {seq_lengths_mean}, "
+                f"sequences median length: {seq_lenghts_median}, length of all sequences: {self._length}."
+            )
         )
         return data_list
 

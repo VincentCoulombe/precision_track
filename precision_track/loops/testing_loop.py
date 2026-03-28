@@ -45,6 +45,8 @@ class SequenceTestingLoop(TestLoop):
         self.runner.call_hook("before_test_iter", batch_idx=idx, data_batch=data_batch)
         with autocast(enabled=self.fp16):
             outputs = self.backend.test_step(data_batch, *args, **kwargs)
+        if not isinstance(outputs, list):
+            outputs = [outputs]
         self.evaluator.process(data_samples=outputs, data_batch=data_batch)
         self.runner.call_hook(
             "after_test_iter",

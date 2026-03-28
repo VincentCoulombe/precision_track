@@ -91,7 +91,8 @@ tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = False
+with_action_recognition = True
+with_group_action_recognition = True
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -115,7 +116,7 @@ hyperparams = deploying_directory + "hyperparameters.json"
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
-mot_testing_data_root = '../../datasets/MICE/pose-estimation/benchmark/'
+mot_data_root = '../../datasets/MICE/pose-estimation/benchmark/'
 testing_tracking_output_file = testing_work_dir + "mean_CLEAR_metrics_over_all_videos.csv"
 #   2.2) /Testing
 
@@ -128,14 +129,21 @@ validation_configuration_file = '../configs/settings/validation/appearance.yaml'
 
 
 # 3) Action Recognition
-mart_checkpoint = deploying_directory + "mart_DEPLOYED.pth"
 
-inference_resolution = (2720, 2720)
+#   3.1) Checkpoints
+mart_deploying_directory = deploying_directory
+mart_checkpoint_name = "mart_DEPLOYED.pth"
+gmart_checkpoint_name = 'gmart_DEPLOYED.pth'
+
+mart_checkpoint = deploying_directory + mart_checkpoint_name
+gmart_checkpoint = deploying_directory + gmart_checkpoint_name
+#   3.1) /Checkpoints
+
 block_size = 30
 
 n_encoded_dynamics = 2
 n_embd_dynamics = 32
-n_embd_pose = 96
+n_embd_poses = 96
 n_embd_features = 128
 
 action_recognition_bboxes_gt_format = "CsvBoundingBoxes"
@@ -148,10 +156,15 @@ assigner = dict(
 
 if with_action_recognition:
     action_recognition_input_names = ["features", "poses", "dynamics"]
+    gar_input_names = ["valid_mask", "keypoint_priors", "distance_priors"]
     action_recognition_output_names = ["class_logits", "action_embeddings"]
+    gar_output_names = ["interaction_logits", "social_logits"]
 
     velocity_encoder = dict(type="BaseVelocityEncoder")
-    # velocity_encoder = dict(type="VelocityNormEncoder")
+
+    action_recognition_with_velocities = n_embd_dynamics > 0
+    action_recognition_with_poses = n_embd_poses > 0 and with_pose_estimation
+    action_recognition_with_features = n_embd_features > 0
 
     analyzer = dict(
         type="ActionRecognitionBackend",
@@ -162,8 +175,8 @@ if with_action_recognition:
             _delete_=True,
             block_size=block_size,
             with_actions=False,
-            with_kpts=True,
-            with_vels=True,
+            with_kpts=action_recognition_with_poses,
+            with_vels=action_recognition_with_velocities,
             velocity_encoder=velocity_encoder,
         ),
         metainfo=metainfo,
@@ -171,7 +184,7 @@ if with_action_recognition:
         data_postprocessor=dict(
             type="ActionPostProcessingSteps",
             postprocessing_steps=[
-                dict(type="NearnessBasedActionFiltering", concerned_labels=["Interacting"], fallback_label="Other", metainfo=metainfo),
+                dict(type="NearnessBasedActionFiltering", fallback_label="Other", metainfo=metainfo),
                 dict(
                     type="KeypointBasedActionRefinement",
                     action_to_refine="Interacting",
@@ -187,11 +200,14 @@ if with_action_recognition:
             model=dict(
                 type="MART",
                 config=dict(
-                    n_embd=n_embd_features,
+                    with_features=action_recognition_with_features,
+                    with_dynamics=action_recognition_with_velocities,
+                    with_poses=action_recognition_with_poses,
+                    n_embd_features=n_embd_features,
                     block_size=block_size,
                     n_encoded_dynamics=n_encoded_dynamics,
                     n_embd_dynamics=n_embd_dynamics,
-                    n_embd_pose=n_embd_pose,
+                    n_embd_poses=n_embd_poses,
                     n_block=4,
                     causal=True,
                     use_alibi=False,
@@ -216,16 +232,24 @@ if with_action_recognition:
 else:
     analyzer = None
     action_recognition_input_names = None
+    gar_input_names = None
     action_recognition_output_names = None
+    gar_output_names = None
 
-#   3.1) Training
+#   3.2) Training
 action_recognition_batch_size = 128
+gar_batch_size = 32
 action_recognition_base_lr = 3e-5
+gar_base_lr = 3e-5
 action_recognition_weight_decay = 0.01
+gar_weight_decay = 0.1
 action_recognition_dropout = 0
 action_recognition_num_iter = 100000
+gar_num_iter = 50000
 action_recognition_warmup_iter = 25000
+gar_warmup_iter = 10000
 action_recognition_val_interval = 1000
+
 
 action_recognition_data_root = "../../datasets/MICE/sequential/"
 
@@ -254,21 +278,18 @@ action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
 action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
 action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
 action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
-#   3.1) /Training
 
-#   3.2) Testing
-mart_testing_checkpoint = deploying_directory + "mart.pth"
+#   3.2) /Training
+
+#   3.3) Testing
+mart_testing_checkpoint = deploying_directory + mart_checkpoint_name
+gmart_testing_checkpoint = deploying_directory + gmart_checkpoint_name
 
 action_recognition_test_sequences = action_recognition_val_sequences
 action_recognition_test_bboxes_gt_paths = action_recognition_val_bboxes_gt_paths
 action_recognition_test_keypoints_gt_paths = action_recognition_val_keypoints_gt_paths
 action_recognition_test_actions_gt_paths = action_recognition_val_actions_gt_paths
-#   3.2) /Testing
-
-#   3.3) Deployment
-mart_deploying_directory = deploying_directory
-mart_deployed_name = "mart_DEPLOYED.pth"
-#   3.3) /Deployment
+#   3.3) /Testing
 # 3) /Action Recognition
 
 
@@ -278,9 +299,9 @@ display_poses = True
 display_velocities = False
 display_species = False
 display_confidence_scores = False
-display_actions = False
+display_actions = True
 display_search_zones = False
 display_validations = False
 display_untracked_detections = False
-# 4) /Visualization
 display_predicted_bounding_boxes = False
+# 4) /Visualization

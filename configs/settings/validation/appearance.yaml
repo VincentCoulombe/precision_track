@@ -1,4 +1,5 @@
-type: AppearanceValidation
+# type: AppearanceValidation
+type: MetricBasedAppearanceValidation
 data_preprocessor:
   type: WildLifeReIDPreprocessor
 re_identificator:

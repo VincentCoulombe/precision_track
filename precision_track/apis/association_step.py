@@ -2,8 +2,9 @@ import json
 import logging
 import os.path as osp
 from collections import deque
-from typing import List, Optional, Tuple, Union
 from time import perf_counter
+from typing import List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,7 +13,7 @@ from mmengine.config import Config
 from mmengine.logging import print_log
 
 from precision_track.registry import TRACKING
-from precision_track.utils import parse_pose_metainfo, PoseDataSample, biou_batch
+from precision_track.utils import PoseDataSample, biou_batch, parse_pose_metainfo
 
 
 class AssociationStep(nn.Module):
@@ -346,15 +347,8 @@ class AssociationStep(nn.Module):
 
         if self.return_isolations:
             if nb_subjects > 0:
-                relevant_bboxes = data_sample["pred_track_instances"]["bboxes"]
-                search_areas = data_sample.get("search_areas", dict()).get("bboxes", [])
-
-                if len(search_areas) > 0:
-                    bboxes = np.concatenate([relevant_bboxes, search_areas])
-                else:
-                    bboxes = relevant_bboxes
-
-                bious = biou_batch(relevant_bboxes.copy(), bboxes, 0.5)
+                bboxes = data_sample["pred_track_instances"]["bboxes"]
+                bious = biou_batch(bboxes.copy(), bboxes, 0.5)
                 isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
                 data_sample["pred_track_instances"]["isolated"] = isolated
             else:

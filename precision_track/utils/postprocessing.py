@@ -1,8 +1,9 @@
-from typing import Optional, List, Union, Any
-from addict import Dict
+from typing import Any, List, Optional, Union
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
+from addict import Dict
 
 from precision_track.utils import PoseDataSample, xyxy_cxcywh
 
@@ -88,22 +89,54 @@ def postprocess_fpv_action_recognition(
     data_samples: Union[List[PoseDataSample], PoseDataSample],
     actions_map: np.ndarray,
     post_processor: Optional[Any] = None,
+    action_threshold: Optional[float] = 0.75,
+    social_action_threshold: Optional[float] = 0.5,
+    group_actions_map: Optional[np.ndarray] = None,
+    null_action: Optional[str] = None,
 ):
     if isinstance(data_samples, List):
         assert len(data_samples) == 1, "Action Recognition does not support batches."
         data_sample = data_samples[0]
     else:
         data_sample = data_samples
-    if isinstance(preds, tuple):
-        # TODO EMA smoothing des action embeddings (temporal consistency)!!!
-        data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
+    if isinstance(preds, list):
         preds = preds[0]
+
+    edge_probs = None
+    social_logits = None
+    if isinstance(preds, tuple):
+        data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
+        if len(preds) >= 3:
+            edge_probs = preds[2].squeeze(0)
+        if len(preds) >= 4:
+            social_logits = preds[3].squeeze(0)
+        preds = preds[0].squeeze(0)
 
     if isinstance(preds, torch.Tensor):
         preds = preds.detach().cpu().numpy().astype(np.float32)
 
-    actions = actions_map[np.argmax(preds, axis=1).reshape(-1)]
-    action_scores = np.max(preds, axis=1).reshape(-1)
+    action_scores = preds.max(axis=-1)
+    actions = actions_map[preds.argmax(axis=-1).reshape(-1)]
+    if isinstance(null_action, str):
+        actions[action_scores < action_threshold] = null_action
+    action_scores = action_scores.reshape(-1)
+
+    if edge_probs is not None and social_logits is not None and isinstance(group_actions_map, np.ndarray):
+        edge_probs = edge_probs.detach().cpu().numpy()
+        max_social_scores, social_actions = social_logits.max(dim=-1)
+
+        is_social = torch.where((max_social_scores >= social_action_threshold) & (social_actions > 0))[0].cpu().numpy()
+
+        social_actions = social_actions.detach().cpu().numpy()[is_social]
+
+        valid_ids = data_sample["pred_track_instances"]["instances_id"]
+        target_ids = np.full(len(valid_ids), "-1", dtype=object)
+
+        if np.any(social_actions):
+            actions[is_social] = group_actions_map[social_actions - 1]
+            target_ids[is_social] = [",".join(map(str, valid_ids[edge_probs[i] >= social_action_threshold])) or "-1" for i in is_social]
+
+        data_sample["pred_track_instances"]["target_ids"] = target_ids.astype(str)
 
     valid_context = data_sample["pred_track_instances"]["valid_action_recognition_context"]
     if isinstance(valid_context, torch.Tensor):

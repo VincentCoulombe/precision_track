@@ -1,10 +1,10 @@
 from collections.abc import Iterable
-from typing import Optional, Union, Tuple
-import torchvision.transforms as T
-import torch.nn as nn
+from typing import Optional, Union
+
 import numpy as np
 import torch
-from mmengine.model import ImgDataPreprocessor, BaseDataPreprocessor
+import torchvision.transforms as T
+from mmengine.model import ImgDataPreprocessor
 
 from precision_track.datasets.transforms.utils import Compose
 from precision_track.registry import MODELS

@@ -1,6 +1,7 @@
+import os
+
 import numpy as np
 import pytest
-import os
 
 from precision_track.utils import batch_bbox_areas, iou_batch, reformat
 

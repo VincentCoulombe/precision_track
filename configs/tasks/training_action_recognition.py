@@ -18,8 +18,8 @@ block_size = _base_.block_size
 n_embd_features = _base_.n_embd_features
 
 bboxes_gt_format = _base_.action_recognition_bboxes_gt_format
-keypoints_gt_format = _base_.action_recognition_bboxes_gt_format
-actions_gt_format = _base_.action_recognition_bboxes_gt_format
+keypoints_gt_format = _base_.action_recognition_keypoints_gt_format
+actions_gt_format = _base_.action_recognition_actions_gt_format
 
 metainfo = _base_.metainfo
 data_mode = _base_.data_mode
@@ -34,6 +34,7 @@ val_sequences = _base_.action_recognition_val_sequences
 val_bboxes_gt_paths = _base_.action_recognition_val_bboxes_gt_paths
 val_keypoints_gt_paths = _base_.action_recognition_val_keypoints_gt_paths
 val_actions_gt_paths = _base_.action_recognition_val_actions_gt_paths
+
 # /Settings
 
 # Model
@@ -166,7 +167,6 @@ train_dataloader = dict(
         ),
         block_size=block_size,
         pipeline=load_img + resize + transforms + load_anns,
-        inference_resolution=_base_.inference_resolution,
         training=True,
     ),
 )
@@ -195,7 +195,6 @@ val_dataloader = dict(
         ),
         block_size=block_size,
         pipeline=load_img + resize + load_anns,
-        inference_resolution=_base_.inference_resolution,
         training=False,
     ),
 )

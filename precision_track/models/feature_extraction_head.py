@@ -20,6 +20,7 @@ class FeatureExtractionHead(BaseModule):
         in_channels: Union[int, Sequence],
         widen_factor: float = 1.0,
         feat_channels: int = 256,
+        out_channels: int = 256,
         stacked_convs: int = 2,
         featmap_strides: Sequence[int] = [8, 16, 32],
         conv_bias: Union[bool, str] = "auto",
@@ -32,6 +33,7 @@ class FeatureExtractionHead(BaseModule):
     ):
         super().__init__(init_cfg)
         self.feat_channels = int(feat_channels * widen_factor)
+        self.out_channels = int(out_channels * widen_factor)
         self.stacked_convs = stacked_convs
         assert conv_bias == "auto" or isinstance(conv_bias, bool)
         self.conv_bias = conv_bias
@@ -70,15 +72,25 @@ class FeatureExtractionHead(BaseModule):
         # output layers
         self.out_feats = nn.ModuleList()
         for _ in self.featmap_strides:
-            self.out_feats.append(nn.Conv2d(self.feat_channels, self.feat_channels, 1))
+            self.out_feats.append(nn.Conv2d(self.feat_channels, self.out_channels, 1))
 
         self.loss_features = MODELS.build(loss_features) if loss_features is not None else None
 
     def init_weights(self):
         """Initialize weights of the head."""
         super().init_weights()
+        for conv_seq in self.conv_feats:
+            for m in conv_seq.modules():
+                if isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                    if m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                elif isinstance(m, nn.BatchNorm2d):
+                    nn.init.ones_(m.weight)
+                    nn.init.zeros_(m.bias)
         bias_init = bias_init_with_prob(0.01)
         for out_feat in self.out_feats:
+            nn.init.kaiming_normal_(out_feat.weight, mode="fan_out", nonlinearity="relu")
             out_feat.bias.data.fill_(bias_init)
 
     def forward(self, x: Tuple[Tensor]) -> Tuple[List]:
@@ -121,7 +133,7 @@ class FeatureExtractionHead(BaseModule):
             extracted_features = batch_extracted_features[i]
             if isinstance(gt_indices, list):
                 gt_indices = torch.tensor(gt_indices, device=extracted_features.device, dtype=extracted_features.dtype)
-            pos_extracted_features = extracted_features.view(-1, self.feat_channels)[pos_masks]
+            pos_extracted_features = extracted_features.view(-1, self.out_channels)[pos_masks]
             loss_features = self.loss_features(pos_extracted_features, gt_indices)
             batch_loss = batch_loss + loss_features
             batch_pos_extracted_features.append(pos_extracted_features)

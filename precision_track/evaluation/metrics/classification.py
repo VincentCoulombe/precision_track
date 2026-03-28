@@ -6,11 +6,12 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import json
 import operator
 import os
 from collections import defaultdict
 from typing import Any, List, Optional
-import json
+
 import numpy as np
 import pandas as pd
 import torch
@@ -209,7 +210,7 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
         super().__init__(collect_device=collect_device, prefix=prefix)
         self.label_to_action = defaultdict(str)
         for i, acc in enumerate(self.metainfo.get("actions", [])):
-            self.label_to_action[i] = acc
+            self.label_to_action[str(i)] = acc
         self.best_f1 = 0
         assert label_index_mode in self.label_index_modes, f"{label_index_mode} must be one of: {self.label_index_modes}."
         self.label_index_mode = label_index_mode
@@ -279,6 +280,140 @@ class MultiClassActionRecognitionMetrics(BaseMetric):
             if os.path.isdir(self.metric_save_dir):
                 with open(os.path.join(self.metric_save_dir, "best_ActionRecognition_f1.json"), "w") as f:
                     json.dump({"score": self.best_f1}, f, indent=4)
+
+        return metrics
+
+
+@METRICS.register_module()
+class GroupActionRecognitionMetrics(MultiClassActionRecognitionMetrics):
+    default_prefix = "GroupActionRecognition"
+
+    def __init__(
+        self,
+        metainfo: str,
+        confusion_matrix_save_dir: str = None,
+        metric_save_dir: str = None,
+        label_index_mode: str = "last",
+        collect_device: str = "cpu",
+        prefix: Optional[str] = None,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            metainfo,
+            confusion_matrix_save_dir,
+            metric_save_dir,
+            label_index_mode,
+            collect_device,
+            prefix,
+        )
+        action_to_label = {v: int(k) for k, v in self.label_to_action.items()}
+        group_actions = self.metainfo.get("social_actions", [])
+        self.group_actions = []
+        for group_action in group_actions:
+            if group_action in action_to_label:
+                self.group_actions.append(action_to_label[group_action])
+
+    def process(self, data_batch: Any, data_samples: Any) -> None:
+        """Process one batch of GMARTPredictions alongside GT data samples."""
+        if isinstance(data_samples, list):
+            data_samples = data_samples[0]
+        edge_probs = data_samples.interaction_logits
+        encoded_node_probs = data_samples.class_logits
+        social_logits = data_samples.social_logits
+
+        for b, ds in enumerate(data_batch["data_samples"]):
+            valid_mask = ds.pred_track_instances.valid_mask.bool()
+            group_matrix = ds.gt_instance_labels.group_action_matrix[valid_mask][:, valid_mask]
+            node_labels = ds.gt_instance_labels.node_labels[:, -1][valid_mask]
+
+            node_probs = encoded_node_probs[b][valid_mask].cpu()
+            node_pred_b = torch.argmax(node_probs, dim=-1)
+            edge_probs_valid = edge_probs[b][valid_mask][:, valid_mask].cpu()
+            edge_probs_b, edge_pred_b = torch.max(edge_probs_valid, dim=-1)
+            conf_edge_pred = edge_probs_b > 0.5
+
+            gt_valid = node_labels >= 0
+            node_labels = node_labels[gt_valid]
+            node_probs = node_probs[gt_valid]
+            node_pred_b = node_pred_b[gt_valid]
+            edge_pred_b = edge_pred_b[gt_valid]
+            conf_edge_pred = conf_edge_pred[gt_valid]
+            group_matrix = group_matrix[gt_valid][:, gt_valid]
+
+            node_gt_is_social = torch.isin(node_labels, torch.tensor(self.group_actions, dtype=node_pred_b.dtype, device=node_pred_b.device))
+
+            gt_edges = torch.argmax(group_matrix, dim=-1).cpu()[node_gt_is_social]
+            edge_pred_b[~conf_edge_pred] = -1
+            edge_pred_b = edge_pred_b[node_gt_is_social]
+
+            ce_per_node = F.cross_entropy(node_probs, node_labels, reduction="none")
+
+            node_class = [
+                (self.label_to_action.get(gt.item(), str(gt.item())), gt.item(), pred.item(), ce.item())
+                for pred, gt, ce in zip(node_pred_b, node_labels, ce_per_node)
+            ]
+
+            social_labels = group_matrix.max(-1)[0]
+            social_labels += 1
+
+            social_classification = []
+            if social_logits is not None:
+                social_probs_gt_valid = social_logits[b][valid_mask].cpu()[gt_valid]
+                max_probs, pred_classes = social_probs_gt_valid.max(dim=-1)
+                social_classification = list(
+                    zip(
+                        pred_classes.tolist(),
+                        max_probs.tolist(),
+                        social_labels.tolist(),
+                    )
+                )
+
+            self.results.append(
+                {
+                    "edge_binary": list(zip(edge_pred_b.tolist(), gt_edges.tolist())),
+                    "node_class": node_class,
+                    "social_classification": social_classification,
+                }
+            )
+
+    def compute_metrics(self, results: list) -> dict:
+        flat_node_results = [entry for r in results for entry in r["node_class"]]
+        metrics = super().compute_metrics(flat_node_results)
+
+        classification_data = [entry for r in results for entry in r.get("social_classification", [])]
+        if classification_data:
+            pred_classes = np.array([d[0] for d in classification_data])
+            max_probs = np.array([d[1] for d in classification_data])
+            y_true = [d[2] for d in classification_data]
+            thresholds = np.arange(0.50, 1.00, 0.05)
+            f1_per_thr = {}
+            for thr in thresholds:
+                y_pred_thr = np.where(max_probs >= thr, pred_classes, 0).tolist()
+                report_thr = classification_report(y_true, y_pred_thr, output_dict=True, zero_division=0)
+                f1 = report_thr["macro avg"]["f1-score"]
+                f1_per_thr[thr] = f1
+                metrics[f"Social F1@{thr:.2f}"] = f1
+            metrics["Social mF1@0.5:0.95"] = float(np.mean(list(f1_per_thr.values())))
+
+        binary_pairs = []
+        for r in results:
+            for p, g in r["edge_binary"]:
+                binary_pairs.append((p, g))
+
+        if binary_pairs:
+            y_pred_bin, y_true_bin = zip(*binary_pairs)
+            report_bin = classification_report(
+                y_true_bin,
+                y_pred_bin,
+                labels=[0, 1],
+                target_names=["no_rel", "rel"],
+                output_dict=True,
+                zero_division=0,
+            )
+            metrics["Relationship F1"] = report_bin["rel"]["f1-score"]
+            metrics["Relationship Precision"] = report_bin["rel"]["precision"]
+            metrics["Relationship Recall"] = report_bin["rel"]["recall"]
 
         return metrics
 

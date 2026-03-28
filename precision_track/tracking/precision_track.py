@@ -3,7 +3,7 @@ from typing import List, Optional
 import numpy as np
 
 from precision_track.registry import TRACKING
-from precision_track.utils import batch_bbox_areas, oks_batch, parse_pose_metainfo, biou_batch, iou_batch
+from precision_track.utils import batch_bbox_areas, oks_batch, parse_pose_metainfo
 
 from .byte_track import ByteTrack
 

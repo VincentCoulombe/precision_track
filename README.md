@@ -23,7 +23,7 @@ TODO Ajouter mes tags de isitmaintained lorsque le repo sera publique
 </div>
 
 PrecisionTrack is a real-time, online, multi-animal tracking system. It can be extended such as with our provided Tailtags validation plugin to track animals over extended periods.
-Furthermore, we provide postprocessing algorithms such as the Multi-animal Action Recognition Transformer (MART) which enables action recognition, behavioural and social dynamics analysis at scale.
+Furthermore, we provide built-in individual action recognition and group-level social behaviour analysis, enabling behavioral and social dynamics analysis at scale.
 
 ## Demos
 
@@ -112,7 +112,13 @@ dataset_info = dict(
 )
 ```
 
-However, if you plan to track poses or infer actions, you will need to define your skeletons, keypoints, and action labels. In that case, follow the instructions in our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) to properly adapt your copied metadata file to your specific needs.
+However, if you plan to track poses or infer actions, you will need to define your skeletons, keypoints, and action labels. If you also want **group action recognition** (GMART), three additional fields are required in your metadata file:
+
+- `null_action` — the background/fallback label (e.g. `"Other"`)
+- `social_actions` — subset of `actions` that represent inter-subject interactions
+- `distance_keypoint_pairs` — cross-subject keypoint pairs used as spatial priors by GMART
+
+In that case, follow the instructions in our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) to properly adapt your copied metadata file to your specific needs.
 
 ### 3) Labelling data (getting annotations)
 
@@ -148,6 +154,45 @@ We suggest reviewing his guide to streamline your labelling workflow.
 Would you choose to follow Julien's guide or not, you will need COCO formatted labels in order to train your own custom PrecisionTracker.
 
 - **Important:** Your subject’s keypoints labelling order must exactly match the order of the ids in the `keypoint_info` field of your `metadata.py` file.
+
+#### 3.5) Building your Action Recognition dataset
+
+- **NOTE** Please refer to our [MICE sequential dataset](https://drive.google.com/drive/folders/1WcDkX-92X6SCgZPAZXFyDc6EGUzU0Onq?usp=drive_link) as a valid Action Recognition dataset.
+
+Your Action Recognition dataset will need 3 [MOT-styled](https://motchallenge.net/) annotation files for each of your video files:
+
+- A MOT file containing the subject's bounding boxes (bboxes)
+- A MOT file containing the subject's keypoints
+- A MOT file containing the subject's actions
+
+All these four files will need to share the same name. Obviously, this mean that they will be saved in different directories. More speciffically:
+
+```text
+<action_recognition_data_root>/
+  ├── bboxes/
+  │ ├── train/
+  | | ├── video1.csv
+  │ ├── val/
+  | | ├── video2.csv
+  ├── keypoints/
+  │ ├── train/
+  | | ├── video1.csv
+  │ ├── val/
+  | | ├── video2.csv
+  ├── actions/
+  │ ├── train/
+  | | ├── video1.csv
+  │ ├── val/
+  | | ├── video2.csv
+  ├── videos/
+  | | ├── video1.mp4
+  │ ├── val/
+  | | ├── video2.avi
+```
+
+- **NOTE** We used the the [BORIS](https://www.boris.unito.it/) software to label our actions then reformatted the labels to fit our needs.
+
+- **NOTE** Actions with non null values > 0 under the `target_ids` columns will be considered as social actions and will be used to train your GMART algorithm.
 
 ### 4) Installing mandatory third-party software (local execution only)
 
@@ -255,7 +300,34 @@ Run the following git command in your terminal:
 
 #### 4.5) Setup PrecisionTrack's execution environment
 
-**Start here:** Read the [Docker guide](https://github.com/VincentCoulombe/precision_track/tree/main/docker) to build and launch the development environment (Docker image + container).
+**Step 1 — Build the Docker image (once)**
+
+Make the script executable, then build. The script auto-detects your hardware (CUDA vs CPU), or you can force a target with a flag:
+
+```bash
+chmod +x ./docker/building_image.sh
+
+bash ./docker/building_image.sh            # auto-detect (recommended)
+bash ./docker/building_image.sh --cuda     # force CUDA build
+bash ./docker/building_image.sh --cpu      # force CPU build
+bash ./docker/building_image.sh --both     # build both images
+bash ./docker/building_image.sh --skip-tests   # skip post-build sanity checks
+```
+
+**Step 2 — Launch the container (each session)**
+
+```bash
+chmod +x ./docker/launching_container.sh
+
+bash ./docker/launching_container.sh            # auto-detect (recommended)
+bash ./docker/launching_container.sh --cuda     # force CUDA container
+bash ./docker/launching_container.sh --cpu      # force CPU container
+bash ./docker/launching_container.sh --update   # pull latest code before starting
+```
+
+The container stays alive as long as the terminal remains open. Closing it stops the container — no data is lost since all outputs are written directly to your host machine. Re-run the launch command to start a new session. If the requested image does not yet exist, the launch script will build it automatically.
+
+For the full reference (environment variable overrides, troubleshooting, file-layout guide), see the [Docker guide](https://github.com/VincentCoulombe/precision_track/tree/main/docker).
 
 **Edit locally, run in Docker**
 

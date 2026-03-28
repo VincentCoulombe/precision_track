@@ -25,7 +25,7 @@ WORKDIR /workspace/precision_track
 
 RUN pip install --no-cache-dir -U pip \
  && pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cpu \
- && pip install --no-cache-dir -e ".[cpu, test]"
+ && pip install --no-cache-dir -e ".[cpu,test]"
 
 # Non-root user own the workspace, enables rwx of the container's and the mounted files
 RUN chown -R ${UID}:${GID} /workspace

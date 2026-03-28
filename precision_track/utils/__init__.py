@@ -2,13 +2,14 @@ from .cuda import *
 from .datasets import *
 from .deployment import *
 from .dynamics import *
+from .encoding import *
+from .finding import *
 from .formatting import *
 from .io import *
 from .matching import *
 from .metrics import *
+from .postprocessing import *
+from .re_identification import *
 from .stats import *
 from .structures import *
-from .postprocessing import *
-from .encoding import *
 from .tracking import *
-from .finding import *

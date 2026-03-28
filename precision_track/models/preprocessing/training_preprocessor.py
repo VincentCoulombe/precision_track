@@ -120,8 +120,8 @@ class PoseDataPreprocessor(ImgDataPreprocessor):
         if is_seq_of(_batch_inputs, torch.Tensor):
             batch_pad_shape = []
             for ori_input in _batch_inputs:
-                pad_h = int(np.ceil(ori_input.shape[1] / self.pad_size_divisor)) * self.pad_size_divisor
-                pad_w = int(np.ceil(ori_input.shape[2] / self.pad_size_divisor)) * self.pad_size_divisor
+                pad_h = int(np.ceil(ori_input.shape[-2] / self.pad_size_divisor)) * self.pad_size_divisor
+                pad_w = int(np.ceil(ori_input.shape[-1] / self.pad_size_divisor)) * self.pad_size_divisor
                 batch_pad_shape.append((pad_h, pad_w))
         # Process data with `default_collate`.
         elif isinstance(_batch_inputs, torch.Tensor):
@@ -134,6 +134,41 @@ class PoseDataPreprocessor(ImgDataPreprocessor):
         else:
             raise TypeError("Output of `cast_data` should be a dict " "or a tuple with inputs and data_samples, but got" f"{type(data)}: {data}")
         return batch_pad_shape
+
+
+@MODELS.register_module()
+class DoublePoseDataPreprocessor(PoseDataPreprocessor):
+    def forward(self, data: dict, training: bool = False) -> dict:
+        """Perform normalization, padding and bgr2rgb conversion based on
+        ``BaseDataPreprocessor``.
+
+        Args:
+            data (dict): Data sampled from dataloader.
+            training (bool): Whether to enable training time augmentation.
+
+        Returns:
+            dict: Data in the same format as the model input.
+        """
+        inputs, data_samples = data["inputs"], data["data_samples"]
+        inputs = torch.cat(inputs)
+        flatten_ds = []
+        for ds in data_samples:
+            flatten_ds.extend(ds)
+        data = super(PoseDataPreprocessor, self).forward(data=dict(inputs=inputs, data_samples=flatten_ds), training=training)
+        batch_pad_shape = self._get_pad_shape(data)
+        inputs, data_samples = data["inputs"], data["data_samples"]
+
+        # update metainfo since the image shape might change
+        batch_input_shape = tuple(inputs[0].size()[-2:])
+        for data_sample, pad_shape in zip(data_samples, batch_pad_shape):
+            data_sample.set_metainfo({"batch_input_shape": batch_input_shape, "pad_shape": pad_shape})
+
+        # apply batch augmentations
+        if training and self.batch_augments is not None:
+            for batch_aug in self.batch_augments:
+                inputs, data_samples = batch_aug(inputs, data_samples)
+
+        return {"inputs": inputs, "data_samples": data_samples}
 
 
 @MODELS.register_module()

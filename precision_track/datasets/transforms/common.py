@@ -18,7 +18,7 @@ from mmengine.dist import get_dist_info
 
 from precision_track.datasets.codecs import *  # noqa
 from precision_track.registry import KEYPOINT_CODECS, TRANSFORMS
-from precision_track.utils import clip, reformat
+from precision_track.utils import clip, iou_batch, reformat
 
 from .base import BaseTransform
 from .formatting import flip_bbox, flip_keypoints, get_udp_warp_matrix, get_warp_matrix
@@ -353,7 +353,7 @@ class RandomFlip(BaseTransform):
             direction_list = [self.direction, None]
 
         if isinstance(self.prob, list):
-            non_prob: float = 1 - sum(self.prob)
+            non_prob: float = max(1 - sum(self.prob), 0.0)
             prob_list = self.prob + [non_prob]
         elif isinstance(self.prob, float):
             non_prob = 1.0 - self.prob
@@ -845,6 +845,40 @@ class FilterAnnotations(BaseTransform):
         if not keep.any():
             if self.keep_empty:
                 return None
+
+        keys = (
+            "bbox",
+            "bbox_score",
+            "category_id",
+            "keypoints",
+            "keypoints_visible",
+            "area",
+            "id",
+            "action",
+            "action_label",
+            "action_performed_with",
+            "instance_id",
+        )
+        for key in keys:
+            if key in results:
+                results[key] = np.atleast_1d(np.array(results[key]))[keep]
+
+        return results
+
+
+@TRANSFORMS.register_module()
+class RemoveDuplicateBoundingBoxes(BaseTransform):
+    def __init__(
+        self,
+        iou_threshold=0.99,
+    ) -> None:
+        self.iou_threshold = iou_threshold
+
+    def transform(self, results: dict) -> Union[dict, None]:
+        ious = iou_batch(results["bbox"], results["bbox"])
+        np.fill_diagonal(ious, 0)
+        is_duplicate = np.any(np.triu(ious >= self.iou_threshold, k=1), axis=0)
+        keep = ~is_duplicate
 
         keys = (
             "bbox",

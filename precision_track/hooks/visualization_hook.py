@@ -1,18 +1,17 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import os
 import warnings
+from copy import deepcopy
 from typing import Optional, Sequence
 
+import cv2
 import mmengine
 import mmengine.fileio as fileio
+import numpy as np
+from mmengine.dataset import Compose
 from mmengine.hooks import Hook
 from mmengine.runner import Runner
 from mmengine.visualization import Visualizer
-from mmengine.structures import InstanceData
-from mmengine.dataset import Compose
-from copy import deepcopy
-import cv2
-import numpy as np
 
 from precision_track.datasets.transforms.loading import imfrombytes
 from precision_track.registry import HOOKS
@@ -35,9 +34,10 @@ class ActivatedPriorsVisualizationHook(Hook):
     ):
         # 1) vérifier que les augmentations sont OK
         aug_names = [x["type"] for x in augmentations]
-        assert (
-            aug_names == self.ALLOWED_AUG_SEQ
-        ), f"The Activated Prior visualization is intended to be ran with only the augmentations: {self.ALLOWED_AUG_SEQ}. The provided augmentations are: {aug_names}."
+        assert aug_names == self.ALLOWED_AUG_SEQ, (
+            f"The Activated Prior visualization is intended to be ran with only the augmentations: "
+            f"{self.ALLOWED_AUG_SEQ}. The provided augmentations are: {aug_names}."
+        )
         self.pipeline = Compose(augmentations)
 
         self.palette = ColorPalette(size=palette_size)

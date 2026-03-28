@@ -1,11 +1,11 @@
 from .bottomup_transforms import BottomupRandomAffine, BottomupResize
-from .common import FilterAnnotations, GenerateTarget, RandomCrop, RandomFlip, Resize, YOLOXHSVRandomAug
-from .sequence import SequenceRandomCrop, SequenceRandomFlip, SequenceRandomOcclusion, SequenceRandomContrastAug, SequenceYOLOXHSVRandomAug
+from .common import FilterAnnotations, GenerateTarget, RandomCrop, RandomFlip, RemoveDuplicateBoundingBoxes, Resize, YOLOXHSVRandomAug
 
 # from .converting import KeypointConverter
 from .formatting import PackPoseInputs
 from .loading import LoadImage
 from .mix_img_transforms import Mosaic, YOLOXMixUp
+from .sequence import SequenceRandomContrastAug, SequenceRandomCrop, SequenceRandomFlip, SequenceRandomOcclusion, SequenceYOLOXHSVRandomAug
 
 __all__ = [
     "Resize",
@@ -19,6 +19,7 @@ __all__ = [
     # "KeypointConverter",
     "RandomFlipAroundRoot",
     "YOLOXHSVRandomAug",
+    "RemoveDuplicateBoundingBoxes",
     "YOLOXMixUp",
     "Mosaic",
     "RandomCrop",

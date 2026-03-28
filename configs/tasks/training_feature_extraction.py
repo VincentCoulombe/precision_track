@@ -163,7 +163,7 @@ default_hooks = dict(
 )
 custom_hooks = [
     dict(type="SyncNormHook", priority=48),
-    dict(type="ModuleFreezingHook", modules_to_freeze=["backbone", "neck", "head"], priority=30),
+    dict(type="ModuleFreezingHook", modules_to_freeze=["backbone", "neck", "head"], priority=1),
     dict(type="ValidateBeforeTrainingHook", priority=100),
 ]
 # /Hooks

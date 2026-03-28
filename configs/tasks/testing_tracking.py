@@ -17,8 +17,8 @@ test_dataloader = dict(
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(
         type="VideoDataset",
-        video_paths=_base_.mot_testing_data_root + "videos/",
-        gt_paths=_base_.mot_testing_data_root + "bboxes/",
+        video_paths=_base_.mot_data_root + "videos/",
+        gt_paths=_base_.mot_data_root + "bboxes/",
     ),
 )
 # /Dataloader

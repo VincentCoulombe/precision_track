@@ -20,6 +20,9 @@ training_data_preprocessor = dict(
     block_size=block_size,
 )
 
+velocity_encoder = dict(type="BaseVelocityEncoder")
+n_encoded_dynamic = 2
+with_pose_estimation = True
 
 action_recognition_input_names = ["features", "poses", "dynamics"]
 action_recognition_output_names = ["class_logits", "action_embeddings"]
@@ -27,21 +30,21 @@ analyzer = dict(
     type="ActionRecognitionBackend",
     data_preprocessor=dict(
         type="ActionRecognitionPreprocessor",
+        embd_size=n_embd_features,
         metainfo=metainfo,
         _delete_=True,
         block_size=block_size,
-        embd_size=n_embd_features,
         with_actions=False,
-        with_kpts=True,
+        with_kpts=with_pose_estimation,
         with_vels=True,
-        velocity_encoder=dict(type="BaseVelocityEncoder"),
+        velocity_encoder=velocity_encoder,
     ),
     metainfo=metainfo,
     input_names=action_recognition_input_names,
     data_postprocessor=dict(
         type="ActionPostProcessingSteps",
         postprocessing_steps=[
-            dict(type="NearnessBasedActionFiltering", concerned_labels=["Interacting"], fallback_label="Other", metainfo=metainfo),
+            dict(type="NearnessBasedActionFiltering", fallback_label="Other", metainfo=metainfo),
             dict(
                 type="KeypointBasedActionRefinement",
                 action_to_refine="Interacting",
@@ -57,12 +60,17 @@ analyzer = dict(
         model=dict(
             type="MART",
             config=dict(
-                n_embd=n_embd_features,
+                with_features=True,
+                with_dynamics=True,
+                with_poses=with_pose_estimation,
+                n_embd_features=n_embd_features,
                 block_size=block_size,
+                n_encoded_dynamics=n_encoded_dynamic,
                 n_embd_dynamics=n_embd_dynamics,
-                n_embd_pose=n_embd_pose,
+                n_embd_poses=n_embd_pose,
                 n_block=4,
                 causal=True,
+                use_alibi=False,
                 n_head=4,
                 bias=False,
                 dropout=0.0,

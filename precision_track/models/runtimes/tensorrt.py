@@ -58,7 +58,10 @@ class TensorRTRuntime(InferenceOnlyRuntime):
         checkpoint_name = os.path.basename(self.checkpoint)
         if current_gpu_name not in checkpoint_name:
             print_log(
-                f"The '{os.path.abspath(self.checkpoint)}' engine was not built for current GPU ('{current_gpu_name}'). This might lead to unexpected errors or performances.",
+                (
+                    f"The '{os.path.abspath(self.checkpoint)}' engine was not built "
+                    "for current GPU ('{current_gpu_name}'). This might lead to unexpected errors or performances."
+                ),
                 logger="current",
                 level=logging.WARNING,
             )
@@ -108,7 +111,6 @@ class TensorRTRuntime(InferenceOnlyRuntime):
                     level=logging.WARNING,
                 )
                 self.half_precision = False
-                self._initialize_type()
             elif precision != "FP16":
                 print_log(
                     f"Can not infer with half precision as the {self.checkpoint} TensorRT engine is compile with {precision} precision.",
@@ -116,7 +118,6 @@ class TensorRTRuntime(InferenceOnlyRuntime):
                     level=logging.WARNING,
                 )
                 self.half_precision = False
-                self._initialize_type()
 
         self.input_profiles = {n: self.engine.get_tensor_profile_shape(n, 0) for n in self.input_names}
         self.dtypes = {n: self._TORCH_DTYPE[self.engine.get_tensor_dtype(n)] for n in self.engine}
@@ -139,10 +140,12 @@ class TensorRTRuntime(InferenceOnlyRuntime):
 
     def _set_input(self, name: str, tensor: torch.Tensor) -> None:
         prof_min, _, prof_max = self.input_profiles[name]
-        assert prof_min[0] <= tensor.size(0) <= prof_max[0], f"Batch size of {tensor.size(0)} outside [{prof_min[0]}, {prof_max[0]}] for {name}"
+        batch_size = tensor.size(0)
+        assert prof_min[0] <= batch_size <= prof_max[0], f"Batch size of {batch_size} outside [{prof_min[0]}, {prof_max[0]}] for {name}"
 
         self.context.set_input_shape(name, tuple(tensor.shape))
         self.context.set_tensor_address(name, int(tensor.data_ptr()))
+        self._running_batch_size = batch_size
 
     def _alloc_output(self, name: str) -> torch.Tensor:
         shape = tuple(self.context.get_tensor_shape(name))
@@ -163,11 +166,12 @@ class TensorRTRuntime(InferenceOnlyRuntime):
         else:
             raise ValueError(f"inputs must be a torch.Tensor or a tuple. Received: {type(inputs)}.")
 
-        if current_batch_size != self._running_batch_size:
-            for name, tensor in zip(self.input_names, inputs):
-                tensor = self._stage_to_gpu(tensor).to(self.dtypes[name])
-                self._set_input(name, tensor)
-                self._buffer[name] = tensor
+        batch_size_changed = current_batch_size != self._running_batch_size
+        for name, tensor in zip(self.input_names, inputs):
+            tensor = self._stage_to_gpu(tensor).to(self.dtypes[name])
+            self._set_input(name, tensor)
+            self._buffer[name] = tensor
+        if batch_size_changed:
             self.context.infer_shapes()
             self._outputs = tuple(self._alloc_output(n) for n in self.output_names)
 

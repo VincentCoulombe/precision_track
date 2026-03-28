@@ -1,22 +1,21 @@
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 from typing import Dict, List, Optional, Sequence, Union
 
 import numpy as np
 import torch
-from addict import Dict
+from addict import Dict as ADict
 from mmengine import Config
 from mmengine.evaluator import Evaluator
 from mmengine.registry import LOOPS
-from mmengine.structures import InstanceData
 from mmengine.runner.amp import autocast
 from mmengine.runner.loops import ValLoop
 from torch.utils.data import DataLoader
 
-from precision_track.registry import MODELS
 from precision_track.models.backends import DetectionBackend
 from precision_track.models.postprocessing.steps import PostProcessingSteps
+from precision_track.registry import MODELS
 from precision_track.tracking import OnlineGroundTruth
-from precision_track.utils import get_device, PoseDataSample, postprocess_one_stage_detections, postprocess_fpv_action_recognition, parse_pose_metainfo
+from precision_track.utils import PoseDataSample, get_device, parse_pose_metainfo, postprocess_fpv_action_recognition, postprocess_one_stage_detections
 
 
 @LOOPS.register_module()
@@ -313,7 +312,7 @@ class OnlineValLoop(ValLoop):
                 data_samples = seq_inputs.pop("data_samples")
                 prev = data_samples
                 seq_inputs.pop("block_ids", None)
-                seq_data_samples.append(Dict(data_samples))
+                seq_data_samples.append(ADict(data_samples))
             for seq_input in seq_inputs:
                 inputs[seq_input].append(seq_inputs[seq_input])
                 input_dims[seq_input] = tuple(seq_inputs[seq_input].shape[1:])

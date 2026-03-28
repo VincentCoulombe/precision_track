@@ -27,10 +27,10 @@ RUN git clone https://github.com/VincentCoulombe/precision_track.git
 WORKDIR /workspace/precision_track
 
 RUN pip install --no-cache-dir -U pip \
- && pip install --no-cache-dir -e ".[cuda, test]"
+ && pip install --no-cache-dir -e ".[cuda,test]"
 
 # Non-root user own the workspace, enables rwx of the container's and the mounted files
 RUN chown -R ${UID}:${GID} /workspace
 ENV HOME=/home/precision_track
 USER precision_track
-
+CMD ["/bin/bash"]

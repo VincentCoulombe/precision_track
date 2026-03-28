@@ -15,15 +15,17 @@ import pkgutil
 import re
 from collections import OrderedDict, namedtuple
 from importlib import import_module
-from typing import Callable, Dict, List, Union, Optional, Set, Any
-import ffmpeg
-import numpy as np
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Set, Union
+
 import cv2
+import ffmpeg
 import mmengine
+import numpy as np
 import torch
 import yaml
 from cv2 import CAP_PROP_FOURCC, CAP_PROP_FPS, CAP_PROP_FRAME_COUNT, CAP_PROP_FRAME_HEIGHT, CAP_PROP_FRAME_WIDTH, CAP_PROP_POS_FRAMES
+from mmengine.config import Config
 from mmengine.dist import get_dist_info
 from mmengine.fileio import get_file_backend
 from mmengine.fileio import load as load_file
@@ -31,7 +33,6 @@ from mmengine.logging import print_log
 from mmengine.model import BaseTTAModel, is_model_wrapper
 from mmengine.utils import check_file_exist, digit_version, mkdir_or_exist, track_progress
 from mmengine.utils.dl_utils import load_url
-from mmengine.config import Config
 
 SUPPORTED_IMG_BACKEND = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".pgm", ".pbm", ".ppm", ".ras"]
 SUPPORTED_VIDEO_BACKEND = [".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg"]
@@ -550,6 +551,11 @@ def load_from_mmcls(filename, map_location=None):
 
 
 def load_checkpoint(model, filename, map_location=None, strict=False, logger=None, revise_keys=[(r"^module\.", "")]):
+    filename = str(filename)
+    if not os.path.isfile(filename):
+        print_log(f"The following checkpoint: '{filename}' could not be loaded as it is not a valid path.", logger="current", level=logging.WARNING)
+        return
+
     checkpoint = CheckpointLoader.load_checkpoint(filename, map_location, logger)
     # OrderedDict is a subclass of dict
     if not isinstance(checkpoint, dict):
@@ -1009,17 +1015,19 @@ def load_validation_config(config: Config):
             num_subjects = config.get("num_subjects", dict())
             unique_ids = []
             for validated_class in validation_config["validated_classes"]:
-                assert (
-                    validated_class in num_subjects
-                ), f"The '{validation_config_path}' validation config can not validate the following class: {validated_class}, because it is not defined as a class with a fixed number of individuals in your user_configs."
+                assert validated_class in num_subjects, (
+                    f"The '{validation_config_path}' validation config can not validate the following class: {validated_class}, "
+                    "because it is not defined as a class with a fixed number of individuals in your user_configs."
+                )
                 nb_class_subjects = num_subjects[validated_class]
-                assert (
-                    nb_class_subjects > 0
-                ), f"The '{validation_config_path}' validation config can not validate the following class: {validated_class}, because it is not defined as a class with a fixed number of individuals in your user_configs."
+                assert nb_class_subjects > 0, (
+                    f"The '{validation_config_path}' validation config can not validate the following class: {validated_class}, "
+                    "because it is not defined as a class with a fixed number of individuals in your user_configs."
+                )
                 for i in range(1, nb_class_subjects + 1):
                     unique_ids.append(f"{validated_class}_{i}")
             validation_config["unique_ids"] = unique_ids
-            assert "metainfo" in config, f"Your user_configs needs a value for the 'metainfo' key."
+            assert "metainfo" in config, "Your user_configs needs a value for the 'metainfo' key."
             validation_config["metainfo"] = config["metainfo"]
             config.validator = validation_config
         except (OSError, yaml.YAMLError) as e:

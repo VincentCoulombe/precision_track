@@ -17,7 +17,7 @@ from mmengine.model import BaseModule
 from mmengine.structures import InstanceData
 from torch import Tensor
 
-from precision_track.registry import MODELS, TASK_UTILS, HOOKS
+from precision_track.registry import HOOKS, MODELS, TASK_UTILS
 from precision_track.utils import PoseDataSample
 
 from .modules.heads.yolox import YOLOXPoseHeadModule
@@ -217,6 +217,8 @@ class DetectionHead(BaseModule):
         train_cfg: Config = {},
         return_features: Optional[bool] = False,
         return_preds: Optional[bool] = False,
+        *args,
+        **kwargs,
     ) -> dict:
         """Calculate losses from a batch of inputs and data samples.
 

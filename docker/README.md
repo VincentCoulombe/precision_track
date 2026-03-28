@@ -26,7 +26,7 @@
 - **Make the build script executable (once):**
 
 ```bash
-(cd ./docker && sudo chmod +x ./building_image.sh)
+(cd ./docker && chmod +x ./building_image.sh)
 ```
 
 - **Build options:**
@@ -68,7 +68,7 @@
 - **Make the build script executable (once):**
 
 ```bash
-sudo chmod +x ./docker/launching_container.sh
+chmod +x ./docker/launching_container.sh
 ```
 
 - **Launch options:**
@@ -122,6 +122,27 @@ precision_track/
 ```
 
 - **Why:** The container is restricted to this directory. Keeping datasets, configs, and outputs here guarantees read/write access and clean portability.
+
+---
+
+### Environment variable overrides
+
+All defaults can be overridden at call-site without editing the scripts:
+
+| Variable | Default | Purpose |
+| -------------------- | ----------------------------------- | ------------------------------------------------- |
+| `IMAGE_NAME` | `precisiontrack` | Docker image name |
+| `CUDA_DOCKERFILE` | `dockerfile.cuda` | Path to the CUDA Dockerfile |
+| `CPU_DOCKERFILE` | `dockerfile.cpu` | Path to the CPU Dockerfile |
+| `BUILD_ARGS` | _(empty)_ | Extra arguments forwarded to `docker build` |
+| `PYTEST_ARGS` | _(empty)_ | Arguments forwarded to `pytest` inside the container |
+| `DOCKER` | `docker` | Docker CLI binary (e.g. `"sudo docker"`) |
+
+Example — build under a custom image name without sudo:
+
+```bash
+IMAGE_NAME=myproject DOCKER="sudo docker" bash ./docker/building_image.sh --cuda
+```
 
 ---
 

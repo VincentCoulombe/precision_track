@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from mmengine.registry import MODELS
 
-from precision_track.utils import biou_batch, parse_pose_metainfo
+from precision_track.utils import parse_pose_metainfo
 
 from .base import BaseActionPostProcessor, BasePostProcessor
 
@@ -53,20 +53,22 @@ class LowScoresFiltering(BasePostProcessor):
 
 @MODELS.register_module()
 class NearnessBasedActionFiltering(BaseActionPostProcessor):
-    def __init__(self, concerned_labels: list, fallback_label: int, metainfo: str):
+    def __init__(self, fallback_label: int, metainfo: str):
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         self.actions = metainfo.get("actions", [])
-        assert isinstance(concerned_labels, Iterable)
-        for cl in concerned_labels:
+        self.social_actions = metainfo.get("social_actions", [])
+        assert isinstance(self.social_actions, Iterable)
+        for cl in self.social_actions:
             assert cl in self.actions, f"{cl} not in {self.actions.tolist()}."
         assert fallback_label in self.actions, f"{fallback_label} not in {self.actions.tolist()}."
-        self.concerned_labels = np.array(concerned_labels)
+        self.concerned_labels = np.array(self.social_actions)
         self.fallback_label = fallback_label
         super().__init__()
 
     def forward(self, data_sample: dict):
         actions = data_sample["pred_track_instances"]["actions"]
         bboxes = data_sample["pred_track_instances"]["bboxes"]
+        target_ids = data_sample["pred_track_instances"].get("target_ids")
 
         action_mask = np.isin(actions, self.concerned_labels)
         relevant_bboxes = bboxes[action_mask]
@@ -76,5 +78,8 @@ class NearnessBasedActionFiltering(BaseActionPostProcessor):
             update_indices = np.flatnonzero(action_mask)[isolated]
             actions[update_indices] = self.fallback_label
             data_sample["pred_track_instances"]["actions"] = actions
+            if target_ids is not None:
+                target_ids[update_indices] = ""
+                data_sample["pred_track_instances"]["target_ids"] = target_ids
 
         return data_sample

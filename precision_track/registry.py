@@ -1,6 +1,6 @@
 import os
 
-from mmengine.registry import DATASETS, HOOKS, LOOPS, METRICS, MODELS, PARAM_SCHEDULERS, TASK_UTILS, TRANSFORMS, RUNNERS, FUNCTIONS
+from mmengine.registry import DATASETS, FUNCTIONS, HOOKS, LOOPS, METRICS, MODELS, PARAM_SCHEDULERS, RUNNERS, TASK_UTILS, TRANSFORMS
 from mmengine.registry import VISUALIZERS as MMENGINE_VISUALIZERS
 from mmengine.registry import Registry
 

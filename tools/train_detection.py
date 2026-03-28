@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 from copy import deepcopy
+
 import mmengine
 from mmengine import Config
 from mmengine.logging import MMLogger
@@ -16,6 +17,7 @@ from precision_track.utils import (
     assert_coco_dataset_directory,
     check_if_mot_dataset_is_ok,
     deploy_weights,
+    find_checkpoint_hook,
     get_common_config,
     get_device,
     get_ir_config,
@@ -26,7 +28,6 @@ from precision_track.utils import (
     load_user_configs,
     parse_device_id,
     resize_coco_dataset,
-    find_checkpoint_hook,
 )
 
 if "DYNAMO_CACHE_SIZE_LIMIT" in os.environ:
@@ -50,6 +51,7 @@ def str2bool(v):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--test", type=str2bool, default=True, help="True to test the trained model, False otherwise")
+    parser.add_argument("--feature_extraction", type=str2bool, default=True, help="True to train the feature extraction head, False otherwise")
     parser.add_argument("--format_dataset", type=str2bool, default=True, help="True to format the training dataset, False otherwise")
     parser.add_argument("--calibrate", type=str2bool, default=True, help="True to calibrate the trained model, False otherwise")
     parser.add_argument("--deploy", type=str2bool, default=True, help="True to deploy the trained model, False otherwise")
@@ -97,17 +99,26 @@ def main(args):
         if os.path.isdir(formatted_dataset_data_root):
             shutil.rmtree(formatted_dataset_data_root)
         for ann_name in ["train", "val"]:
-            resize_coco_dataset(data_root, formatted_dataset_data_root, ann_name=f"{ann_name}.json")
+            resize_coco_dataset(data_root, formatted_dataset_data_root, ann_name=f"{ann_name}.json", pad_value=training_config["pad_value"])
         load_user_configs(formatted_dataset_cfg, system_configs_path)
 
     runner = Runner(system_configs_path, args.launcher, mode="train")
     runner()
-
     checkpoint_hook = find_checkpoint_hook(runner)
-
     best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
     assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
-    "This is either because you deleted it manually or because the training run stopped before a validation step took place."
+    "This is either because you deleted it manually or because the detection training run stopped before a validation step took place."
+
+    if args.feature_extraction:
+        feature_extraction_cfg = load_config("../configs/tasks/training_feature_extraction.py")
+        feature_extraction_cfg.wandb_logging = False
+        feature_extraction_cfg.load_from = best_ckpt_path
+        runner = Runner(feature_extraction_cfg, args.launcher, mode="train")
+        runner()
+        checkpoint_hook = find_checkpoint_hook(runner)
+        best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
+        assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
+        "This is either because you deleted it manually or because the feature extraction training run stopped before a validation step took place."
 
     deploy_cfg = load_config("../configs/tasks/deploying.py")
     deployed_path = deploy(deploy_cfg, "runtime_config", best_ckpt_path, logger)

@@ -1,14 +1,15 @@
-from typing import Optional, Dict, Union, List, Union
 import heapq
-from itertools import chain
 from collections import defaultdict
-from mmengine.structures import InstanceData
+from itertools import chain
+from typing import Dict, List, Optional, Union
+
 import numpy as np
 import torch
 from mmengine.model import BaseDataPreprocessor
+from mmengine.structures import InstanceData
 
 from precision_track.registry import MODELS
-from precision_track.utils import get_device, kpts_to_poses, parse_pose_metainfo, BaseVelocityEncoder
+from precision_track.utils import BaseVelocityEncoder, get_device, kpts_to_poses, parse_pose_metainfo
 
 
 class IdIndexMap:
@@ -77,6 +78,8 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         with_kpt_vels: Optional[bool] = False,
         with_actions: Optional[bool] = False,
         ignore_index: Optional[int] = -100,
+        with_distance_prior: bool = False,
+        with_keypoint_priors: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -103,6 +106,9 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         self._with_kpts = with_kpts
         self._with_kpt_vels = with_kpt_vels
         self._with_actions = with_actions
+        self._with_distance_prior = with_distance_prior
+        self._with_keypoint_priors = with_keypoint_priors
+        self._need_kpt_state = with_distance_prior or with_keypoint_priors
 
         self.block_features = torch.zeros((self._max_size, self._block_size, self._embd_size), dtype=torch.float32, device=self._device).contiguous()
 
@@ -131,6 +137,22 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         if with_actions:
             self.block_actions = torch.zeros((self._max_size, self._block_size, 1), dtype=torch.long, device=self._device).contiguous()
 
+        self._cur_kpts = None
+        self._cur_vis = None
+        self._cur_scale = None
+        self.src_kpt_idxs = None
+        self.tgt_kpt_idxs = None
+        if self._need_kpt_state:
+            num_kpts = len(metainfo["keypoint_name2id"])
+            self._cur_kpts = torch.zeros(self._max_size, num_kpts, 2, dtype=torch.float32, device=self._device)
+            self._cur_vis = torch.zeros(self._max_size, num_kpts, dtype=torch.float32, device=self._device)
+            self._cur_scale = torch.ones(self._max_size, dtype=torch.float32, device=self._device)
+            kpt2idx = metainfo["keypoint_name2id"]
+            pairs = metainfo.get("distance_keypoint_pairs", [])
+            assert pairs, "with_distance_prior/with_keypoint_priors requires 'distance_keypoint_pairs' " "to be set in the metainfo file."
+            self.src_kpt_idxs = torch.tensor([kpt2idx[s] for s, _ in pairs], dtype=torch.long, device=self._device)
+            self.tgt_kpt_idxs = torch.tensor([kpt2idx[t] for _, t in pairs], dtype=torch.long, device=self._device)
+
         self.ids2idx = IdIndexMap(max_size=self._max_size)
         self.time_no_see = defaultdict(int)
         self._head = torch.zeros(self._max_size, dtype=torch.long, device=self._device)
@@ -141,6 +163,34 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
     def _init_graph(self):
         self.skeleton_sources = torch.as_tensor([s for s, _ in self.skeleton_links], device=self._device)
         self.skeleton_targets = torch.as_tensor([t for _, t in self.skeleton_links], device=self._device)
+
+    def _compute_priors(self, rows: torch.Tensor) -> dict:
+        kpts_t = self._cur_kpts[rows]
+        vis_t = self._cur_vis[rows] > self.kpts_conf_thr
+        scale_t = self._cur_scale[rows]
+
+        src_kpts = kpts_t[:, self.src_kpt_idxs]
+        tgt_kpts = kpts_t[:, self.tgt_kpt_idxs]
+
+        dist = (src_kpts.unsqueeze(1) - tgt_kpts.unsqueeze(0)).norm(dim=-1)
+        sij = (scale_t.unsqueeze(0) + scale_t.unsqueeze(1)) / 2
+        d_norm = dist / (sij.unsqueeze(-1) + 1e-6)
+
+        out = dict(
+            valid_mask=None,
+            distance_priors=None,
+            keypoint_priors=None,
+        )
+        if self._with_distance_prior:
+            out["distance_priors"] = d_norm.min(-1).values
+
+        if self._with_keypoint_priors:
+            src_vis = vis_t[:, self.src_kpt_idxs]
+            tgt_vis = vis_t[:, self.tgt_kpt_idxs]
+            vis_gate = (src_vis.unsqueeze(1) & tgt_vis.unsqueeze(0)).float()
+            out["keypoint_priors"] = d_norm * vis_gate
+
+        return out
 
     def forward(self, data: dict, training: bool = False) -> Union[dict, list]:
         data_sample = data["data_samples"]
@@ -195,7 +245,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         self._ring_write(self.block_features, running_idxs, features)
         self._ring_write(self.block_features, hidden_idxs)
 
-        if self._with_kpts:
+        if self._with_kpts or self._need_kpt_state:
             kpts = pred_track_instances["keypoints"]
             if isinstance(kpts, np.ndarray):
                 kpts = torch.from_numpy(kpts)
@@ -204,7 +254,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
             kpt_vis = pred_track_instances["keypoint_scores"]
             if isinstance(kpt_vis, np.ndarray):
                 kpt_vis = torch.from_numpy(kpt_vis)
-            kpt_vis = kpt_vis.to(self._device)
+            kpt_vis = kpt_vis.to(self._device).float()
 
             if kpts.numel() > 0:
                 poses, scale = kpts_to_poses(
@@ -217,9 +267,16 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
                 )
             else:
                 poses = kpts
-            poses = poses.to(self.block_poses.dtype).view(features.shape[0], len(self.skeleton_links) * 2)
-            self._ring_write(self.block_poses, running_idxs, poses)
-            self._ring_write(self.block_poses, hidden_idxs)
+
+            if self._need_kpt_state and kpts.numel() > 0:
+                self._cur_kpts[running_idxs] = kpts
+                self._cur_vis[running_idxs] = kpt_vis
+                self._cur_scale[running_idxs] = scale.view(-1)
+
+            if self._with_kpts:
+                poses = poses.to(self.block_poses.dtype).view(features.shape[0], len(self.skeleton_links) * 2)
+                self._ring_write(self.block_poses, running_idxs, poses)
+                self._ring_write(self.block_poses, hidden_idxs)
 
         if self._with_vels:
             if scale is not None:
@@ -245,6 +302,8 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
             out["dynamics"] = self.materialize(self.block_vels, running_idxs)
         if self._with_actions:
             out["actions"] = self.materialize(self.block_actions, running_idxs)
+        if self._need_kpt_state and running_idxs.numel() > 1:
+            out.update(self._compute_priors(running_idxs))
         out["data_samples"] = data["data_samples"]
 
         self._update_head(running_idxs)
@@ -488,3 +547,311 @@ class ActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
         features = data["inputs"][0].view(N, T, -1).to(self.device)
 
         return dict(features=features, poses=skeletons, dynamics=dynamics, labels=labels)
+
+
+@MODELS.register_module()
+class GroupActionRecognitionTrainingPreprocessor(BaseDataPreprocessor):
+    def __init__(
+        self,
+        metainfo: str,
+        block_size: int,
+        velocity_encoder: Optional[dict] = None,
+        kpts_conf_thr: Optional[float] = 0.5,
+        with_distance_priors: bool = True,
+        with_vel_coherence: bool = True,
+        with_vel_approach: bool = True,
+        with_orientation_priors: bool = True,
+        device: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__()
+        assert 0 <= kpts_conf_thr < 1
+        assert block_size > 0
+
+        self._device = device or get_device()
+        self.kpts_conf_thr = kpts_conf_thr
+        self.block_size = block_size
+        self.with_distance_priors = with_distance_priors
+        self.with_vel_coherence = with_vel_coherence
+        self.with_vel_approach = with_vel_approach
+        self.with_orientation_priors = with_orientation_priors
+
+        pose_meta = parse_pose_metainfo(dict(from_file=metainfo))
+        self.skeleton_links = pose_meta.get("skeleton_links")
+        self.skeleton_sources = torch.tensor([s for s, _ in self.skeleton_links], device=self._device)
+        self.skeleton_targets = torch.tensor([t for _, t in self.skeleton_links], device=self._device)
+
+        if self.with_orientation_priors:
+            kpt_name_to_idx = pose_meta["keypoint_name2id"]
+            named_pairs = pose_meta.get("orientation_keypoint_pairs", [])
+            assert named_pairs, (
+                "If you want to train a group action recognition model with orientation priors, you must populate the 'orientation_keypoint_pairs' "
+                "in your metadata file. Please refer to documentation."
+            )
+            self.orientation_keypoint_pairs = [(kpt_name_to_idx[ant], kpt_name_to_idx[post]) for ant, post in named_pairs]
+
+        self.vel_encoder = None
+        if velocity_encoder is not None:
+            self.vel_encoder = MODELS.build(velocity_encoder)
+
+    def _get_orientation(
+        self,
+        kpts_t: torch.Tensor,
+        kpt_vis_t: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        N = kpts_t.shape[0]
+        body_orientation = torch.zeros(N, 2, device=kpts_t.device)
+        assigned = torch.zeros(N, dtype=torch.bool, device=kpts_t.device)
+
+        for ant_idx, post_idx in self.orientation_keypoint_pairs:
+            if assigned.all():
+                break
+            valid = (kpt_vis_t[:, ant_idx] > 0) & (kpt_vis_t[:, post_idx] > 0) & ~assigned
+            if valid.any():
+                vec = kpts_t[valid, ant_idx] - kpts_t[valid, post_idx]
+                body_orientation[valid] = vec / (vec.norm(dim=-1, keepdim=True) + 1e-6)
+                assigned |= valid
+
+        return body_orientation, assigned
+
+    def forward(self, data: dict, *args, **kwargs) -> dict:
+        return self.loss(data)
+
+    def loss(self, data: dict, *args, **kwargs) -> dict:
+        all_features, all_poses, all_dynamics, all_node_labels = [], [], [], []
+        all_classification_matrices, all_relationship_matrices, all_masks = [], [], []
+        all_distance_priors, all_coherence, all_vel_approach = [], [], []
+        all_orientations_alignment, all_gate_ij = [], []
+
+        for sample_idx, data_sample in enumerate(data["data_samples"]):
+            inputs = data["inputs"][sample_idx].to(self._device)
+            kpts = data_sample.pred_track_instances.kpts.to(self._device)
+            kpt_vis = data_sample.pred_track_instances.kpt_vis.to(self._device)
+            velocities = data_sample.pred_track_instances.velocities.to(self._device)
+            group_matrix = data_sample.gt_instance_labels.group_action_matrix.to(self._device)
+            valid_mask = data_sample.pred_track_instances.valid_mask.to(self._device)
+            N = inputs.shape[0]
+
+            inst_poses, inst_scales = [], []
+            for i in range(N):
+                skeleton, scale = kpts_to_poses(
+                    kpts[i],
+                    kpt_vis[i],
+                    self.skeleton_sources,
+                    self.skeleton_targets,
+                    self.kpts_conf_thr,
+                    normalize=True,
+                )
+                inst_poses.append(skeleton.view(self.block_size, -1))
+                inst_scales.append(scale)
+
+            poses = torch.stack(inst_poses, dim=0)
+            scales = torch.stack(inst_scales, dim=0).view(N, self.block_size, 1)
+
+            dynamics = velocities / scales
+            if self.vel_encoder is not None:
+                dynamics = self.vel_encoder(dynamics)
+
+            # Relationship priors (based on the last timestep only)
+            kpts_t = kpts[:, -1, :, :]
+            vis_t = (kpt_vis[:, -1, :] > self.kpts_conf_thr).float()
+            centroids = (kpts_t * vis_t.unsqueeze(-1)).sum(-2) / vis_t.sum(-1, keepdim=True).clamp(min=1)
+            vels_t = velocities[:, -1, :]
+
+            if self.with_distance_priors:
+                dist = (centroids.unsqueeze(0) - centroids.unsqueeze(1)).norm(dim=-1)
+                scale_t = scales[:, -1, 0]
+                sij = (scale_t.unsqueeze(0) + scale_t.unsqueeze(1)) / 2
+                d_norm = dist / (sij + 1e-6)
+                all_distance_priors.append(d_norm)
+
+            if self.with_vel_coherence or self.with_vel_approach:
+                v_norm = vels_t / (vels_t.norm(dim=-1, keepdim=True) + 1e-6)
+
+            if self.with_vel_coherence:
+                all_coherence.append((v_norm.unsqueeze(0) * v_norm.unsqueeze(1)).sum(-1))
+
+            if self.with_vel_approach or self.with_orientation_priors:
+                centroid_edges = centroids.unsqueeze(0) - centroids.unsqueeze(1)
+                disp_norm = centroid_edges / (centroid_edges.norm(dim=-1, keepdim=True) + 1e-6)
+
+            if self.with_vel_approach:
+                all_vel_approach.append((v_norm.unsqueeze(1) * disp_norm).sum(-1))
+
+            if self.with_orientation_priors:
+                body_orientation, assigned = self._get_orientation(kpts_t, vis_t)
+
+                # 1 = j in front of i, 0= lateral, -1=behind
+                orientations_alignment = (body_orientation.unsqueeze(1) * disp_norm).sum(-1)
+
+                # Keep track of where the orientation could not be estimated (to differenciate with lateral)
+                gate = assigned.float()
+                gate_ij = gate.unsqueeze(1) * gate.unsqueeze(0)
+
+                all_orientations_alignment.append(orientations_alignment * gate_ij)
+                all_gate_ij.append(gate_ij)
+
+            all_features.append(inputs)
+            all_poses.append(poses)
+            all_dynamics.append(dynamics)
+            all_node_labels.append(data_sample.gt_instance_labels.node_labels.to(self._device))
+            all_classification_matrices.append(group_matrix)
+            all_relationship_matrices.append((group_matrix >= 0).to(torch.int64))
+            all_masks.append(valid_mask)
+
+        labels = torch.stack(all_classification_matrices, dim=0)
+        out = dict(
+            features=torch.stack(all_features, dim=0),
+            poses=torch.stack(all_poses, dim=0),
+            dynamics=torch.stack(all_dynamics, dim=0),
+            node_labels=torch.stack(all_node_labels, dim=0),
+            labels=labels,
+            binary_labels=(labels >= 0).long(),
+            valid_mask=torch.stack(all_masks, dim=0),
+        )
+        if self.with_distance_priors:
+            out["distance_priors"] = torch.stack(all_distance_priors, dim=0)
+        if self.with_vel_coherence:
+            out["vel_coherence"] = torch.stack(all_coherence, dim=0)
+        if self.with_vel_approach:
+            out["vel_approach"] = torch.stack(all_vel_approach, dim=0)
+        if self.with_orientation_priors:
+            out["orientations_alignment"] = torch.stack(all_orientations_alignment, dim=0)
+            out["orientations_valid"] = torch.stack(all_gate_ij, dim=0)
+        return out
+
+
+@MODELS.register_module()
+class GroupActionRecognitionPoseTrainingPreprocessor(BaseDataPreprocessor):
+    def __init__(
+        self,
+        metainfo: str,
+        block_size: int,
+        velocity_encoder: Optional[dict] = None,
+        kpts_conf_thr: float = 0.5,
+        device: Optional[str] = None,
+        **_,
+    ):
+        super().__init__()
+        self._device = device or get_device()
+        self.kpts_conf_thr = kpts_conf_thr
+        self.block_size = block_size
+
+        pose_meta = parse_pose_metainfo(dict(from_file=metainfo))
+        self.skeleton_sources = torch.tensor([s for s, _ in pose_meta["skeleton_links"]], device=self._device)
+        self.skeleton_targets = torch.tensor([t for _, t in pose_meta["skeleton_links"]], device=self._device)
+
+        kpt2idx = pose_meta["keypoint_name2id"]
+        pairs = pose_meta.get("distance_keypoint_pairs", [])
+        self.n_pairs = len(pairs)
+        self.src_kpt_idxs = torch.tensor([kpt2idx[s] for s, _ in pairs], device=self._device)
+        self.tgt_kpt_idxs = torch.tensor([kpt2idx[t] for _, t in pairs], device=self._device)
+
+        self.vel_encoder = MODELS.build(velocity_encoder) if velocity_encoder is not None else None
+
+    def forward(self, data: dict, *args, **kwargs) -> dict:
+        return self.loss(data)
+
+    def loss(self, data: dict, *args, **kwargs) -> dict:
+        all_features, all_poses, all_dynamics = [], [], []
+        all_node_labels, all_labels, all_masks, all_kpt_priors, all_distance_priors = [], [], [], [], []
+
+        for sample_idx, data_sample in enumerate(data["data_samples"]):
+            inputs = data["inputs"][sample_idx].to(self._device)
+            kpts = data_sample.pred_track_instances.kpts.to(self._device)
+            kpt_vis = data_sample.pred_track_instances.kpt_vis.to(self._device)
+            vels = data_sample.pred_track_instances.velocities.to(self._device)
+
+            gm = data_sample.gt_instance_labels.group_action_matrix.to(self._device)
+            N = inputs.shape[0]
+
+            inst_poses, inst_scales = [], []
+            for i in range(N):
+                skeleton, scale = kpts_to_poses(
+                    kpts[i],
+                    kpt_vis[i],
+                    self.skeleton_sources,
+                    self.skeleton_targets,
+                    self.kpts_conf_thr,
+                    normalize=True,
+                )
+                inst_poses.append(skeleton.view(self.block_size, -1))
+                inst_scales.append(scale)
+
+            poses = torch.stack(inst_poses)
+            scales = torch.stack(inst_scales).view(N, self.block_size, 1)
+            dynamics = vels / scales
+            if self.vel_encoder is not None:
+                dynamics = self.vel_encoder(dynamics)
+
+            kpts_t = kpts[:, -1]
+            vis_t = kpt_vis[:, -1] > self.kpts_conf_thr
+
+            src_kpts = kpts_t[:, self.src_kpt_idxs, :]
+            tgt_kpts = kpts_t[:, self.tgt_kpt_idxs, :]
+            src_vis = vis_t[:, self.src_kpt_idxs]
+            tgt_vis = vis_t[:, self.tgt_kpt_idxs]
+
+            dist = (src_kpts.unsqueeze(1) - tgt_kpts.unsqueeze(0)).norm(dim=-1)
+
+            scale_t = scales[:, -1, 0]
+            sij = (scale_t.unsqueeze(0) + scale_t.unsqueeze(1)) / 2
+            d_norm = dist / (sij.unsqueeze(-1) + 1e-6)
+
+            vis_gate = (src_vis.unsqueeze(1) & tgt_vis.unsqueeze(0)).float()
+            kpt_priors = d_norm * vis_gate
+
+            all_distance_priors.append(d_norm.min(-1)[0])
+            all_kpt_priors.append(kpt_priors)
+            all_features.append(inputs)
+            all_poses.append(poses)
+            all_dynamics.append(dynamics)
+            all_node_labels.append(data_sample.gt_instance_labels.node_labels.to(self._device))
+            all_labels.append(gm)
+            all_masks.append(data_sample.pred_track_instances.valid_mask.to(self._device))
+
+        labels = torch.stack(all_labels)
+        valid_mask = torch.stack(all_masks)
+        node_labels = labels.max(-1)[0]
+
+        social_labels = node_labels.clone()
+        node_is_social = node_labels >= 0
+
+        # Shift the labels by 1 to account for the added null class
+        social_labels[~node_is_social & valid_mask.bool()] = 0
+        social_labels[node_is_social & valid_mask.bool()] += 1
+
+        return dict(
+            features=torch.stack(all_features),
+            poses=torch.stack(all_poses),
+            dynamics=torch.stack(all_dynamics),
+            node_labels=torch.stack(all_node_labels),
+            labels=social_labels,
+            binary_labels=(labels >= 0).long(),
+            valid_mask=valid_mask,
+            distance_priors=torch.stack(all_distance_priors, dim=0),
+            keypoint_priors=torch.stack(all_kpt_priors),
+        )
+
+
+@MODELS.register_module()
+class RelationshipDetectionBaselinePreprocessor(BaseDataPreprocessor):
+    def __init__(self, actions_of_interest: list, non_blocking=False, *args, **kwargs):
+        super().__init__(non_blocking)
+        self.actions_of_interest = torch.tensor(actions_of_interest, dtype=torch.int64)
+
+    def forward(self, data: dict, *args, **kwargs) -> dict:
+        return self.loss(data)
+
+    def loss(self, data: dict, *args, **kwargs) -> dict:
+        out = dict(
+            query_idxs=[],
+            bboxes=[],
+        )
+        for data_sample in data["data_samples"]:
+            bboxes = data_sample.pred_track_instances.bboxes[:, -1, :]
+            actions = data_sample.gt_instance_labels.node_labels[:, -1]
+            query_idx = torch.where(actions == self.actions_of_interest)[0]
+            out["query_idxs"].append(query_idx)
+            out["bboxes"].append(bboxes)
+        return dict(data_samples=out)

@@ -47,7 +47,7 @@ assigner = dict(
     num_tentatives=_base_.num_tentatives,
     thresholds_file=hyperparams,
     tracking_algorithm=dict(
-        type="PrecisionTrack",
+        type="ByteTrack",
         obj_score_thrs=dict(high=high_thr, low=low_thr),
         weight_iou_with_det_scores=False,
         match_iou_thrs=dict(high=0.99, low=0.75, tentative=0.9),
@@ -62,6 +62,32 @@ assigner = dict(
     ),
     stitching_algorithm=_base_.stitching_algorithm,
 )
+if _base_.with_action_recognition and _base_.with_group_action_recognition:
+    mart = _base_.analyzer.runtime.model
+    analyzer = dict(
+        input_names=_base_.action_recognition_input_names + _base_.gar_input_names,
+        output_names=_base_.action_recognition_output_names + _base_.gar_output_names,
+        data_preprocessor=dict(
+            with_distance_prior=True,
+            with_keypoint_priors=True,
+        ),
+        runtime=dict(
+            model=dict(
+                type="RelationshipDetectionPoseBaselineModel",
+                mart_config=mart,
+                # mart_checkpoint=None,
+                mart_checkpoint=_base_.mart_checkpoint,
+                metainfo=_base_.metainfo,
+                with_vel_coherence=False,
+                with_vel_approach=False,
+                with_orientation_priors=False,
+                with_keypoint_priors=True,
+                _delete_=True,
+            ),
+            # checkpoint=_base_.gmart_checkpoint,
+            checkpoint=None,
+        ),
+    )
 # /Model
 
 # Outputs
@@ -100,6 +126,7 @@ outputs = [
     # dict(
     #     type="NpyEmbeddingOutput",
     #     path=_base_.saving_directory + "/features.npy",
+    #     ids_field="instances_id",
     # ),
     dict(
         type="CsvSearchAreas",
@@ -136,6 +163,10 @@ outputs = [
     #     ids_field="instances_id",
     #     embs_field="action_embeddings",
     # ),
+    # dict(
+    #     type="PthAppearanceDatabaseOutput",
+    #     path=_base_.saving_directory + "/appearance_database.pth",
+    # ),
 ]
 
 if _base_.with_pose_estimation:
@@ -151,7 +182,7 @@ if _base_.with_pose_estimation:
 
 
 # Visualization
-bbox_size = 3
+bbox_size = 4
 text_size = 2
 painters = []
 if _base_.display_search_zones:
@@ -205,8 +236,8 @@ if _base_.display_poses:
         dict(
             type="KeypointsPainter",
             metafile_path=metainfo,
-            joint_radius=8,
-            link_thickness=4,
+            joint_radius=bbox_size + 6,
+            link_thickness=bbox_size + 2,
         ),
     ]
 if _base_.display_validations:
@@ -251,8 +282,8 @@ painters += [
         metafile_path=metainfo,
         label_position="TOP_CENTER",
         text_color=[0, 0, 0],
-        text_scale=2,
-        text_thickness=2,
+        text_scale=text_size,
+        text_thickness=int(text_size),
         text_padding=1,
         border_radius=1,
         format="cxcywh",

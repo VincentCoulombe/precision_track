@@ -32,8 +32,11 @@ main() {
     fi
   fi
 
+  local repo_root
+  repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+
   ensuring_image_exists "$mode"
-  launching_container "$mode" "$update"
+  launching_container "$mode" "$update" "$repo_root"
 }
 
 main "$@"

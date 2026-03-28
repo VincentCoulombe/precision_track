@@ -2,7 +2,7 @@ import abc
 import logging
 import os
 from collections import OrderedDict
-from typing import Any, List, Optional, Union, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -623,7 +623,7 @@ class CsvActions(BaseCsvOutput):
         super().__init__(
             path=path,
             precision=-1,
-            columns=["action", "action_scores"],
+            columns=["action", "target_ids", "action_scores"],
             instance_data=instance_data,
             ids_field=ids_field,
         )
@@ -636,22 +636,26 @@ class CsvActions(BaseCsvOutput):
         instance_data, frame_id = self._get_ds_info(det_data_sample)
         ids = self._set_ids(instance_data)
         i = 0
-        for id_, label, action, action_scores in zip(
+        for id_, label, action, target_ids, action_scores in zip(
             ids,
             instance_data["labels"],
             instance_data["actions"],
+            instance_data.get("target_ids", np.full(instance_data["action_scores"].shape, -1)),
             instance_data["action_scores"],
         ):
             if not isinstance(action, str) and self.metainfo is not None:
                 action = self.metainfo["actions"][action]
-            self._add_row(frame_id, label, id_, action, action_scores)
+            target_ids = str(target_ids)
+            if target_ids == "-1":
+                target_ids = ""
+            self._add_row(frame_id, label, id_, action, str(target_ids), action_scores)
             i += 1
         self._update_frame_id_mapping(frame_id, i)
 
     def read(self) -> None:
         """Load a csv and a mapping (for faster __getitem__)"""
         assert os.path.exists(self.path), f"{self.path} does not exist."
-        self._results = pd.read_csv(self.path, keep_default_na=True)
+        self._results = pd.read_csv(self.path, keep_default_na=True, dtype=str)
         self._results.fillna("", inplace=True)
         self.columns = self._results.columns.to_list()
         self._results = self._results.values.tolist()

@@ -1,6 +1,5 @@
 import multiprocessing as mp
 import traceback
-from collections import deque
 from logging import WARNING
 from multiprocessing import shared_memory
 from time import perf_counter
@@ -16,8 +15,8 @@ from tqdm import tqdm
 
 from precision_track.models.backends import DetectionBackend
 from precision_track.outputs.display import display_latency
-from precision_track.registry import MODELS, TRACKING, OUTPUTS
-from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking, filter_outputs
+from precision_track.registry import MODELS, OUTPUTS, TRACKING
+from precision_track.utils import PoseDataSample, VideoReader, batch_tracking, filter_outputs, wait_until_clear
 
 from .association_step import AssociationStep
 from .result import Result
@@ -195,13 +194,13 @@ class Tracker(BaseModel):
 
     @staticmethod
     def _slim_down_output(output: dict):
-        pass  # TODO enlàve TOUTE ce qui ne sert pas dans le analyzer!
+        pass  # TODO
 
     @staticmethod
     def _maybe_update_losses(losses, outputs):
         if isinstance(outputs, dict):
             for k, v in outputs.items():
-                if "loss" in k and isinstance(v, torch.Tensor) and v.requires_grad == True:
+                if "loss" in k and isinstance(v, torch.Tensor) and v.requires_grad:
                     if k in losses:
                         losses[k] = losses[k] + v
                     else:
