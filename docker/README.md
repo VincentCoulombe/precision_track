@@ -3,7 +3,6 @@
 ### 1) Install and configure Docker
 
 - **Install Docker:**
-
   - Simply run the following:
 
   ```bash
@@ -30,20 +29,16 @@
 ```
 
 - **Build options:**
-
   - Device target (choose one):
-
     - `--cpu` → build CPU image
     - `--cuda` → build CUDA image
     - `--both` → build both images
 
   - Auto-detect default:
-
     - No device flag → tries CUDA; falls back to CPU if CUDA isn’t available.
 
-  - Faster build (skip sanity checks):
-
-    - `--skip-tests` → skip automatic checks (faster, but you lose verification).
+  - Slower build (sanity checks):
+    - `--test` → Perform automatic testing.
 
   - **Examples:**
 
@@ -52,7 +47,7 @@
 
   (cd ./docker && bash ./building_image.sh --cuda)
 
-  (cd ./docker && bash ./building_image.sh --cpu --skip-tests)
+  (cd ./docker && bash ./building_image.sh --cpu --test)
 
   (cd ./docker && bash ./building_image.sh --both)
   ```
@@ -60,7 +55,6 @@
 ### 3) Launch your development container (each session)
 
 - **What it does:**
-
   - Starts your PrecisionTrack environment (container).
   - Keeps it running while your terminal stays open.
   - Safe to close/relaunch. Your outputs are save directly on the host.
@@ -72,22 +66,17 @@ chmod +x ./docker/launching_container.sh
 ```
 
 - **Launch options:**
-
   - Device target (choose one):
-
     - `--cpu` → launch CPU image
     - `--cuda` → launch CUDA image
 
   - Auto-detect default:
-
     - No device flag → tries CUDA; falls back to CPU if CUDA isn’t available.
 
   - Update code (optional):
-
     - `--update` → pulls the latest PrecisionTrack code before starting.
 
   - Auto-build if missing:
-
     - If the requested image doesn’t exist, the script will build it first.
 
   - **Examples:**
@@ -99,7 +88,6 @@ chmod +x ./docker/launching_container.sh
   ```
 
   - **Notes:**
-
     - Closing the terminal stops the container (no data loss, the outputs are on host).
     - Re-run the launch command to start again.
 
@@ -129,14 +117,14 @@ precision_track/
 
 All defaults can be overridden at call-site without editing the scripts:
 
-| Variable | Default | Purpose |
-| -------------------- | ----------------------------------- | ------------------------------------------------- |
-| `IMAGE_NAME` | `precisiontrack` | Docker image name |
-| `CUDA_DOCKERFILE` | `dockerfile.cuda` | Path to the CUDA Dockerfile |
-| `CPU_DOCKERFILE` | `dockerfile.cpu` | Path to the CPU Dockerfile |
-| `BUILD_ARGS` | _(empty)_ | Extra arguments forwarded to `docker build` |
-| `PYTEST_ARGS` | _(empty)_ | Arguments forwarded to `pytest` inside the container |
-| `DOCKER` | `docker` | Docker CLI binary (e.g. `"sudo docker"`) |
+| Variable          | Default           | Purpose                                              |
+| ----------------- | ----------------- | ---------------------------------------------------- |
+| `IMAGE_NAME`      | `precisiontrack`  | Docker image name                                    |
+| `CUDA_DOCKERFILE` | `dockerfile.cuda` | Path to the CUDA Dockerfile                          |
+| `CPU_DOCKERFILE`  | `dockerfile.cpu`  | Path to the CPU Dockerfile                           |
+| `BUILD_ARGS`      | _(empty)_         | Extra arguments forwarded to `docker build`          |
+| `PYTEST_ARGS`     | _(empty)_         | Arguments forwarded to `pytest` inside the container |
+| `DOCKER`          | `docker`          | Docker CLI binary (e.g. `"sudo docker"`)             |
 
 Example — build under a custom image name without sudo:
 
@@ -149,7 +137,6 @@ IMAGE_NAME=myproject DOCKER="sudo docker" bash ./docker/building_image.sh --cuda
 ### Common workflows
 
 - **Edit configs on host → run in container:**
-
   - Edit files in `configs/settings/` and `configs/metadata/` with your usual editor.
   - Inside the running container, launch the [tools](https://github.com/VincentCoulombe/precision_track/tree/main/tools)
     - Find outputs fast:
@@ -160,16 +147,13 @@ IMAGE_NAME=myproject DOCKER="sudo docker" bash ./docker/building_image.sh --cuda
 ### Troubleshooting
 
 - **CUDA/GPU not detected:**
-
   - Verify NVIDIA driver + Container Toolkit.
   - Rebuild with `--cuda` and relaunch with `--cuda`.
 
 - **Permission issues on scripts:**
-
   - `chmod +x ./docker/*.sh`
 
 - **Image missing:**
-
   - The launch script auto-builds if needed; otherwise run the build script explicitly.
 
 - **Rebuild from scratch:**

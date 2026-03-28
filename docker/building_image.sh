@@ -6,7 +6,7 @@ source "$SCRIPT_DIR/utils.sh"
 main() {
   check_system || exit 1
 
-  local mode="auto" run_tests="yes"
+  local mode="auto" run_tests="no"
 
   # Parse the provided arguments
   while [[ "${1-}" =~ ^- ]]; do
@@ -14,7 +14,7 @@ main() {
       --cpu)        mode="cpu" ;;
       --cuda)       mode="cuda" ;;
       --both)       mode="both" ;;
-      --skip-tests) run_tests="no" ;;
+      --test) run_tests="yes" ;;
       -h|--help)    usage; exit 0 ;;
       *)            err "Unknown flag: $1"; usage; exit 2 ;;
     esac

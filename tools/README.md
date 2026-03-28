@@ -12,6 +12,14 @@ PrecisionTrack's toolkit is composed of a series of configurable tools that you 
 cd ./tools
 ```
 
+**⚠️IMPORTANT⚠️** Users wanting to use the package on a CPU only machine (which is very not recommended) might have to first send the following command:
+
+```bash
+export ATEN_CPU_CAPABILITY=default
+```
+
+Before calling each tool. Else, PyTorch might create a segfault error (internal bug not fixed yet).
+
 **Note**: For Windows and WSL users. You'll first need to change your directory to PrecisionTrack's. To do so, follow these steps:
 
 1. Launch WSL
@@ -37,7 +45,6 @@ cd ./tools
    ```
 
 - **There are eight tools in the `tools` directory**
-
   - `train_detection.py` — Orchestrate the training and deployment of **Detection models**.
   - `train_action_recognition.py` — Orchestrate the training and deployment of **MART** (and optionally **GMART**) models.
 
@@ -63,7 +70,6 @@ cd ./tools
 - **Purpose:** Train Detection models.
 
 - **Inputs:**:
-
   - `--format_dataset`. True to resize and format your COCO-style dataset (accelerate the model's training significantly), False otherwise. Default to True.
   - `--test`. True to automatically launch the `test_detection.py` tool after the training run, False otherwise. Default to True.
   - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
@@ -71,7 +77,6 @@ cd ./tools
   - `--optimize_hyperparams` True to optimize your tracking hyperparameters and generate a `hyperparams.json` file in your `<deploying_directory>` directory, False otherwise. Default to True.
 
 - **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory. A `hyperparams.json` file and `DEPLOYED` checkpoints will be saved in your `<deploying_directory>`. Testing metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
-
   - Please refer to our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) guide for more details.
 
 - **Examples**
@@ -87,13 +92,11 @@ cd ./tools
 - **Purpose:** Train Action Recognition models. Trains **MART** first, then automatically trains **GMART** if `with_group_action_recognition` is enabled in your settings.
 
 - **Inputs:**:
-
   - `--test`. True to automatically launch the `test_action_recognition.py` tool after the training run, False otherwise. Default to True.
   - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
   - `--config`. Path to the training config file. Default to `../configs/tasks/training_action_recognition.py`.
 
 - **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory. `DEPLOYED` checkpoints will be saved in your `<deploying_directory>`. Testing metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
-
   - When `with_group_action_recognition` is enabled, a second GMART training run follows automatically, producing an additional `gmart_DEPLOYED` checkpoint.
 
 - **Examples**

@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import traceback
+from collections import deque
 from logging import WARNING
 from multiprocessing import shared_memory
 from time import perf_counter
@@ -15,8 +16,8 @@ from tqdm import tqdm
 
 from precision_track.models.backends import DetectionBackend
 from precision_track.outputs.display import display_latency
-from precision_track.registry import MODELS, OUTPUTS, TRACKING
-from precision_track.utils import PoseDataSample, VideoReader, batch_tracking, filter_outputs, wait_until_clear
+from precision_track.registry import MODELS, TRACKING, OUTPUTS
+from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking, filter_outputs
 
 from .association_step import AssociationStep
 from .result import Result
@@ -194,13 +195,13 @@ class Tracker(BaseModel):
 
     @staticmethod
     def _slim_down_output(output: dict):
-        pass  # TODO
+        pass  # TODO enlàve TOUTE ce qui ne sert pas dans le analyzer!
 
     @staticmethod
     def _maybe_update_losses(losses, outputs):
         if isinstance(outputs, dict):
             for k, v in outputs.items():
-                if "loss" in k and isinstance(v, torch.Tensor) and v.requires_grad:
+                if "loss" in k and isinstance(v, torch.Tensor) and v.requires_grad == True:
                     if k in losses:
                         losses[k] = losses[k] + v
                     else:
@@ -298,28 +299,39 @@ def tracking_process(
     indices_np = np.ndarray((2, B), dtype=np.uint64, buffer=shm_indices.buf)
 
     tracking_ready.set()
-    while not stop_tracking.is_set():
-        if input_pipe.poll():
-            batch_idx, batch_size = input_pipe.recv()
-            if batch_idx >= 0:
-                frames = [frames_np[batch_idx, i, ...] for i in range(batch_size)]
-                indices = indices_np[batch_idx, :batch_size].tolist()
-                input_is_loaded.set()
-                outputs = detector(inputs=frames, data_samples=indices)
-                for i, output in enumerate(outputs):
-                    output = association_step(output, switches)
-                    if validator is not None:
-                        frame = frames_np[batch_idx, i, ...]
-                        if validator._frame_size is None:
-                            validator.frame_size = frame.shape[:2]
-                        output, switches = validator(frame, output)
-                    trk_output_connexion.send(output)
-                    ann_input_is_loaded.wait()
-                    ann_input_is_loaded.clear()
-                    # result(output)
-            elif batch_idx == -1:
-                input_is_loaded.set()
-                trk_output_connexion.send(None)
+    try:
+        while not stop_tracking.is_set():
+            if input_pipe.poll():
+                batch_idx, batch_size = input_pipe.recv()
+                if batch_idx >= 0:
+                    frames = [frames_np[batch_idx, i, ...] for i in range(batch_size)]
+                    indices = indices_np[batch_idx, :batch_size].tolist()
+                    input_is_loaded.set()
+                    outputs = detector(inputs=frames, data_samples=indices)
+                    for i, output in enumerate(outputs):
+                        output = association_step(output, switches)
+                        if validator is not None:
+                            frame = frames_np[batch_idx, i, ...]
+                            if validator._frame_size is None:
+                                validator.frame_size = frame.shape[:2]
+                            output, switches = validator(frame, output)
+                        trk_output_connexion.send(output)
+                        ann_input_is_loaded.wait()
+                        ann_input_is_loaded.clear()
+                        # result(output)
+                elif batch_idx == -1:
+                    input_is_loaded.set()
+                    trk_output_connexion.send(None)
+    except Exception:
+        print(f"[tracking_process] CRASHED:\n{traceback.format_exc()}", flush=True)
+        # Unblock the main process if it is waiting for input_is_loaded
+        if not input_is_loaded.is_set():
+            input_is_loaded.set()
+        # Send sentinel so analyzing_process can shut down cleanly
+        try:
+            trk_output_connexion.send(None)
+        except Exception:
+            pass
 
     # result.save()
     for shm in [existing_shm, shm_indices]:
@@ -344,11 +356,18 @@ def analyzing_process(
 
     while True:
         if ann_input_connexion.poll():
-            output = ann_input_connexion.recv()
+            try:
+                output = ann_input_connexion.recv()
+            except EOFError:
+                print("[analyzing_process] pipe closed unexpectedly (tracking_process likely crashed).", flush=True)
+                break
             ann_input_is_loaded.set()
             if output is not None:
                 if analyzer is not None:
-                    output = analyzer.predict(output)
+                    try:
+                        output = analyzer.predict(output)
+                    except Exception:
+                        print(f"[analyzing_process] analyzer.predict failed:\n{traceback.format_exc()}", flush=True)
                 result(output)
             else:
                 break
