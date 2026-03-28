@@ -68,8 +68,10 @@ def display_mot_results(evaluations: Union[List[dict], dict], precision=3):
         for metric_name, metric_key, is_int in metric_defs:
             row = [f"{metric_name} on {cls}"]
             for eval in evaluations:
-                value = eval[cls][metric_key]
-                row.append(int(value) if is_int else value)
+                value_dict = eval.get(cls, {})
+                if value_dict:
+                    value = eval[cls][metric_key]
+                    row.append(int(value) if is_int else value)
             table.append(row)
 
     print(

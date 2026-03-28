@@ -178,10 +178,6 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         out = dict(
             valid_mask=None,
             distance_priors=None,
-            vel_coherence=None,
-            vel_approach=None,
-            orientations_alignment=None,
-            orientations_valid=None,
             keypoint_priors=None,
         )
         if self._with_distance_prior:

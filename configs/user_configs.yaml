@@ -13,8 +13,6 @@ booleans:
 # ================================
 general:
   metainfo: "../configs/metadata/mice.py"
-  # metainfo: "../../datasets/zebrafish/zebrafish.py"
-  # metainfo: "../../datasets/stripedmice/stripedmice_corrected_without_tail.py"
 
 # ================================
 # Training parameters, directories and paths
@@ -28,10 +26,6 @@ training:
   training_checkpoint: "../checkpoints/model_ap/model_ap.pth"
 
   deploying_directory: "../checkpoints/mice/"
-
-  # deploying_directory: "../checkpoints/zebrafish/"
-  # deploying_directory: "../checkpoints/camille/"
-
   deploying_sanity_check_img_path: "images/0000003435.jpg"
 
   batch_size: 38 # Warning: The training is unstable with batch sizes < 16.
@@ -43,12 +37,21 @@ training:
 tracking:
   saving_directory: "../work_dir/"
   num_subjects: { "mouse": 20 }
-  # num_subjects: { "zebrafish": -1 }
-
-  # tracking_checkpoint_name: "zebrafish.pth"
   tracking_checkpoint_name: "model_mice_DEPLOYED.pth"
-  # tracking_checkpoint_name: "model_camille_DEPLOYED.onnx"
-  mot_testing_data_root: "../../datasets/MICE/pose-estimation/benchmark/"
+  mot_data_root: "../../datasets/MICE/pose-estimation/benchmark/"
+
+# ================================
+# Action Recognition parameters
+# ================================
+action_recognition:
+  mart_checkpoint_name: "mart_DEPLOYED.pth"
+  action_recognition_data_root: "../../datasets/MICE/sequential/"
+
+# ================================
+# Group Action Recognition parameters
+# ================================
+group_action_recognition:
+  gmart_checkpoint_name: "gmart_DEPLOYED.pth"
 
 # ================================
 # Validation parameters

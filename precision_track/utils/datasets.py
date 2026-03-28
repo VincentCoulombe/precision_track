@@ -147,6 +147,7 @@ def parse_pose_metainfo(metainfo: dict):
     parsed["orientation_keypoint_pairs"] = metainfo.get("orientation_keypoint_pairs", [])
     parsed["distance_keypoint_pairs"] = metainfo.get("distance_keypoint_pairs", [])
     parsed["social_actions"] = metainfo.get("social_actions", [])
+    parsed["null_action"] = metainfo.get("null_action", "")
 
     return parsed
 

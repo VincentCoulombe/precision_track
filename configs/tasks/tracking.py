@@ -47,7 +47,7 @@ assigner = dict(
     num_tentatives=_base_.num_tentatives,
     thresholds_file=hyperparams,
     tracking_algorithm=dict(
-        type="PrecisionTrack",
+        type="ByteTrack",
         obj_score_thrs=dict(high=high_thr, low=low_thr),
         weight_iou_with_det_scores=False,
         match_iou_thrs=dict(high=0.99, low=0.75, tentative=0.9),
@@ -73,9 +73,10 @@ if _base_.with_action_recognition and _base_.with_group_action_recognition:
         ),
         runtime=dict(
             model=dict(
-                type="GMART",
+                type="RelationshipDetectionPoseBaselineModel",
                 mart_config=mart,
-                mart_checkpoint=None,
+                # mart_checkpoint=None,
+                mart_checkpoint=_base_.mart_checkpoint,
                 metainfo=_base_.metainfo,
                 with_vel_coherence=False,
                 with_vel_approach=False,
@@ -83,7 +84,8 @@ if _base_.with_action_recognition and _base_.with_group_action_recognition:
                 with_keypoint_priors=True,
                 _delete_=True,
             ),
-            checkpoint=_base_.gmart_checkpoint,
+            # checkpoint=_base_.gmart_checkpoint,
+            checkpoint=None,
         ),
     )
 # /Model

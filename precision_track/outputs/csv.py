@@ -640,12 +640,13 @@ class CsvActions(BaseCsvOutput):
             ids,
             instance_data["labels"],
             instance_data["actions"],
-            instance_data.get("target_ids", ""),
+            instance_data.get("target_ids", np.full(instance_data["action_scores"].shape, -1)),
             instance_data["action_scores"],
         ):
             if not isinstance(action, str) and self.metainfo is not None:
                 action = self.metainfo["actions"][action]
-            if target_ids and int(target_ids) < 0:
+            target_ids = str(target_ids)
+            if target_ids == "-1":
                 target_ids = ""
             self._add_row(frame_id, label, id_, action, str(target_ids), action_scores)
             i += 1

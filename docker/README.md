@@ -26,7 +26,7 @@
 - **Make the build script executable (once):**
 
 ```bash
-(cd ./docker && sudo chmod +x ./building_image.sh)
+(cd ./docker && chmod +x ./building_image.sh)
 ```
 
 - **Build options:**
@@ -68,7 +68,7 @@
 - **Make the build script executable (once):**
 
 ```bash
-sudo chmod +x ./docker/launching_container.sh
+chmod +x ./docker/launching_container.sh
 ```
 
 - **Launch options:**

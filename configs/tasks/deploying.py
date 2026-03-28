@@ -152,16 +152,13 @@ mart_runtime_config = dict(
     type="tensorrt",
     paths=dict(
         directory=_base_.mart_deploying_directory,
-        deployed_name=_base_.mart_deployed_name,
+        deployed_name=_base_.mart_checkpoint_name,
     ),
     common_config=dict(half_precision=_base_.half_precision, max_workspace_size=4 << 30),
     output_names=_base_.action_recognition_output_names,
 )
 mart_dynamic_axes = dict(
-    features={0: "batch_size", 1: "sequence_len"},
-    poses={0: "batch_size", 1: "sequence_len"},
-    dynamics={0: "batch_size", 1: "sequence_len"},
-    class_logits={0: "batch_size", 1: "sequence_len"},
+    features={0: "batch_size"}, poses={0: "batch_size"}, dynamics={0: "batch_size"}, class_logits={0: "batch_size"}, action_embeddings={0: "batch_size"}
 )
 mart_onnx_config = dict(
     type="onnx",
@@ -169,12 +166,39 @@ mart_onnx_config = dict(
     opset_version=17,
     input_names=_base_.action_recognition_input_names,
     output_names=_base_.action_recognition_output_names,
-    save_file=_base_.mart_deployed_name[:-4] + ".onnx",
+    save_file=_base_.mart_checkpoint_name[:-4] + ".onnx",
     optimize=True,
     keep_initializers_as_inputs=False,
     dynamic_axes=mart_dynamic_axes,
 )
-#   MART
+#  /MART
+# GMART
+gar_input_names = _base_.action_recognition_input_names + _base_.gar_input_names
+gmart_runtime_config = dict(
+    type="tensorrt",
+    paths=dict(
+        directory=_base_.mart_deploying_directory,
+        deployed_name=_base_.gmart_checkpoint_name,
+    ),
+    common_config=dict(half_precision=_base_.half_precision, max_workspace_size=4 << 30),
+    output_names=_base_.action_recognition_output_names + _base_.gar_output_names,
+)
+gmart_dynamic_axes = mart_dynamic_axes | dict(
+    interaction_logits={0: "batch_size"},
+    social_logits={0: "batch_size"},
+)
+gmart_onnx_config = dict(
+    type="onnx",
+    verbose=False,
+    opset_version=17,
+    input_names=gar_input_names,
+    output_names=_base_.action_recognition_output_names + _base_.gar_output_names,
+    save_file=_base_.gmart_checkpoint_name[:-4] + ".onnx",
+    optimize=True,
+    keep_initializers_as_inputs=False,
+    dynamic_axes=gmart_dynamic_axes,
+)
+# /GMART
 # /Runtime
 
 # Visualization

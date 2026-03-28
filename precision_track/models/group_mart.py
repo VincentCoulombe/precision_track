@@ -28,9 +28,6 @@ class GMART(BaseModel):
         mart_config: dict,
         mart_checkpoint: str,
         metainfo: str,
-        with_vel_coherence: bool = True,
-        with_vel_approach: bool = True,
-        with_orientation_priors: bool = True,
         with_keypoint_priors: bool = False,
         radius: float = 10.0,
         relationship_loss_weight: float = 1.0,
@@ -50,18 +47,9 @@ class GMART(BaseModel):
         self.n_group_classes = len(metainfo.get("social_actions", [])) + 1  # Account for added null class
         n_keypoint_priors = len(metainfo.get("distance_keypoint_pairs", []))
 
-        self.with_vel_coherence = with_vel_coherence
-        self.with_vel_approach = with_vel_approach
-        self.with_orientation_priors = with_orientation_priors
         self.n_keypoint_priors = n_keypoint_priors
 
-        n_priors = (
-            1
-            + int(with_vel_coherence)
-            + int(with_vel_approach)
-            + 2 * int(with_orientation_priors)  # orientations_alignment & orientations_valid
-            + n_keypoint_priors * int(with_keypoint_priors)
-        )
+        n_priors = 1 + n_keypoint_priors * int(with_keypoint_priors)
 
         self.radius = radius
 
@@ -139,10 +127,6 @@ class GMART(BaseModel):
         binary_labels: Optional[Tensor] = None,
         valid_mask: Optional[Tensor] = None,
         distance_priors: Optional[Tensor] = None,
-        vel_coherence: Optional[Tensor] = None,
-        vel_approach: Optional[Tensor] = None,
-        orientations_alignment: Optional[Tensor] = None,
-        orientations_valid: Optional[Tensor] = None,
         keypoint_priors: Optional[Tensor] = None,
         data_samples: Optional[List[PoseDataSample]] = None,
         mode: Optional[str] = "tensor",
@@ -160,10 +144,6 @@ class GMART(BaseModel):
                 binary_labels,
                 valid_mask,
                 distance_priors,
-                vel_coherence,
-                vel_approach,
-                orientations_alignment,
-                orientations_valid,
                 keypoint_priors,
             )
         elif mode == "predict":
@@ -174,10 +154,6 @@ class GMART(BaseModel):
                     dynamics,
                     valid_mask,
                     distance_priors,
-                    vel_coherence,
-                    vel_approach,
-                    orientations_alignment,
-                    orientations_valid,
                     keypoint_priors,
                 ),
                 data_samples=data_samples,
@@ -194,10 +170,6 @@ class GMART(BaseModel):
         poses: Tensor,
         dynamics: Tensor,
         distance_priors: Tensor,
-        vel_coherence: Optional[Tensor] = None,
-        vel_approach: Optional[Tensor] = None,
-        orientations_alignment: Optional[Tensor] = None,
-        orientations_valid: Optional[Tensor] = None,
         keypoint_priors: Optional[Tensor] = None,
     ) -> Tuple[torch.Tensor]:
 
@@ -215,13 +187,6 @@ class GMART(BaseModel):
         node_emb = node_emb_last.reshape(batch_size, nb_subjects, -1)
 
         prior_list = [distance_priors.unsqueeze(-1)]
-        if self.with_vel_coherence and vel_coherence is not None:
-            prior_list.append(vel_coherence.unsqueeze(-1))
-        if self.with_vel_approach and vel_approach is not None:
-            prior_list.append(vel_approach.unsqueeze(-1))
-        if self.with_orientation_priors and orientations_alignment is not None:
-            prior_list.append(orientations_alignment.unsqueeze(-1))
-            prior_list.append(orientations_valid.unsqueeze(-1))
         if self.n_keypoint_priors > 0 and keypoint_priors is not None:
             prior_list.append(keypoint_priors)
 
@@ -259,10 +224,6 @@ class GMART(BaseModel):
         binary_labels: Tensor,
         valid_mask: Tensor,
         distance_priors: Optional[Tensor] = None,
-        vel_coherence: Optional[Tensor] = None,
-        vel_approach: Optional[Tensor] = None,
-        orientations_alignment: Optional[Tensor] = None,
-        orientations_valid: Optional[Tensor] = None,
         keypoint_priors: Optional[Tensor] = None,
     ) -> dict:
         B, N, T = features.shape[:3]
@@ -274,10 +235,6 @@ class GMART(BaseModel):
             poses,
             dynamics,
             distance_priors,
-            vel_coherence,
-            vel_approach,
-            orientations_alignment,
-            orientations_valid,
             keypoint_priors,
         )
 
@@ -311,24 +268,12 @@ class GMART(BaseModel):
             dynamics,
             valid_mask,
             distance_priors,
-            vel_coherence,
-            vel_approach,
-            orientations_alignment,
-            orientations_valid,
             keypoint_priors,
         ) = inputs
         if features.ndim == 3:
             features = features.unsqueeze(0)
             if distance_priors is not None:
                 distance_priors = distance_priors.unsqueeze(0)
-            if vel_coherence is not None:
-                vel_coherence = vel_coherence.unsqueeze(0)
-            if vel_approach is not None:
-                vel_approach = vel_approach.unsqueeze(0)
-            if orientations_alignment is not None:
-                orientations_alignment = orientations_alignment.unsqueeze(0)
-            if orientations_valid is not None:
-                orientations_valid = orientations_valid.unsqueeze(0)
             if keypoint_priors is not None:
                 keypoint_priors = keypoint_priors.unsqueeze(0)
         B, N, T, _ = features.shape
@@ -340,10 +285,6 @@ class GMART(BaseModel):
             poses,
             dynamics,
             distance_priors,
-            vel_coherence,
-            vel_approach,
-            orientations_alignment,
-            orientations_valid,
             keypoint_priors,
         )
 
@@ -443,7 +384,7 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
         **kwargs,
     ) -> Union[Tensor, Tuple[Tensor], dict]:
         if mode in ("loss", "predict"):
-            return self.predict((features, poses, dynamics, None, None, None, None, None, None, keypoint_priors))
+            return self.predict((features, poses, dynamics, None, None, keypoint_priors))
         raise RuntimeError(f'Invalid mode "{mode}". Only supports loss and predict.')
 
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> GMARTPredictions:
@@ -451,10 +392,6 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
             features,
             poses,
             dynamics,
-            _,
-            _,
-            _,
-            _,
             _,
             _,
             keypoint_priors,

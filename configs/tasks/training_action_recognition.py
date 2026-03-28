@@ -131,9 +131,9 @@ load_img = [dict(type="LoadImage")]
 crop = [dict(type="SequenceRandomCrop", crop_size=(0.85, 1.0))]
 resize = [dict(type="BottomupResize", input_size=_base_.input_size, pad_val=(_base_.pad_value, _base_.pad_value, _base_.pad_value))]
 transforms = [
-    # dict(type="SequenceYOLOXHSVRandomAug", value_delta=15, hue_delta=0, saturation_delta=0),
-    # dict(type="SequenceRandomContrastAug"),
-    # dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
+    dict(type="SequenceYOLOXHSVRandomAug", value_delta=15, hue_delta=0, saturation_delta=0),
+    dict(type="SequenceRandomContrastAug"),
+    dict(type="SequenceRandomFlip", direction="horizontal", prob=0.5),
     # dict(type="SequenceRandomOcclusion"),
 ]
 load_anns = [
@@ -226,11 +226,11 @@ custom_hooks = [
     #     type="SequencePreprocessingHook",
     #     priority=50,
     # ),
-    # dict(
-    #     type="SequencesSwitchHook",
-    #     priority=51,
-    #     generate_every=1000,
-    # ),
+    dict(
+        type="SequencesSwitchHook",
+        priority=51,
+        generate_every=1000,
+    ),
 ]
 # /Hooks
 

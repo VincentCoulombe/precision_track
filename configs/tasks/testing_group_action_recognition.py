@@ -10,9 +10,6 @@ model = dict(
     mart_config=_base_.analyzer.runtime.model,
     mart_checkpoint=None,
     metainfo=_base_.metainfo,
-    with_vel_coherence=False,
-    with_vel_approach=False,
-    with_orientation_priors=False,
     with_keypoint_priors=True,
     data_preprocessor=dict(
         type="GroupActionRecognitionPoseTrainingPreprocessor",
@@ -23,22 +20,6 @@ model = dict(
     ),
     _delete_=True,
 )
-# model = dict(
-#     type="RelationshipDetectionBaselineModel",
-#     actions_of_interest=[2],
-#     mart_config=_base_.analyzer.runtime.model.mart_config,
-#     mart_checkpoint=_base_.mart_testing_checkpoint,
-#     metainfo=_base_.metainfo,
-#     data_preprocessor=dict(
-#         type="RelationshipDetectionBaselinePreprocessor",
-#         actions_of_interest=[2],
-#         velocity_encoder=_base_.velocity_encoder,
-#         metainfo=_base_.metainfo,
-#         _delete_=True,
-#         block_size=_base_.block_size,
-#     ),
-#     _delete_=True,
-# )
 # /Model
 
 # Dataloaders

@@ -346,15 +346,8 @@ class AssociationStep(nn.Module):
 
         if self.return_isolations:
             if nb_subjects > 0:
-                relevant_bboxes = data_sample["pred_track_instances"]["bboxes"]
-                search_areas = data_sample.get("search_areas", dict()).get("bboxes", [])
-
-                if len(search_areas) > 0:
-                    bboxes = np.concatenate([relevant_bboxes, search_areas])
-                else:
-                    bboxes = relevant_bboxes
-
-                bious = biou_batch(relevant_bboxes.copy(), bboxes, 0.5)
+                bboxes = data_sample["pred_track_instances"]["bboxes"]
+                bious = biou_batch(bboxes.copy(), bboxes, 0.5)
                 isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
                 data_sample["pred_track_instances"]["isolated"] = isolated
             else:

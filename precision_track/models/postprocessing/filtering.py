@@ -72,7 +72,7 @@ class NearnessBasedActionFiltering(BaseActionPostProcessor):
 
         action_mask = np.isin(actions, self.concerned_labels)
         relevant_bboxes = bboxes[action_mask]
-        isolated = data_sample["pred_track_instances"]["isolated"][action_mask]  # TODO do not count search zones here...
+        isolated = data_sample["pred_track_instances"]["isolated"][action_mask]
 
         if relevant_bboxes.size > 0 and any(isolated):
             update_indices = np.flatnonzero(action_mask)[isolated]

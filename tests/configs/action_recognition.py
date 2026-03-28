@@ -44,7 +44,7 @@ analyzer = dict(
     data_postprocessor=dict(
         type="ActionPostProcessingSteps",
         postprocessing_steps=[
-            dict(type="NearnessBasedActionFiltering", concerned_labels=["Interacting"], fallback_label="Other", metainfo=metainfo),
+            dict(type="NearnessBasedActionFiltering", fallback_label="Other", metainfo=metainfo),
             dict(
                 type="KeypointBasedActionRefinement",
                 action_to_refine="Interacting",

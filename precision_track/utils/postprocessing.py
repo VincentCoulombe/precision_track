@@ -88,8 +88,10 @@ def postprocess_fpv_action_recognition(
     data_samples: Union[List[PoseDataSample], PoseDataSample],
     actions_map: np.ndarray,
     post_processor: Optional[Any] = None,
-    interaction_threshold: Optional[float] = 0.5,
+    action_threshold: Optional[float] = 0.75,
+    social_action_threshold: Optional[float] = 0.5,
     group_actions_map: Optional[np.ndarray] = None,
+    null_action: Optional[str] = None,
 ):
     if isinstance(data_samples, List):
         assert len(data_samples) == 1, "Action Recognition does not support batches."
@@ -112,26 +114,26 @@ def postprocess_fpv_action_recognition(
     if isinstance(preds, torch.Tensor):
         preds = preds.detach().cpu().numpy().astype(np.float32)
 
-    # TODO adaptive class-specific thresholds!
-    actions = actions_map[np.argmax(preds, axis=-1).reshape(-1)]
-    action_scores = np.max(preds, axis=-1).reshape(-1)
+    action_scores = preds.max(axis=-1)
+    actions = actions_map[preds.argmax(axis=-1).reshape(-1)]
+    if isinstance(null_action, str):
+        actions[action_scores < action_threshold] = null_action
+    action_scores = action_scores.reshape(-1)
 
     if edge_probs is not None and social_logits is not None and isinstance(group_actions_map, np.ndarray):
-        max_social_scores, social_action = social_logits.max(dim=-1)
-        # TODO select all the edges > interaction_threshold
-        # TODO an animal could be having a social interaction with multiple others (or even 0). I would liek to account for that.
-        max_edge_scores, partner_idxs = edge_probs.max(dim=-1)
+        edge_probs = edge_probs.detach().cpu().numpy()
+        max_social_scores, social_actions = social_logits.max(dim=-1)
 
-        is_social = ((max_social_scores > interaction_threshold) & (social_action > 0) & (max_edge_scores > interaction_threshold)).cpu().numpy()
-        social_actions = social_logits.detach().cpu().numpy().astype(np.float32)[is_social]
+        is_social = torch.where((max_social_scores >= social_action_threshold) & (social_actions > 0))[0].cpu().numpy()
+
+        social_actions = social_actions.detach().cpu().numpy()[is_social]
 
         valid_ids = data_sample["pred_track_instances"]["instances_id"]
-        target_ids = np.full(len(valid_ids), -1)
+        target_ids = np.full(len(valid_ids), "-1", dtype=object)
 
         if np.any(social_actions):
-            partner_idxs_np = partner_idxs.cpu().numpy()
-            actions[is_social] = group_actions_map[np.argmax(social_actions, axis=-1) - 1]
-            target_ids[is_social] = valid_ids[partner_idxs_np[is_social]]
+            actions[is_social] = group_actions_map[social_actions - 1]
+            target_ids[is_social] = [",".join(map(str, valid_ids[edge_probs[i] >= social_action_threshold])) or "-1" for i in is_social]
 
         data_sample["pred_track_instances"]["target_ids"] = target_ids.astype(str)
 

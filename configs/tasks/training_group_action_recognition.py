@@ -3,7 +3,7 @@ _base_ = "./training_action_recognition.py"
 # Settings
 gar_base_lr = _base_.gar_base_lr
 heads_dropout = 0.2
-encoder_dropout = 0.1
+encoder_dropout = 0.2
 batch_size = _base_.gar_batch_size
 # /Settings
 
@@ -19,9 +19,6 @@ model = dict(
     classification_label_smoothing=0.1,
     heads_dropout=heads_dropout,
     encoder_dropout=encoder_dropout,
-    with_vel_coherence=False,
-    with_vel_approach=False,
-    with_orientation_priors=False,
     with_keypoint_priors=True,
     data_preprocessor=dict(
         type="GroupActionRecognitionPoseTrainingPreprocessor",
@@ -108,6 +105,6 @@ default_hooks = dict(
 )
 custom_hooks = [
     dict(type="ModuleFreezingHook", modules_to_freeze=["mart"], priority=30),
-    dict(type="LossCurriculumSwitchHook", switch_iter=0.5 * _base_.gar_warmup_iter, classification_loss_weight=1.0, priority=50),
+    dict(type="LossCurriculumSwitchHook", switch_iter=0.5 * _base_.gar_warmup_iter, classification_loss_weight=2.0, priority=50),
 ]
 # /Hooks

@@ -54,6 +54,7 @@ class ActionRecognitionBackend(BaseBackend):
         self.smooth_factor = smooth_factor
         self.last_timestep_probs = None
         self.last_timestep_ids = None
+        self.null_action = str(metainfo.get("null_action", ""))
 
     @property
     def runtime(self) -> nn.Module:
@@ -126,4 +127,5 @@ class ActionRecognitionBackend(BaseBackend):
             self.actions,
             self.data_postprocessor,
             group_actions_map=self.group_actions,
+            null_action=self.null_action,
         )

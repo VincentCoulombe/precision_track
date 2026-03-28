@@ -55,6 +55,7 @@ dataset_info = dict(
         "Grooming",
     ],
     social_actions=["Interacting"],
+    null_action="Other",
     distance_keypoint_pairs=[
         ("Snout", "Snout"),
         ("Snout", "Right Ear"),
@@ -63,5 +64,6 @@ dataset_info = dict(
         ("Snout", "Left Leg"),
         ("Snout", "Base of Tail"),
         ("Snout", "Tailtag"),
+        ("Centroid", "Centroid"),
     ],
 )

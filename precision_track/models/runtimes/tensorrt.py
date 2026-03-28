@@ -163,11 +163,12 @@ class TensorRTRuntime(InferenceOnlyRuntime):
         else:
             raise ValueError(f"inputs must be a torch.Tensor or a tuple. Received: {type(inputs)}.")
 
-        if current_batch_size != self._running_batch_size:
-            for name, tensor in zip(self.input_names, inputs):
-                tensor = self._stage_to_gpu(tensor).to(self.dtypes[name])
-                self._set_input(name, tensor)
-                self._buffer[name] = tensor
+        batch_size_changed = current_batch_size != self._running_batch_size
+        for name, tensor in zip(self.input_names, inputs):
+            tensor = self._stage_to_gpu(tensor).to(self.dtypes[name])
+            self._set_input(name, tensor)
+            self._buffer[name] = tensor
+        if batch_size_changed:
             self.context.infer_shapes()
             self._outputs = tuple(self._alloc_output(n) for n in self.output_names)
 
