@@ -4,8 +4,8 @@
 booleans:
   pipelined: false
   with_validation: false
-  with_action_recognition: true
-  with_group_action_recognition: true
+  with_action_recognition: false
+  with_group_action_recognition: false
   with_pose_estimation: true
 
 # ================================
@@ -65,10 +65,10 @@ validation:
 visualization:
   display_bounding_boxes: false
   display_poses: true
-  display_velocities: false
-  display_species: false
-  display_confidence_scores: false
-  display_actions: true
+  display_velocities: true
+  display_species: true
+  display_confidence_scores: true
+  display_actions: false
   display_search_zones: false
   display_validations: false
   display_untracked_detections: false

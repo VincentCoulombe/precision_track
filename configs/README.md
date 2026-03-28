@@ -181,9 +181,9 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
     │ ├── val/
     | | ├── video2.csv
     ├── videos/
-    | | ├── video1.csv
+    | | ├── video1.mp4
     │ ├── val/
-    | | ├── video2.csv
+    | | ├── video2.avi
   ```
 
   This structure is very close to the expected **mot_data_root**'s, but it contains training (train) and validaiton (val) splits. It also requires a `./keypoints` and a `./actions` subdirectory. Again, please refer to our [MICE sequential dataset](https://drive.google.com/drive/folders/1WcDkX-92X6SCgZPAZXFyDc6EGUzU0Onq?usp=drive_link) as a valid Action Recognition dataset.

@@ -125,6 +125,27 @@ precision_track/
 
 ---
 
+### Environment variable overrides
+
+All defaults can be overridden at call-site without editing the scripts:
+
+| Variable | Default | Purpose |
+| -------------------- | ----------------------------------- | ------------------------------------------------- |
+| `IMAGE_NAME` | `precisiontrack` | Docker image name |
+| `CUDA_DOCKERFILE` | `dockerfile.cuda` | Path to the CUDA Dockerfile |
+| `CPU_DOCKERFILE` | `dockerfile.cpu` | Path to the CPU Dockerfile |
+| `BUILD_ARGS` | _(empty)_ | Extra arguments forwarded to `docker build` |
+| `PYTEST_ARGS` | _(empty)_ | Arguments forwarded to `pytest` inside the container |
+| `DOCKER` | `docker` | Docker CLI binary (e.g. `"sudo docker"`) |
+
+Example — build under a custom image name without sudo:
+
+```bash
+IMAGE_NAME=myproject DOCKER="sudo docker" bash ./docker/building_image.sh --cuda
+```
+
+---
+
 ### Common workflows
 
 - **Edit configs on host → run in container:**

@@ -1,1 +1,28 @@
 *.mp4 filter=lfs diff=lfs merge=lfs -text
+
+# Enforce LF line endings for all text files on checkout
+* text=auto eol=lf
+
+# Shell scripts — always LF
+*.sh text eol=lf
+
+# Dockerfiles — always LF
+dockerfile* text eol=lf
+Dockerfile* text eol=lf
+
+# Config / markup / source — always LF
+*.py    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.txt   text eol=lf
+
+# Binary files — never touch line endings
+*.jpg   binary
+*.png   binary
+*.gif   binary
+*.avi   binary

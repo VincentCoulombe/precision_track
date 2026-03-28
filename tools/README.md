@@ -36,20 +36,22 @@ cd ./tools
    cd ./tools
    ```
 
-- **There are seven tools in the `tools` directory**
+- **There are eight tools in the `tools` directory**
 
   - `train_detection.py` — Orchestrate the training and deployment of **Detection models**.
-  - `train_action_recognition.py` — Orchestrate the training and deployment of **MART models**.
+  - `train_action_recognition.py` — Orchestrate the training and deployment of **MART** (and optionally **GMART**) models.
 
   - `test_detection.py` — Evaluate the trained **Detection models** on your **COCO-style Dataset**. Report [Pose-Tracking Metrics](https://www.biorxiv.org/content/10.1101/2024.12.26.630112v3). The reports will be logged and also saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
 
   - `test_tracking.py` — Evaluate the trained **Detection models** on your **MOT-style Benchmark**. Report [CLEAR Metrics](https://link.springer.com/article/10.1155/2008/246309). The reports will be logged and also saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
 
-  - `test_action_recognition.py` — Evaluate the trained **MART models** on your **MART-style Dataset**. Report the [standards classification metrics](https://cohere.com/blog/classification-eval-metrics). The reports will be logged and also saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
+  - `test_action_recognition.py` — Evaluate the trained **MART** or **GMART models** on your **action recognition dataset**. Report the [standards classification metrics](https://cohere.com/blog/classification-eval-metrics). The reports will be logged and also saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
 
-  - `track.py` — Run tracking on pre‑recorded videos
+  - `track.py` — Run tracking on pre‑recorded videos.
 
-  - `visualize.py` — Render tracking + action recognition from MOT outputs
+  - `visualize.py` — Render tracking + action recognition from MOT outputs.
+
+  - `plot_profiles.py` — Plot per-frame timing profiles from a profiling JSON produced by `track.py --profile=true`.
 
 - **Configuration**
   - Via your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs)
@@ -82,14 +84,17 @@ cd ./tools
 
 ## 2) train_action_recognition.py
 
-- **Purpose:** Train Action Recognition models.
+- **Purpose:** Train Action Recognition models. Trains **MART** first, then automatically trains **GMART** if `with_group_action_recognition` is enabled in your settings.
 
 - **Inputs:**:
 
   - `--test`. True to automatically launch the `test_action_recognition.py` tool after the training run, False otherwise. Default to True.
   - `--deploy`. True to deploy the trained model and generate optimized runtime checkpoints in your `<deploying_directory>` directory, False otherwise. Default to True.
+  - `--config`. Path to the training config file. Default to `../configs/tasks/training_action_recognition.py`.
 
 - **Outputs:** The training log as well as the most performant and the last checkpoints will be saved in the `precision_track/work_dir/training_runs/<dataset_name>` directory. `DEPLOYED` checkpoints will be saved in your `<deploying_directory>`. Testing metrics will be saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
+
+  - When `with_group_action_recognition` is enabled, a second GMART training run follows automatically, producing an additional `gmart_DEPLOYED` checkpoint.
 
 - **Examples**
 
@@ -144,7 +149,9 @@ cd ./tools
 ## 6) track.py — run tracking on videos
 
 - **Purpose:** run detector/pose/action heads + association on pre‑recorded media.
-- **Inputs:** `video` (path to the recording file)
+- **Inputs:**
+  - `video` (positional) — path to the recording file.
+  - `--profile` — set to `true` to record per-frame timing data. Saves a `profile_<timestamp>.json` to your `saving_directory`. Not supported in pipelined mode. Default to `false`.
 - **Outputs:** All the available outputs will be saved at the defined `work_dir` from the settings. Heres a list of all the possible outputs:
   - `tracked_bboxes.csv`: Contains the MOT formatted bounding boxes of all the tracked subjects over the whole recording.
   - `detected_bboxes.csv`: Contains the MOT formatted bounding boxes of all the detected subjects for every frame of the recording.
@@ -173,6 +180,24 @@ cd ./tools
   python visualize.py source data/sample.mp4 sink data/annotated_data_sample.mp4
   ```
 
+## 8) plot_profiles.py — visualize timing profiles
+
+- **Purpose:** Turn a profiling JSON produced by `track.py --profile=true` into annotated timing charts. Highlights JiT (just-in-time compilation) spikes and statistical outlier peaks.
+- **Inputs:**
+  - `json_file` (positional) — path to the `profile_<timestamp>.json` file in your `saving_directory`.
+  - `--std-threshold` — number of standard deviations above the mean to flag a frame as a peak. Default to `2.0`.
+- **Outputs:** PNG plots saved alongside the input JSON:
+  - `detection_profile.png` — batch-level detection timing.
+  - `tracking_profile.png` — per-frame tracking timing (one subplot per tracked component).
+- **Examples**
+
+  ```bash
+  python plot_profiles.py ../work_dir/profile_20250101_120000.json
+  python plot_profiles.py ../work_dir/profile_20250101_120000.json --std-threshold=3.0
+  ```
+
+---
+
 ## Example workflows
 
 - **Train → Test → Deploy**
@@ -188,4 +213,12 @@ cd ./tools
   <!-- Track on a specified video and the render the results. -->
   python track.py video <your video name>.mp4
   python visualize.py source <your video name>.mp4 sink annotated_<your video name>.mp4
+  ```
+
+- **Track → Profile → Plot**
+
+  ```bash
+  <!-- Track with profiling enabled, then plot the timing results. -->
+  python track.py video <your video name>.mp4 --profile=true
+  python plot_profiles.py <saving_directory>/profile_<timestamp>.json
   ```

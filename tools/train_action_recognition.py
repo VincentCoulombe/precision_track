@@ -96,13 +96,10 @@ def main(args):
     user_system_configs_path = "../configs/user_configs.yaml"
     load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
 
-    # runner = Runner(system_configs_path, args.launcher, mode="train")
-    # runner()
-    # checkpoint_hook = find_checkpoint_hook(runner)
-    #
-    # best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
-
-    best_ckpt_path = "../checkpoints/mice/mart.pth"
+    runner = Runner(system_configs_path, args.launcher, mode="train")
+    runner()
+    checkpoint_hook = find_checkpoint_hook(runner)
+    best_ckpt_path = str(checkpoint_hook.best_ckpt_path)
 
     assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
     "This is either because you deleted it manually or because the training run stopped before a validation step took place."
@@ -116,20 +113,20 @@ def main(args):
     if device == "auto":
         device = get_device()
 
-    # args.config = "../configs/tasks/testing_action_recognition.py"
-    # if args.test:
-    #     test_ar_main(args=args)
+    args.config = "../configs/tasks/testing_action_recognition.py"
+    if args.test:
+        test_ar_main(args=args)
 
-    # if args.deploy:
-    #     deploy_to_onnx_trt(
-    #         "mart_runtime_config",
-    #         "action_recognition_input_names",
-    #         deploy_cfg,
-    #         logger,
-    #         tracking_config,
-    #         deployed_path,
-    #         device,
-    #     )
+    if args.deploy:
+        deploy_to_onnx_trt(
+            "mart_runtime_config",
+            "action_recognition_input_names",
+            deploy_cfg,
+            logger,
+            tracking_config,
+            deployed_path,
+            device,
+        )
 
     if deploy_cfg.with_group_action_recognition:
         metainfo = deploy_cfg["metainfo"]
