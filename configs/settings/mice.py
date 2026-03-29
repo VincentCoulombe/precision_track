@@ -15,7 +15,7 @@ deepen_factor = 0.33
 data_mode = _base_.data_mode
 data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
-deploying_directory = '../checkpoints/mice//'
+deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -91,7 +91,7 @@ tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = False
+with_action_recognition = True
 with_group_action_recognition = False
 
 num_subjects = {'mouse': 20}
