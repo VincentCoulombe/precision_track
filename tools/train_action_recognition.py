@@ -28,6 +28,12 @@ def parse_args():
     return args
 
 
+_ANALYZER_KEYS = {
+    "mart_runtime_config": "analyzer",
+    "gmart_runtime_config": "gmart_analyzer",
+}
+
+
 def deploy_to_onnx_trt(
     runtime_config: str,
     input_names: str,
@@ -37,8 +43,11 @@ def deploy_to_onnx_trt(
     deployed_path: str,
     device: str,
 ):
+    onnx_config_key = runtime_config.replace("_runtime_config", "_onnx_config")
+    analyzer_key = _ANALYZER_KEYS[runtime_config]
+
     if deploy_cfg[runtime_config]["type"] in ["onnxruntime", "tensorrt"]:
-        ir_config = deploy_cfg["mart_onnx_config"]
+        ir_config = deploy_cfg[onnx_config_key]
         ir_save_file = ir_config["save_file"]
         logger.info(f"Deploying {ir_save_file} to ONNX.")
         detector = DetectionBackend(**tracking_config.detector)
@@ -50,6 +59,8 @@ def deploy_to_onnx_trt(
             deploy_cfg,
             deployed_path,
             device=device,
+            onnx_config_key=onnx_config_key,
+            analyzer_key=analyzer_key,
         )
 
     if deploy_cfg[runtime_config]["type"] == "tensorrt":
@@ -57,7 +68,7 @@ def deploy_to_onnx_trt(
 
         common_params = deploy_cfg[runtime_config]["common_config"]
 
-        input_shape_cfgs = deploy_cfg["analyzer"]["runtime"]["input_shapes"]
+        input_shape_cfgs = deploy_cfg[analyzer_key]["runtime"]["input_shapes"]
         input_shapes = []
         for input_shape in input_shape_cfgs:
             input_shapes.append(TASK_UTILS.build(input_shape))
@@ -75,9 +86,14 @@ def deploy_to_onnx_trt(
 
         formatted_input_shapes = defaultdict(dict)
         for k, input_shape in zip(input_names, input_shapes):
-            formatted_input_shapes[k]["min_shape"] = [1] + list(input_shape.shape)
-            formatted_input_shapes[k]["opt_shape"] = [num_subjects] + list(input_shape.shape)
-            formatted_input_shapes[k]["max_shape"] = [max_subjects] + list(input_shape.shape)
+            if getattr(input_shape, "is_pairwise", False):
+                formatted_input_shapes[k]["min_shape"] = [1, 1] + list(input_shape.shape)
+                formatted_input_shapes[k]["opt_shape"] = [num_subjects, num_subjects] + list(input_shape.shape)
+                formatted_input_shapes[k]["max_shape"] = [max_subjects, max_subjects] + list(input_shape.shape)
+            else:
+                formatted_input_shapes[k]["min_shape"] = [1] + list(input_shape.shape)
+                formatted_input_shapes[k]["opt_shape"] = [num_subjects] + list(input_shape.shape)
+                formatted_input_shapes[k]["max_shape"] = [max_subjects] + list(input_shape.shape)
 
         to_tensorrt(
             os.path.join(deploy_cfg[runtime_config]["paths"]["directory"], ir_save_file),

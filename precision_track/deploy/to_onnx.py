@@ -76,6 +76,8 @@ def mart_to_onnx(
     deploy_cfg: mmengine.Config,
     model_checkpoint: Optional[str] = None,
     device: str = "auto",
+    onnx_config_key: str = "mart_onnx_config",
+    analyzer_key: str = "analyzer",
 ):
     if device == "auto":
         device = get_device()
@@ -83,27 +85,48 @@ def mart_to_onnx(
     check_runtime_device("onnx", device=device)
     codebase_name = get_codebase(deploy_cfg).value
     codebase = CODEBASE.build({"type": codebase_name})
-    mart_cfg = deploy_cfg["analyzer"]["runtime"]["model"]
-    mart_cfg["data_preprocessor"] = deploy_cfg["analyzer"]["data_preprocessor"]
+    mart_cfg = deploy_cfg[analyzer_key]["runtime"]["model"]
+    mart_cfg["data_preprocessor"] = deploy_cfg[analyzer_key]["data_preprocessor"]
     task_processor = codebase.build_task_processor(mart_cfg, deploy_cfg, device, is_mart=True)
 
     torch_model = task_processor.build_pytorch_model(model_checkpoint)
     data = task_processor.create_input(tracking_output)
-    model_inputs = (data["features"], data["poses"], data["dynamics"])
-    data_samples = data["data_samples"]
-    input_metas = {"data_samples": data_samples, "mode": "predict"}
+
+    # Build GAR inputs if present (GMART case)
+    valid_mask = data.get("valid_mask")
+    distance_priors = data.get("distance_priors")
+    keypoint_priors = data.get("keypoint_priors")
+    has_gar = distance_priors is not None
+
+    if has_gar:
+        if valid_mask is None:
+            N = data["features"].shape[0]
+            valid_mask = torch.ones(N, dtype=torch.bool, device=data["features"].device)
+        _model = torch_model
+
+        class _GMARTExportWrapper(torch.nn.Module):
+            def forward(self, features, poses, dynamics, valid_mask, distance_priors, keypoint_priors):
+                return tuple(_model.predict(inputs=(features, poses, dynamics, valid_mask, distance_priors, keypoint_priors)))
+
+        torch_model = _GMARTExportWrapper()
+        model_inputs = (data["features"], data["poses"], data["dynamics"], valid_mask, distance_priors, keypoint_priors)
+        input_metas = None
+    else:
+        model_inputs = (data["features"], data["poses"], data["dynamics"])
+        input_metas = {"data_samples": data["data_samples"], "mode": "predict"}
 
     # export to onnx
     context_info = dict()
     context_info["deploy_cfg"] = deploy_cfg
     output_prefix = osp.join(work_dir, osp.splitext(osp.basename(save_file))[0])
 
-    onnx_cfg = deploy_cfg["mart_onnx_config"]
+    onnx_cfg = deploy_cfg[onnx_config_key]
     opset_version = onnx_cfg.get("opset_version", 11)
 
     input_names = onnx_cfg["input_names"]
     output_names = onnx_cfg["output_names"]
-    dynamic_axes = deploy_cfg["mart_dynamic_axes"]
+    dynamic_axes_key = onnx_config_key.replace("_onnx_config", "_dynamic_axes")
+    dynamic_axes = deploy_cfg[dynamic_axes_key]
     verbose = not onnx_cfg.get("strip_doc_string", True) or onnx_cfg.get("verbose", False)
     keep_initializers_as_inputs = onnx_cfg.get("keep_initializers_as_inputs", True)
 

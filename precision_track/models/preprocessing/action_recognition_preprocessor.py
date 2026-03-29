@@ -88,7 +88,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         assert max_size > 0
         assert embd_size > 0
 
-        self._device = device or get_device()
+        self._device = torch.device(device or get_device())
         self.kpts_conf_thr = kpts_conf_thr
 
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))

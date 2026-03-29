@@ -46,7 +46,7 @@ def test_tracking(checkpoints, expected_results_path, config):
             checkpoint = os.path.splitext(checkpoint)[0] + "_cpu.onnx"
         detector["runtime"]["checkpoint"] = checkpoint
         for pipelined in [True, False]:
-            runner = Runner(config, "none", mode="test")
+            runner = Runner(cfg, "none", mode="test")
             if pipelined:
                 runner.test_loop.tracker = PipelinedTracker
             else:
