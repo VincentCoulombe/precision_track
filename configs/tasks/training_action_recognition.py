@@ -245,6 +245,7 @@ if _base_.wandb_logging:
             init_kwargs=dict(
                 project=_base_.project,
                 entity=_base_.entity,
+                allow_val_change=True,
             ),
             define_metric_cfg={
                 "ActionRecognition/Macro F1": "max",

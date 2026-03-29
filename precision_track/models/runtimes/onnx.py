@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import onnxruntime as ort
-import pkg_resources
+from importlib.metadata import version, PackageNotFoundError
 import torch
 from mmengine import Config
 
@@ -69,8 +69,8 @@ class ONNXRuntime(InferenceOnlyRuntime):
         if "cuda" in self.device:
             runtime += "-gpu"
         try:
-            ort_version = pkg_resources.get_distribution(runtime).version
-        except pkg_resources.DistributionNotFound:
+            ort_version = version(runtime)
+        except PackageNotFoundError:
             raise Exception(
                 f"""The {runtime} package dependency is not installed. Note that the onnxruntime and the onnxruntime-gpu are mutually exclusive,
                 meaning you can not infer with both installed on the same virtual env."""
