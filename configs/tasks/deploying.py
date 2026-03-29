@@ -198,6 +198,26 @@ gmart_onnx_config = dict(
     keep_initializers_as_inputs=False,
     dynamic_axes=gmart_dynamic_axes,
 )
+gmart_analyzer = dict(
+    data_preprocessor=analyzer.data_preprocessor | dict(
+        with_distance_prior=True,
+        with_keypoint_priors=True,
+    ),
+    runtime=dict(
+        model=dict(
+            type="GMART",
+            mart_config=analyzer.runtime.model,
+            mart_checkpoint=_base_.mart_checkpoint,
+            metainfo=_base_.metainfo,
+            with_keypoint_priors=True,
+        ),
+        input_shapes=list(analyzer.runtime.input_shapes) + [
+            dict(type="ValidMaskShape"),
+            dict(type="DistancePriorsShape"),
+            dict(type="KeypointPriorsShape", metainfo=_base_.metainfo),
+        ],
+    ),
+)
 # /GMART
 # /Runtime
 

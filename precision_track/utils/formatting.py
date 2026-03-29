@@ -505,6 +505,28 @@ class ImageShape(InputShape):
         self.shape = (n_channels, width, height)
 
 
+@TASK_UTILS.register_module()
+class ValidMaskShape(InputShape):
+    def __init__(self):
+        self.shape = ()
+
+
+@TASK_UTILS.register_module()
+class DistancePriorsShape(InputShape):
+    def __init__(self):
+        self.is_pairwise = True
+        self.shape = ()
+
+
+@TASK_UTILS.register_module()
+class KeypointPriorsShape(InputShape):
+    def __init__(self, metainfo: str):
+        metainfo_dict = parse_pose_metainfo(dict(from_file=metainfo))
+        n_kp_pairs = len(metainfo_dict.get("distance_keypoint_pairs", []))
+        self.is_pairwise = True
+        self.shape = (n_kp_pairs,)
+
+
 def unflatten_predictions(flat_preds: torch.Tensor, shapes: List[Tuple[int, int]]):
     """
     Reconstructs original list of prediction tensors from the flattened tensor.

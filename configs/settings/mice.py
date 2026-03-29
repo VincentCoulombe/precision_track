@@ -15,7 +15,7 @@ deepen_factor = 0.33
 data_mode = _base_.data_mode
 data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
-deploying_directory = '../checkpoints/mice/'
+deploying_directory = '../checkpoints/mice//'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -86,12 +86,12 @@ tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = True
-saving_directory = '../work_dir/20mice_sanity_check'
+saving_directory = '../work_dir/'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = True
+with_action_recognition = False
 with_group_action_recognition = False
 
 num_subjects = {'mouse': 20}
@@ -156,7 +156,7 @@ assigner = dict(
 
 if with_action_recognition:
     action_recognition_input_names = ["features", "poses", "dynamics"]
-    gar_input_names = ["valid_mask", "keypoint_priors", "distance_priors"]
+    gar_input_names = ["valid_mask", "distance_priors", "keypoint_priors"]
     action_recognition_output_names = ["class_logits", "action_embeddings"]
     gar_output_names = ["interaction_logits", "social_logits"]
 
@@ -299,7 +299,7 @@ display_poses = True
 display_velocities = True
 display_species = True
 display_confidence_scores = True
-display_actions = True
+display_actions = False
 display_search_zones = False
 display_validations = False
 display_untracked_detections = False

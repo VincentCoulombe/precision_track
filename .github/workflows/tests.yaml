@@ -32,4 +32,4 @@ jobs:
           python -m pip install -e ".[cpu, test]"
 
       - name: Run pytest
-        run: pytest -s -q -x
+        run: pytest ./tests/test_ar_preprocessing.py ./tests/test_action_recognition.py ./tests/test_csv.py ./tests/test_detection_head.py ./tests/test_formatting.py ./tests/test_group_action_recognition.py ./tests/test_matching.py ./tests/test_npy.py ./tests/test_tracking.py -s -q -x

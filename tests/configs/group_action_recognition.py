@@ -1,9 +1,14 @@
 _base_ = "./action_recognition.py"
 
+gar_input_names = ["valid_mask", "distance_priors", "keypoint_priors"]
+
+gar_output_names = []
+if isinstance(_base_.gar_output_names, list):
+    gar_output_names = _base_.gar_output_names
 
 analyzer = dict(
-    input_names=_base_.action_recognition_input_names + _base_.gar_input_names,
-    output_names=_base_.action_recognition_output_names + _base_.gar_output_names,
+    input_names=_base_.action_recognition_input_names + gar_input_names,
+    output_names=_base_.action_recognition_output_names + gar_output_names,
     data_preprocessor=dict(
         with_distance_prior=True,
         with_keypoint_priors=True,

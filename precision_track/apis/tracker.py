@@ -1,6 +1,5 @@
 import multiprocessing as mp
 import traceback
-from collections import deque
 from logging import WARNING
 from multiprocessing import shared_memory
 from time import perf_counter
@@ -201,7 +200,7 @@ class Tracker(BaseModel):
     def _maybe_update_losses(losses, outputs):
         if isinstance(outputs, dict):
             for k, v in outputs.items():
-                if "loss" in k and isinstance(v, torch.Tensor) and v.requires_grad == True:
+                if "loss" in k and isinstance(v, torch.Tensor) and v.requires_grad:
                     if k in losses:
                         losses[k] = losses[k] + v
                     else:
