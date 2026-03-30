@@ -105,10 +105,14 @@ def mart_to_onnx(
         _model = torch_model
 
         class _GMARTExportWrapper(torch.nn.Module):
-            def forward(self, features, poses, dynamics, valid_mask, distance_priors, keypoint_priors):
-                return tuple(_model.predict(inputs=(features, poses, dynamics, valid_mask, distance_priors, keypoint_priors)))
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
 
-        torch_model = _GMARTExportWrapper()
+            def forward(self, features, poses, dynamics, valid_mask, distance_priors, keypoint_priors):
+                return tuple(self.model.predict(inputs=(features, poses, dynamics, valid_mask, distance_priors, keypoint_priors)))
+
+        torch_model = _GMARTExportWrapper(_model)
         model_inputs = (data["features"], data["poses"], data["dynamics"], valid_mask, distance_priors, keypoint_priors)
         input_metas = None
     else:

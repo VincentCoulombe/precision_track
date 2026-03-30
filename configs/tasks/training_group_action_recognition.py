@@ -103,7 +103,7 @@ val_evaluator = dict(
 default_hooks = dict(
     checkpoint=dict(interval=-1, type="CheckpointHook", save_best="GroupActionRecognition/Social mF1@0.5:0.95", rule="greater", by_epoch=False),
 )
-custom_hooks = [
+custom_hooks = _base_.custom_hooks + [
     dict(type="ModuleFreezingHook", modules_to_freeze=["mart"], priority=30),
     dict(type="LossCurriculumSwitchHook", switch_iter=0.5 * _base_.gar_warmup_iter, classification_loss_weight=2.0, priority=50),
 ]
