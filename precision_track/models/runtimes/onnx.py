@@ -1,9 +1,9 @@
 import os
+from importlib.metadata import PackageNotFoundError, version
 from typing import List, Tuple, Union
 
 import numpy as np
 import onnxruntime as ort
-from importlib.metadata import version, PackageNotFoundError
 import torch
 from mmengine import Config
 

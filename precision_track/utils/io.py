@@ -34,6 +34,8 @@ from mmengine.model import BaseTTAModel, is_model_wrapper
 from mmengine.utils import check_file_exist, digit_version, mkdir_or_exist, track_progress
 from mmengine.utils.dl_utils import load_url
 
+from .cuda import get_device
+
 SUPPORTED_IMG_BACKEND = [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp", ".pgm", ".pbm", ".ppm", ".ras"]
 SUPPORTED_VIDEO_BACKEND = [".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg"]
 ENV_MMENGINE_HOME = "MMENGINE_HOME"
@@ -413,6 +415,8 @@ def load_from_local(filename, map_location):
     filename = osp.expanduser(filename)
     if not osp.isfile(filename):
         raise FileNotFoundError(f"{filename} can not be found.")
+    if get_device() == "cpu":
+        map_location = "cpu"
     checkpoint = torch.load(filename, map_location=map_location, weights_only=False)
     return checkpoint
 

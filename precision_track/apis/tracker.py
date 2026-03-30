@@ -15,8 +15,8 @@ from tqdm import tqdm
 
 from precision_track.models.backends import DetectionBackend
 from precision_track.outputs.display import display_latency
-from precision_track.registry import MODELS, TRACKING, OUTPUTS
-from precision_track.utils import PoseDataSample, VideoReader, wait_until_clear, batch_tracking, filter_outputs
+from precision_track.registry import MODELS, OUTPUTS, TRACKING
+from precision_track.utils import PoseDataSample, VideoReader, batch_tracking, filter_outputs, wait_until_clear
 
 from .association_step import AssociationStep
 from .result import Result

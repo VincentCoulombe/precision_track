@@ -101,7 +101,7 @@ def mart_to_onnx(
     if has_gar:
         if valid_mask is None:
             N = data["features"].shape[0]
-            valid_mask = torch.ones(N, dtype=torch.bool, device=data["features"].device)
+            valid_mask = torch.ones(N, dtype=torch.bool, device=device)
         _model = torch_model
 
         class _GMARTExportWrapper(torch.nn.Module):
@@ -114,6 +114,8 @@ def mart_to_onnx(
     else:
         model_inputs = (data["features"], data["poses"], data["dynamics"])
         input_metas = {"data_samples": data["data_samples"], "mode": "predict"}
+
+    model_inputs = tuple(t.to(device) for t in model_inputs)
 
     # export to onnx
     context_info = dict()
