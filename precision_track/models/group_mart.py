@@ -38,6 +38,8 @@ class GMART(BaseModel):
         encoder_dropout: float = 0.0,
         data_preprocessor=None,
         init_cfg=None,
+        *args,
+        **kwargs,
     ):
         super().__init__(data_preprocessor, init_cfg)
 
@@ -152,9 +154,9 @@ class GMART(BaseModel):
                     features,
                     poses,
                     dynamics,
-                    valid_mask,
                     distance_priors,
                     keypoint_priors,
+                    valid_mask,
                 ),
                 data_samples=data_samples,
             )
@@ -239,7 +241,8 @@ class GMART(BaseModel):
         )
 
         pair_valid = valid_mask.unsqueeze(2) & valid_mask.unsqueeze(1)
-        diag_mask = ~torch.eye(N, dtype=torch.bool, device=bce_logits.device).unsqueeze(0).expand(B, -1, -1)
+        _idx = torch.arange(N, device=bce_logits.device)
+        diag_mask = (_idx.unsqueeze(0) != _idx.unsqueeze(1)).unsqueeze(0).expand(B, -1, -1)
         pair_valid = pair_valid & diag_mask
 
         relationship_loss = focal_loss(
@@ -262,14 +265,24 @@ class GMART(BaseModel):
         return losses
 
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> GMARTPredictions:
-        (
-            features,
-            poses,
-            dynamics,
-            valid_mask,
-            distance_priors,
-            keypoint_priors,
-        ) = inputs
+        if len(inputs) == 6:
+            (
+                features,
+                poses,
+                dynamics,
+                distance_priors,
+                keypoint_priors,
+                valid_mask,
+            ) = inputs
+        else:
+            (
+                features,
+                poses,
+                dynamics,
+                distance_priors,
+                keypoint_priors,
+            ) = inputs
+            valid_mask = None
         if features.ndim == 3:
             features = features.unsqueeze(0)
             if distance_priors is not None:
@@ -288,11 +301,12 @@ class GMART(BaseModel):
             keypoint_priors,
         )
 
-        edge_probs = torch.sigmoid(edge_logits)
-        node_pred = F.softmax(node_logits, dim=-1)
-        social_pred = F.softmax(ce_logits, dim=-1)
+        edge_probs = torch.sigmoid(edge_logits).squeeze(0)
+        node_pred = F.softmax(node_logits, dim=-1).squeeze(0)
+        social_pred = F.softmax(ce_logits, dim=-1).squeeze(0)
 
-        diag = torch.eye(N, dtype=torch.bool, device=edge_probs.device).unsqueeze(0)
+        _idx = torch.arange(N, device=edge_probs.device)
+        diag = _idx.unsqueeze(0) == _idx.unsqueeze(1)
         edge_probs = edge_probs.masked_fill(diag, 0.0)
 
         if valid_mask is not None:
@@ -414,7 +428,8 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
         preds = torch.argmax(probs, dim=-1).to("cpu")
         query_idx = torch.where(preds == self.actions_of_interest)[0].to(device)
         edge_probs = torch.zeros(B, N, N, device=device)
-        diag = torch.eye(N, dtype=torch.bool, device=device)
+        _idx = torch.arange(N, device=device)
+        diag = _idx.unsqueeze(0) == _idx.unsqueeze(1)
         keypoint_priors = keypoint_priors.masked_fill(diag.unsqueeze(0).unsqueeze(-1), float("inf"))
         if len(query_idx) > 0:
             keypoint_priors_of_interest = keypoint_priors[:, query_idx, ...]

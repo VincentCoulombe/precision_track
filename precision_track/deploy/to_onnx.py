@@ -92,16 +92,11 @@ def mart_to_onnx(
     torch_model = task_processor.build_pytorch_model(model_checkpoint)
     data = task_processor.create_input(tracking_output)
 
-    # Build GAR inputs if present (GMART case)
-    valid_mask = data.get("valid_mask")
     distance_priors = data.get("distance_priors")
     keypoint_priors = data.get("keypoint_priors")
     has_gar = distance_priors is not None
 
     if has_gar:
-        if valid_mask is None:
-            N = data["features"].shape[0]
-            valid_mask = torch.ones(N, dtype=torch.bool, device=device)
         _model = torch_model
 
         class _GMARTExportWrapper(torch.nn.Module):
@@ -109,17 +104,23 @@ def mart_to_onnx(
                 super().__init__()
                 self.model = model
 
-            def forward(self, features, poses, dynamics, valid_mask, distance_priors, keypoint_priors):
-                return tuple(self.model.predict(inputs=(features, poses, dynamics, valid_mask, distance_priors, keypoint_priors)))
+            def forward(self, features, poses, dynamics, distance_priors, keypoint_priors):
+                return tuple(self.model.predict(inputs=(features, poses, dynamics, distance_priors, keypoint_priors)))
 
         torch_model = _GMARTExportWrapper(_model)
-        model_inputs = (data["features"], data["poses"], data["dynamics"], valid_mask, distance_priors, keypoint_priors)
+        model_inputs = (
+            data["features"],
+            data["poses"],
+            data["dynamics"],
+            distance_priors,
+            keypoint_priors,
+        )
         input_metas = None
     else:
         model_inputs = (data["features"], data["poses"], data["dynamics"])
         input_metas = {"data_samples": data["data_samples"], "mode": "predict"}
 
-    model_inputs = tuple(t.to(device) for t in model_inputs)
+    model_inputs = tuple(t.to(device) for t in model_inputs if isinstance(t, torch.Tensor))
 
     # export to onnx
     context_info = dict()

@@ -177,7 +177,6 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
         d_norm = dist / (sij.unsqueeze(-1) + 1e-6)
 
         out = dict(
-            valid_mask=None,
             distance_priors=None,
             keypoint_priors=None,
         )

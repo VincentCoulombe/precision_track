@@ -11,6 +11,7 @@ import json
 import os
 import os.path as osp
 import textwrap
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import cv2
@@ -21,7 +22,7 @@ from mmengine.logging import print_log
 from mmengine.registry import FUNCTIONS
 from tqdm import tqdm
 
-from .io import SUPPORTED_IMG_BACKEND, SUPPORTED_VIDEO_BACKEND
+from .io import SUPPORTED_IMG_BACKEND, SUPPORTED_VIDEO_BACKEND, load_user_configs
 
 
 def parse_pose_metainfo(metainfo: dict):
@@ -468,3 +469,57 @@ def check_if_mot_dataset_is_ok(dataset_root_dir: str):
         return False, f"Your {videos_dir} subdirectory does not contains videos matching the {missing_str} .csv files."
 
     return True, _
+
+
+def register_action_recognition_dataset(dataset_root_dir: str, system_configs_path: str):
+    root = Path(dataset_root_dir)
+
+    train_seqs, train_bboxes, train_kps, train_actions = [], [], [], []
+    val_seqs, val_bboxes, val_kps, val_actions = [], [], [], []
+
+    for split, seq_list, bbox_list, kp_list, act_list in [
+        ("train", train_seqs, train_bboxes, train_kps, train_actions),
+        ("val", val_seqs, val_bboxes, val_kps, val_actions),
+    ]:
+        videos_dir = root / "videos" / split
+        if not videos_dir.exists():
+            raise FileNotFoundError(f"Videos directory not found: {videos_dir}")
+
+        video_files = sorted(
+            f for f in videos_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in SUPPORTED_VIDEO_BACKEND
+        )
+
+        for video_file in video_files:
+            stem = video_file.stem
+            bbox_csv = root / "bboxes" / split / f"{stem}.csv"
+            kp_csv = root / "keypoints" / split / f"{stem}.csv"
+            act_csv = root / "actions" / split / f"{stem}.csv"
+
+            if not bbox_csv.exists():
+                raise FileNotFoundError(f"Missing bboxes file for '{stem}': {bbox_csv}")
+            if not kp_csv.exists():
+                raise FileNotFoundError(f"Missing keypoints file for '{stem}': {kp_csv}")
+            if not act_csv.exists():
+                raise FileNotFoundError(f"Missing actions file for '{stem}': {act_csv}")
+
+            seq_list.append(f"videos/{split}/{video_file.name}")
+            bbox_list.append(f"bboxes/{split}/{stem}.csv")
+            kp_list.append(f"keypoints/{split}/{stem}.csv")
+            act_list.append(f"actions/{split}/{stem}.csv")
+
+    load_user_configs(
+        {
+            "action_recognition_dataset": {
+                "action_recognition_train_sequences": train_seqs,
+                "action_recognition_train_bboxes_gt_paths": train_bboxes,
+                "action_recognition_train_keypoints_gt_paths": train_kps,
+                "action_recognition_train_actions_gt_paths": train_actions,
+                "action_recognition_val_sequences": val_seqs,
+                "action_recognition_val_bboxes_gt_paths": val_bboxes,
+                "action_recognition_val_keypoints_gt_paths": val_kps,
+                "action_recognition_val_actions_gt_paths": val_actions,
+            }
+        },
+        system_configs_path,
+    )
