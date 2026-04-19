@@ -27,10 +27,9 @@ class AppearanceValidation(BaseValidation):
         batch_size: int,
         unique_ids: list,
         validated_classes: List[str],
-        input_shape: Optional[Tuple] = (224, 224),
         memory_length: Optional[int] = 20,
         min_consecutive_hits: Optional[int] = 5,
-        confidence_level: Optional[float] = 0.95,
+        confidence_thr: Optional[float] = 0.70,
         features_ema: Optional[float] = 0.1,
         crop_enlargement_factor: Optional[float] = 0.0,
         *args,
@@ -39,22 +38,19 @@ class AppearanceValidation(BaseValidation):
         super().__init__(validated_classes)
 
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        classes = metainfo.get("classes", [])
+        for validated_class in self.validated_classes:
+            assert (
+                validated_class in classes
+            ), f"The species '{validated_class}' from inside the appearance validation config is not listed in the '{metainfo}' classes."
+
         self.cls_to_labels = {cls_: i for i, cls_ in enumerate(metainfo.get("classes", []))}
 
         assert batch_size > 0
         self.batch_size = int(batch_size)
 
-        assert len(input_shape) == 2
-        self.input_shape = [3]
-        for shape in input_shape:
-            assert shape > 0
-            self.input_shape.append(int(shape))
-        self.img_size = tuple(self.input_shape[-2:])
-        self.input_shape = tuple(self.input_shape)
-
-        re_identificator["input_shape"] = [(-1,) + self.input_shape]
-
         self.re_identificator = ReIDBackend(**re_identificator)
+        self.img_size = self.re_identificator.input_shape[0][-2:]
         self.device = self.re_identificator.device
         self.identities = self.re_identificator.identities
 
@@ -68,8 +64,8 @@ class AppearanceValidation(BaseValidation):
         assert min_consecutive_hits > 0
         self.min_consecutive_hits = int(min_consecutive_hits)
 
-        assert 0 < confidence_level < 1
-        self.confidence_level = float(confidence_level)
+        assert 0 < confidence_thr < 1
+        self.confidence_thr = float(confidence_thr)
 
         assert 0 < features_ema < 1
         self.strength_ema_new = float(features_ema)
@@ -172,7 +168,7 @@ class AppearanceValidation(BaseValidation):
             track_instances["bboxes"][isolated],
             track_instances["scores"][isolated],
         ):
-            if inst_id >= 0 and (self.validated_classes is None or cls in self.validated_classes):
+            if inst_id >= 0 and (self.validated_classes is None or cls in self.validated_classes) and score >= self.confidence_thr:
                 unique_key = f"{cls}_{inst_id}"
                 idx = self.unique_ids.get(unique_key)
                 assert idx is not None, (
@@ -346,7 +342,7 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
         input_shape: Optional[Tuple] = (224, 224),
         memory_length: Optional[int] = 20,
         min_consecutive_hits: Optional[int] = 5,
-        confidence_level: Optional[float] = 0.95,
+        confidence_thr: Optional[float] = 0.95,
         features_ema: Optional[float] = 0.01,
         crop_enlargement_factor: Optional[float] = 0.0,
         max_appearance_classifier_size: Optional[int] = 1000,
@@ -364,7 +360,7 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
             input_shape=input_shape,
             memory_length=memory_length,
             min_consecutive_hits=min_consecutive_hits,
-            confidence_level=confidence_level,
+            confidence_thr=confidence_thr,
             features_ema=features_ema,
             crop_enlargement_factor=crop_enlargement_factor,
             *args,

@@ -1033,6 +1033,10 @@ def load_validation_config(config: Config):
             validation_config["unique_ids"] = unique_ids
             assert "metainfo" in config, "Your user_configs needs a value for the 'metainfo' key."
             validation_config["metainfo"] = config["metainfo"]
+            max_num_subjects = 0
+            if len(num_subjects) > 0:
+                max_num_subjects = max(0, max(num_subjects.values()))
+            validation_config["batch_size"] = min(max_num_subjects, 10)
             config.validator = validation_config
         except (OSError, yaml.YAMLError) as e:
             raise ValueError(f"Failed to open the following validation config: '{os.path.abspath(validation_config_path)}'. {e}.")
