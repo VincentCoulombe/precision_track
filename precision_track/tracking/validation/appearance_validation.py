@@ -259,7 +259,11 @@ class AppearanceValidation(BaseValidation):
             updated_unique_id = self.reverse_unique_ids[updated_idx]
             updated_cls, updated_inst_id = self._decode_unique_id(updated_unique_id)
 
-            confirmed_identity = self.identities[confirmed_identity_idx]
+            if is_a_hit:
+                confirmed_identity = self.identities[confirmed_identity_idx]
+            else:
+                confirmed_identity = ""
+
             u_id_linked_to_conf_identity = self.identity2uid.get(confirmed_identity)
 
             self._update_appearance_validation_instances(
@@ -294,6 +298,7 @@ class AppearanceValidation(BaseValidation):
                 track_instances["instances_id"][mask_a] = confirmed_inst_id
                 track_instances["instances_id"][mask_b] = updated_inst_id
                 self._register_correction(tracking_results, track_instances["labels"][mask_b], updated_inst_id, confirmed_inst_id)
+                tracking_results["appearance_validation_instances"]["identity"][-1] = "?"
                 idx_to_reset.extend([updated_idx, self.unique_ids[u_id_linked_to_conf_identity]])
 
         idx_to_reset = torch.tensor(idx_to_reset, dtype=torch.int64, device=self.device)
@@ -375,7 +380,7 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
         if self.appearance_classifier is None:
             feature_dim = features.shape[1]
             self.appearance_classifier = AppearanceClassifier(
-                identities=range(self.nb_identities),
+                identities=self.reverse_unique_ids,
                 features_size=feature_dim,
                 device=self.device,
                 precision=self.precision,
@@ -419,14 +424,16 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
         return updated_idxs, confirmed_idxs, conf_identity_idxs, hits_mask
 
     def _reset(self, keys):
+        self.has_been_observed[keys] = False
         self.consecutive_hits[keys] = 0.0
         self.did_not_check_since[keys] = 0
+        if self.appearance_classifier is not None:
+            self.appearance_classifier.purge(keys)
 
     def _update_appearance_validation_instances(self, tracking_results, *args, **kwargs):
-        # TODO pour visualization... avoir un nouveau csv output qui save les PCA 2D coords the chaque features dans la database
-        # TODO visualization: 2D scatter plot avec 1 couleur par identifiant + display en noir les hits
         tracking_results["appearance_database"]["features"] = self.appearance_classifier._database
         tracking_results["appearance_database"]["identities"] = self.appearance_classifier._identities
+        tracking_results["appearance_database"]["id_mapping"] = self.appearance_classifier.identities
 
     def _init_validation(self, tracking_results: dict):
         if "correction_instances" not in tracking_results:

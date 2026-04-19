@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, Optional
 
 import torch
 
@@ -8,7 +8,7 @@ from precision_track.utils import cosine_similarity
 class AppearanceClassifier:
     def __init__(
         self,
-        identities: List[str],
+        identities: Dict[int, str],
         features_size: int,
         device,
         precision,
@@ -19,6 +19,7 @@ class AppearanceClassifier:
         k: Optional[int] = 5,
     ):
         self.device = device
+        self.identities = identities
         nb_identities = len(identities)
         self.nb_identities = nb_identities
         self._max_size_per_id = int(max_size_per_id)
@@ -120,6 +121,20 @@ class AppearanceClassifier:
                 self._rolling_next_slot[pred_identity] = rolling_next_slot + 1
 
             return pred_identity
+
+    def purge(self, identity_indices):
+        for identity in identity_indices.tolist():
+            count = self._identity_counts[identity].item()
+            if count > 0:
+                slots = self._identities_idx_map[identity][:count]
+                self._identities[slots] = -1
+                self._database[slots] = 0
+            self._identity_counts[identity] = 0
+            self._identity_next_slot[identity] = 0
+            self._rolling_next_slot[identity] = 0
+            self._is_initiated[identity] = False
+            self._init_features[identity].zero_()
+            self._init_confidences[identity].zero_()
 
     def get_similarities(self, features):
         similarities = cosine_similarity(features, self._database[: self._next_free_idx])
