@@ -1,10 +1,7 @@
-# type: AppearanceValidation
-type: MetricBasedAppearanceValidation
+type: AppearanceValidation
 data_preprocessor:
   type: WildLifeReIDPreprocessor
 re_identificator:
-  input_shape: [224, 224]
   metainfo: ../../precision_track-ReID/work_dir/training_runs/re-identification_metadata.yaml
   checkpoint: ../../precision_track-ReID/work_dir/training_runs/precision_track_re-identificator.onnx
-batch_size: 5
 validated_classes: ["mouse"]

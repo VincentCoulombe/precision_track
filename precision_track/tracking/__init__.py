@@ -5,6 +5,7 @@ from .motion.kalman_filter import KalmanFilter
 from .precision_track import PrecisionTrack
 from .precision_track_re_id import PrecisionTrackReID
 from .search_based_stitching import SearchBasedStitching
+from .reid_based_stitching import ReIDBasedStitching
 from .sort import SORT
 from .validation.appearance_validation import AppearanceValidation, MetricBasedAppearanceValidation
 from .validation.aruco_validation import ArucoValidation
@@ -19,6 +20,7 @@ __all__ = [
     "ByteTrack",
     "PrecisionTrack",
     "SearchBasedStitching",
+    "ReIDBasedStitching",
     "GroundTruth",
     "OnlineGroundTruth",
     "PrecisionTrackReID",

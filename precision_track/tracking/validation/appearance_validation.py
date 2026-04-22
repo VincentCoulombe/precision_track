@@ -296,6 +296,14 @@ class AppearanceValidation(BaseValidation):
                 self._register_correction(tracking_results, track_instances["labels"][mask_b], updated_inst_id, confirmed_inst_id)
                 tracking_results["appearance_validation_instances"]["identity"][-1] = "?"
                 idx_to_reset.extend([updated_idx, self.unique_ids[u_id_linked_to_conf_identity]])
+            elif mask_a.any():  # Confirmed identity belongs to a hidden instance: snatch it
+                track_instances["instances_id"][mask_a] = confirmed_inst_id
+                class_label = int(self.cls_to_labels.get(updated_cls, -1))
+                self._register_correction(tracking_results, class_label, updated_inst_id, confirmed_inst_id)
+                tracking_results["appearance_validation_instances"]["identity"][-1] = "?"
+                idx_to_reset.append(updated_idx)
+                if u_id_linked_to_conf_identity in self.unique_ids:
+                    idx_to_reset.append(self.unique_ids[u_id_linked_to_conf_identity])
 
         idx_to_reset = torch.tensor(idx_to_reset, dtype=torch.int64, device=self.device)
         stale_idxs = torch.where(self.did_not_check_since >= self.max_check_delay)[0]

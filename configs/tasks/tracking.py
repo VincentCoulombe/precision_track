@@ -123,17 +123,6 @@ outputs = [
         type="CsvTimestamps",
         path=_base_.saving_directory + "/timestamps.csv",
     ),
-    # dict(
-    #     type="NpyEmbeddingOutput",
-    #     path=_base_.saving_directory + "/features.npy",
-    #     ids_field="instances_id",
-    # ),
-    dict(
-        type="CsvSearchAreas",
-        path=_base_.saving_directory + "/stitching_search_areas.csv",
-        instance_data="search_areas",
-        precision=64,
-    ),
     dict(
         type="CsvTailtagValidations",
         path=_base_.saving_directory + "/tracked_tailtag_validations.csv",
@@ -157,17 +146,35 @@ outputs = [
         metainfo=metainfo,
         precision=64,
     ),
-    # dict(
-    #     type="NpyEmbeddingOutput",
-    #     path=_base_.saving_directory + "/action_embeddings.npy",
-    #     ids_field="instances_id",
-    #     embs_field="action_embeddings",
-    # ),
-    # dict(
-    #     type="PthAppearanceDatabaseOutput",
-    #     path=_base_.saving_directory + "/appearance_database.pth",
-    # ),
 ]
+
+if _base_.output_clustered_features:
+    outputs += [
+        dict(
+            type="NpyEmbeddingOutput",
+            path=_base_.saving_directory + "/features.npy",
+            ids_field="instances_id",
+        ),
+    ]
+
+
+if _base_.output_action_recognition_embeddings:
+    outputs += [
+        dict(
+            type="NpyEmbeddingOutput",
+            path=_base_.saving_directory + "/action_embeddings.npy",
+            ids_field="instances_id",
+            embs_field="action_embeddings",
+        ),
+    ]
+
+if _base_.output_appearance_database:
+    outputs += [
+        dict(
+            type="PthAppearanceDatabaseOutput",
+            path=_base_.saving_directory + "/appearance_database.pth",
+        ),
+    ]
 
 if _base_.with_pose_estimation:
     outputs += [
@@ -304,12 +311,23 @@ writers = [
 if _base_.display_validations:
     writers += [
         dict(
+            type="CorrectionWriter",
+            metainfo=metainfo,
+            text_anchor=[100, 50],
+            text_color=[255, 255, 255],
+            color=[255, 0, 0],
+            text_scale=1,
+            text_thickness=2,
+            text_padding=4,
+        ),
+        dict(
             type="TagsDetectionWriter",
             text_color=[0, 0, 0],
         ),
         dict(
             type="AppearanceDetectionWriter",
             text_color=[0, 0, 0],
+            cache_scores=False,
         ),
     ]
 

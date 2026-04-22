@@ -1007,6 +1007,27 @@ def load_validation_config(config: Config):
         config["validator"] = None
         return
     validation_config_path = os.path.abspath(str(config.validation_configuration_file))
+    num_subjects = config.get("num_subjects", dict())
+
+    if "appearance" in os.path.basename(validation_config_path) and hasattr(config.assigner, "stitching_algorithm"):
+        config.assigner.stitching_algorithm = dict(
+            type="ReIDBasedStitching",
+            capped_classes=num_subjects,
+        )
+        print_log(
+            f"Since your validation strategy is apearance-based, your stitching strategy will also be appearance-based.",
+            logger="current",
+            level=logging.INFO,
+        )
+    if config.assigner.stitching_algorithm.type == "SearchBasedStitching":
+        config.outputs += [
+            dict(
+                type="CsvSearchAreas",
+                path=config.saving_directory + "/stitching_search_areas.csv",
+                instance_data="search_areas",
+                precision=64,
+            )
+        ]
     if os.path.isfile(validation_config_path):
         try:
             with open(validation_config_path, "r") as f:
@@ -1016,7 +1037,6 @@ def load_validation_config(config: Config):
                 validated_classes is not None
             ), "'validated_classes' must be defined in your validation config. It tells the system which classes to validate."
             assert isinstance(validated_classes, list), f"{validation_config_path}'s 'validated_classes' must be a list, not: {type(validated_classes)}."
-            num_subjects = config.get("num_subjects", dict())
             unique_ids = []
             for validated_class in validation_config["validated_classes"]:
                 assert validated_class in num_subjects, (
@@ -1045,7 +1065,7 @@ def load_validation_config(config: Config):
         if config.with_validation:
             print_log(
                 f"Automatic disabling of 'with_validation' since the validation's 'configuration_file' ({validation_config_path}) is not a valid path.",
-                logger="curent",
+                logger="current",
                 level=logging.WARNING,
             )
         config.with_validation = False

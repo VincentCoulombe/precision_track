@@ -47,13 +47,15 @@ class Tracker(BaseModel):
         is_frozen = detector.runtime.get("freeze", False) or detector.runtime.get("type") != "PytorchRuntime"
         self._detection_mode = "predict" if is_frozen else "loss"
 
-        assigner["verbose"] = self.verbose
-        self._assigner = assigner
-        self._init_association_step()
-
         if validator is not None:
             validator = TRACKING.build(validator)
         self.validator = validator
+
+        assigner["verbose"] = self.verbose
+        if validator.__class__.__name__ == "AppearanceValidation" and assigner["stitching_algorithm"]["type"] == "ReIDBasedStitching":
+            assigner["stitching_algorithm"]["reid_model"] = validator.re_identificator
+        self._assigner = assigner
+        self._init_association_step()
 
         if isinstance(batch_size, int) and batch_size > 0:
             self.batch_size = batch_size
@@ -279,6 +281,13 @@ def tracking_process(
 ):
     detector_cfg["verbose"] = verbose
     detector = DetectionBackend(**detector_cfg)
+
+    if validator_cfg is not None:
+        validator = TRACKING.build(validator_cfg)
+
+    assigner_cfg["verbose"] = verbose
+    if validator.__class__.__name__ == "AppearanceValidation" and assigner_cfg["stitching_algorithm"]["type"] == "ReIDBasedStitching":
+        assigner_cfg["stitching_algorithm"]["reid_model"] = validator.re_identificator
 
     assigner_cfg["verbose"] = verbose
     association_step = AssociationStep(**assigner_cfg)
