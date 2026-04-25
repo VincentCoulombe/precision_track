@@ -388,21 +388,25 @@ class AppearanceDetectionWriter(BaseWriter):
             top_3 = self.cached_top3.get(unique_id)
             if top_3 is None:
                 if not self.cache_scores:
-                    msg = "Too uncertain"
-                    msg_w, msg_h = self._get_text_width_height(msg)
+                    lines = ["Not confident enough to", "assert an identity"]
+                    line_sizes = [self._get_text_width_height(line) for line in lines]
+                    line_h = line_sizes[0][1]
+                    line_step = line_h + self.text_padding
+                    total_h = line_h + line_step * (len(lines) - 1)
                     bars_total_width = 3 * (self.bar_width + self.effective_bar_spacing)
-                    msg_x = bar_start_x + (bars_total_width - msg_w) // 2
-                    msg_y = row_y + self.bar_height // 2 + msg_h // 2
-                    cv2.putText(
-                        img=frame,
-                        text=msg,
-                        org=(msg_x, msg_y),
-                        fontFace=self.text_font,
-                        fontScale=self.text_scale,
-                        color=self.text_color.as_bgr(),
-                        thickness=self.text_thickness,
-                        lineType=cv2.LINE_AA,
-                    )
+                    msg_y = row_y + self.bar_height // 2 - total_h // 2 + line_h
+                    for i, (line, (lw, _)) in enumerate(zip(lines, line_sizes)):
+                        msg_x = bar_start_x + (bars_total_width - lw) // 2
+                        cv2.putText(
+                            img=frame,
+                            text=line,
+                            org=(msg_x, msg_y + i * line_step),
+                            fontFace=self.text_font,
+                            fontScale=self.text_scale,
+                            color=self.text_color.as_bgr(),
+                            thickness=self.text_thickness,
+                            lineType=cv2.LINE_AA,
+                        )
                 continue
 
             for bar_idx in range(len(top_3[0])):

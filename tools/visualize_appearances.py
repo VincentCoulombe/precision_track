@@ -9,11 +9,11 @@ from umap import UMAP
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from precision_track.outputs.pth import PthAppearanceDatabaseOutput
 from precision_track.outputs.csv import CsvBoundingBoxes
+from precision_track.outputs.pth import PthAppearanceDatabaseOutput
 from precision_track.utils import VideoReader
-from precision_track.visualization.palette import ColorPalette
 from precision_track.visualization.painters import BoundingBoxPainter, LabelPainter
+from precision_track.visualization.palette import ColorPalette
 from precision_track.visualization.writers import FrameIdWriter
 
 

@@ -636,12 +636,18 @@ class CsvActions(BaseCsvOutput):
         instance_data, frame_id = self._get_ds_info(det_data_sample)
         ids = self._set_ids(instance_data)
         i = 0
+
+        labels = instance_data.get("labels", [])
+        actions = np.array(instance_data.get("actions", []))
+        target_ids = instance_data.get("target_ids", np.full(actions.shape, -1))
+        action_scores = instance_data.get("action_scores", [])
+
         for id_, label, action, target_ids, action_scores in zip(
             ids,
-            instance_data["labels"],
-            instance_data["actions"],
-            instance_data.get("target_ids", np.full(instance_data["action_scores"].shape, -1)),
-            instance_data["action_scores"],
+            labels,
+            actions,
+            target_ids,
+            action_scores,
         ):
             if not isinstance(action, str) and self.metainfo is not None:
                 action = self.metainfo["actions"][action]

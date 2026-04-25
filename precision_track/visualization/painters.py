@@ -313,17 +313,12 @@ class LabelPainter(BasePainter):
         """
         bboxes_values = None
         action_values = None
-        is_tracking_bboxes = True
-        nb_bboxes_output = sum([1 if re.search("CsvBoundingBoxes", next(iter(o.keys()))) else 0 for o in outputs])
-        if nb_bboxes_output > 1:
-            is_tracking_bboxes = False  # Untracked detecions will always be before bboxes
         for output in outputs:
             output_name, output_values = next(iter(output.items()))
-            if re.search("CsvBoundingBoxes", output_name):
-                if is_tracking_bboxes:
-                    bboxes_values = output_values
-                else:
-                    is_tracking_bboxes = True  # Skip the first CsvBoundingBoxes (the untracked detections)
+            if output_name == "CsvBoundingBoxes-tracked_bboxes":
+                bboxes_values = output_values
+            elif re.search("CsvBoundingBoxes", output_name) and bboxes_values is None:
+                bboxes_values = output_values
             elif output_name == "CsvActions" and self.display_actions:
                 action_values = output_values
 

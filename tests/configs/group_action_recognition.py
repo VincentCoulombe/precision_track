@@ -1,5 +1,7 @@
 _base_ = "./action_recognition.py"
 
+with_group_action_recognition = True
+
 gar_input_names = ["valid_mask", "distance_priors", "keypoint_priors"]
 
 gar_output_names = []

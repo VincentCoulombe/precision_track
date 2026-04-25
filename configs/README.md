@@ -134,6 +134,36 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
   If left empty (""), PrecisionTrack will automatically select a tracking checkpoint from your **deploying_directory**. The selection is performed **following this priority** : `.engine` -> `_DEPLOYED.onnx` -> `_DEPLOYED.pth`.
 
+- **<u>hyperparameters_file_name</u>**  
+  This config allow you to select, by name, a specific tracking hypermarameters file, from inside your `deploying_directory`. This file typically contains:
+  - `calibrated_temperature`: You can manually tune the general confidence level of your detector (optional). **NOTE** by having a valid mot dataset in `mot_data_root` and by specifying `--calibrate` when launching `train_detection.py`, our optimization loop can automatically find close to the global optima for this hyperparameter.
+  - `tracking_thresholds`: You can manually tune three different tracking thresholds:
+    - `low_thr`: The minimal level of confidence a detection must have to be considered during tracking.
+    - `conf_thr`: The threshold above which PrecisionTrack consider a detection "confident", granting it an easier time and less scrutiny during the association process.
+    - `init_thr`: The minimal level of confidence a detection must have to initiate a new track.
+  - `stitching_hyperparams`: You can manually tune these stitching parameters:
+    - `beta`: How big will search zones be relative to the subject's last seen dynamics. Augmenting its value will results in less picky stitches, which might increase the algorithm's recall, bt lower its precision.
+    - `match_thr`: How picky will the algorithm be when comes time to determine if a new track must be stitched or not. Setting it to `0.99` will make it so almost every new tracks will be stitched no matter where they reappears. Alternatively, setting it to `0.01` will make it so new tracks will have to appear almost exactly where lost ones dissapeared to be stitched.
+
+Here is an example of a valid `hyperparameters_file_name`.
+
+```json
+{
+	"calibrated_temperature": 0.69,
+	"tracking_thresholds": {
+		"low_thr": 0.05,
+		"conf_thr": 0.35,
+		"init_thr": 0.65
+	},
+	"stitching_hyperparams": {
+		"beta": 0.5,
+		"match_thr": 0.8
+	}
+}
+```
+
+**NOTE** PrecisionTrack will revert back to default values for every missing keys.
+
 - **<u>output_clustered_features</u>**
   If enabled, will save your clustered features at the following path: `<saving_directory>/features.npy`, which you will then be able to use for further analysis. **Warning** saving the clustered features will SIGNIFICANTLY slow down the tracking process.
 

@@ -1010,12 +1010,10 @@ def load_validation_config(config: Config):
     num_subjects = config.get("num_subjects", dict())
 
     if "appearance" in os.path.basename(validation_config_path) and hasattr(config.assigner, "stitching_algorithm"):
-        config.assigner.stitching_algorithm = dict(
-            type="ReIDBasedStitching",
-            capped_classes=num_subjects,
-        )
+        config.assigner.stitching_algorithm["match_thr"] = 0.99
+        config.assigner.stitching_algorithm["beta"] = 0.5
         print_log(
-            f"Since your validation strategy is apearance-based, your stitching strategy will also be appearance-based.",
+            "Since your validation strategy is apearance-based, your stitching strategy will also be appearance-based.",
             logger="current",
             level=logging.INFO,
         )

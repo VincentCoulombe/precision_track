@@ -29,7 +29,7 @@ class AppearanceValidation(BaseValidation):
         validated_classes: List[str],
         memory_length: Optional[int] = 20,
         min_consecutive_hits: Optional[int] = 5,
-        confidence_thr: Optional[float] = 0.70,
+        confidence_thr: Optional[float] = 0.80,
         features_ema: Optional[float] = 0.1,
         crop_enlargement_factor: Optional[float] = 0.0,
         *args,
@@ -206,13 +206,14 @@ class AppearanceValidation(BaseValidation):
         hits_mask = self.consecutive_hits[confirmed_idxs, conf_identity_idxs] >= self.min_consecutive_hits
         self.consecutive_hits[confirmed_idxs[hits_mask], conf_identity_idxs[hits_mask]] = 0
 
-        return confirmed_idxs, conf_identity_idxs, hits_mask
+        return confirmed_idxs, conf_identity_idxs, hits_mask, conf_mask
 
     def _update_and_get_confirmations(self, priorities, frame, to_switch):
         updated_idxs = self._update(priorities, frame, to_switch)
         if len(updated_idxs) == 0:
             return None
-        return updated_idxs, *self._get_confirmations(updated_idxs)
+        confirmed_idxs, conf_identity_idxs, hits_mask, conf_mask = self._get_confirmations(updated_idxs)
+        return updated_idxs[conf_mask], confirmed_idxs, conf_identity_idxs, hits_mask
 
     def _init_validation(self, tracking_results: dict):
         if "correction_instances" not in tracking_results:
@@ -273,7 +274,7 @@ class AppearanceValidation(BaseValidation):
             if not is_a_hit:  # The identity has not been confirmed enough to be a hit
                 continue
 
-            if u_id_linked_to_conf_identity is None:  # First confirmation
+            if u_id_linked_to_conf_identity is None and updated_unique_id not in self.identity2uid.values():  # First confirmation
                 self.identity2uid[confirmed_identity] = updated_unique_id
                 continue
 

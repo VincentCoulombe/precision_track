@@ -286,10 +286,6 @@ def tracking_process(
         validator = TRACKING.build(validator_cfg)
 
     assigner_cfg["verbose"] = verbose
-    if validator.__class__.__name__ == "AppearanceValidation" and assigner_cfg["stitching_algorithm"]["type"] == "ReIDBasedStitching":
-        assigner_cfg["stitching_algorithm"]["reid_model"] = validator.re_identificator
-
-    assigner_cfg["verbose"] = verbose
     association_step = AssociationStep(**assigner_cfg)
     switches = None
     validator = None
