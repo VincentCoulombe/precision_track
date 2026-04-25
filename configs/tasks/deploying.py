@@ -158,7 +158,7 @@ mart_runtime_config = dict(
     output_names=_base_.action_recognition_output_names,
 )
 mart_dynamic_axes = dict(
-    features={0: "batch_size"}, poses={0: "batch_size"}, dynamics={0: "batch_size"}, class_logits={0: "batch_size"}, action_embeddings={0: "batch_size"}
+    features={0: "nb_subjects"}, poses={0: "nb_subjects"}, dynamics={0: "nb_subjects"}, class_logits={0: "nb_subjects"}, action_embeddings={0: "nb_subjects"}
 )
 mart_onnx_config = dict(
     type="onnx",
@@ -184,8 +184,10 @@ gmart_runtime_config = dict(
     output_names=_base_.action_recognition_output_names + _base_.gar_output_names,
 )
 gmart_dynamic_axes = mart_dynamic_axes | dict(
-    interaction_logits={0: "batch_size"},
-    social_logits={0: "batch_size"},
+    distance_priors={0: "nb_subjects", 1: "nb_subjects"},
+    keypoint_priors={0: "nb_subjects", 1: "nb_subjects"},
+    interaction_logits={0: "nb_subjects", 1: "nb_subjects"},
+    social_logits={0: "nb_subjects"},
 )
 gmart_onnx_config = dict(
     type="onnx",
@@ -199,7 +201,8 @@ gmart_onnx_config = dict(
     dynamic_axes=gmart_dynamic_axes,
 )
 gmart_analyzer = dict(
-    data_preprocessor=analyzer.data_preprocessor | dict(
+    data_preprocessor=analyzer.data_preprocessor
+    | dict(
         with_distance_prior=True,
         with_keypoint_priors=True,
     ),
@@ -211,8 +214,8 @@ gmart_analyzer = dict(
             metainfo=_base_.metainfo,
             with_keypoint_priors=True,
         ),
-        input_shapes=list(analyzer.runtime.input_shapes) + [
-            dict(type="ValidMaskShape"),
+        input_shapes=list(analyzer.runtime.input_shapes)
+        + [
             dict(type="DistancePriorsShape"),
             dict(type="KeypointPriorsShape", metainfo=_base_.metainfo),
         ],

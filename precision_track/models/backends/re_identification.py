@@ -15,7 +15,7 @@ from .base import BaseBackend
 class ReIDBackend(BaseBackend):
     SUPPORTED_RUNTIMES = [".onnx", ".engine"]
 
-    def __init__(self, checkpoint: str, metainfo: str, input_shape: List[int]) -> None:
+    def __init__(self, checkpoint: str, metainfo: str) -> None:
         assert os.path.isfile(checkpoint), f"The provided re-identification checkpoint '{os.path.abspath(checkpoint)}' does not exists."
         assert (
             os.path.splitext(checkpoint)[1] in self.SUPPORTED_RUNTIMES
@@ -31,6 +31,16 @@ class ReIDBackend(BaseBackend):
         self.nb_features = int(metadata.get("nb_features", 0))
         assert self.nb_features > 0
 
+        input_shape = metadata.get("input_shape")
+        assert input_shape is not None, f"'{metainfo}' must contain an input_shape."
+
+        assert len(input_shape) == 2
+        self.input_shape = [3]
+        for shape in input_shape:
+            assert shape > 0
+            self.input_shape.append(int(shape))
+        self.input_shape = tuple(self.input_shape)
+        input_shape = [(-1,) + self.input_shape]
         self.input_shape = input_shape[-2:]
 
         super(ReIDBackend, self).__init__(

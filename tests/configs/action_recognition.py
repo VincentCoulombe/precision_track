@@ -13,6 +13,8 @@ assigner = dict(
 
 metainfo = _base_.metainfo
 
+with_action_recognition = True
+
 training_data_preprocessor = dict(
     type="ActionRecognitionTrainingPreprocessor",
     metainfo=metainfo,

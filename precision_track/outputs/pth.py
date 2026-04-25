@@ -16,6 +16,7 @@ class PthAppearanceDatabaseOutput(BaseOutput):
         instance_data: str = "appearance_database",
         ids_field: str = "identities",
         embs_field: str = "features",
+        ids_mapping_field: str = "id_mapping",
     ):
         name, _ = os.path.splitext(path)
         self.path = f"{name}.pth"
@@ -23,6 +24,7 @@ class PthAppearanceDatabaseOutput(BaseOutput):
         self.instance_data = instance_data
         self.ids_field = ids_field
         self.embs_field = embs_field
+        self.ids_mapping_field = ids_mapping_field
         self.reset()
 
     def _compute_feature_hash(self, feature: torch.Tensor) -> int:
@@ -31,21 +33,24 @@ class PthAppearanceDatabaseOutput(BaseOutput):
 
     def __call__(self, data: dict) -> None:
         track_data = data.get(self.instance_data, None)
-        assert track_data is not None, f"data, does not contain {self.instance_data}. Heres data's keys: {data.keys()}"
         if not track_data:
             return
 
         frame_id = data["img_id"]
         features = track_data[self.embs_field]
         identities = track_data[self.ids_field]
+        id_mapping = track_data.get(self.ids_mapping_field, {})
 
-        valid_idx = identities > 0
+        if self.id_mapping is None and id_mapping:
+            self.id_mapping = id_mapping
+
+        valid_idx = identities >= 0
         valid_features = features[valid_idx].detach().cpu()
         valid_identities = identities[valid_idx].detach().cpu()
 
         frame_feature_ids = []
         for i in range(len(valid_identities)):
-            identity = int(valid_identities[i].item())
+            identity = id_mapping.get(int(valid_identities[i].item()), str(valid_identities[i].item()))
             feature = valid_features[i]
 
             feature_hash = self._compute_feature_hash(feature)
@@ -70,15 +75,19 @@ class PthAppearanceDatabaseOutput(BaseOutput):
             return ([], [])
 
         features = torch.stack([self.unique_features[fid] for fid in feature_ids])
-        identities = torch.tensor([self.unique_identities[fid] for fid in feature_ids])
+        identities = [self.unique_identities[fid] for fid in feature_ids]
         return (features, identities)
+
+    def __len__(self):
+        return len(self.fact_frame_ids)
 
     def reset(self):
         self.fact_frame_ids = dict()  # frame_id -> [feature_id]
         self.unique_features = dict()  # feature_id -> Features
-        self.unique_identities = dict()  # feature_id -> Identity
+        self.unique_identities = dict()  # feature_id -> Identity (string unique_id)
         self.feature_registry = dict()  # (Identity, features_hash) -> feature_id
         self.next_feature_id = 0
+        self.id_mapping = None  # int index -> unique_id string
 
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
@@ -91,6 +100,7 @@ class PthAppearanceDatabaseOutput(BaseOutput):
                 "unique_features": unique_features_cpu,
                 "unique_identities": self.unique_identities,
                 "next_feature_id": self.next_feature_id,
+                "id_mapping": self.id_mapping,
             },
             self.path,
         )
@@ -102,6 +112,7 @@ class PthAppearanceDatabaseOutput(BaseOutput):
         self.unique_features = data["unique_features"]
         self.unique_identities = data["unique_identities"]
         self.next_feature_id = data["next_feature_id"]
+        self.id_mapping = data.get("id_mapping", None)
 
         # Rebuild the feature_registry
         self.feature_registry = {}

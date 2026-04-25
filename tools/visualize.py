@@ -24,6 +24,13 @@ def main(args):
     cfg = Config.fromfile(system_configs_path)
     load_writers(cfg)
 
+    outputs = cfg.get("outputs", [])
+    csv_outputs = []
+    for output in outputs:
+        if output.get("path", "").endswith(".csv"):
+            csv_outputs.append(output)
+    cfg["outputs"] = csv_outputs
+
     result = Result(outputs=cfg.get("outputs"))
     result.read(not_exists_ok=True)
     visualizer = Visualizer(**cfg.get("visualizer"))

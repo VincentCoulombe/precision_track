@@ -27,10 +27,9 @@ class AppearanceValidation(BaseValidation):
         batch_size: int,
         unique_ids: list,
         validated_classes: List[str],
-        input_shape: Optional[Tuple] = (224, 224),
         memory_length: Optional[int] = 20,
         min_consecutive_hits: Optional[int] = 5,
-        confidence_level: Optional[float] = 0.95,
+        confidence_thr: Optional[float] = 0.80,
         features_ema: Optional[float] = 0.1,
         crop_enlargement_factor: Optional[float] = 0.0,
         *args,
@@ -39,22 +38,19 @@ class AppearanceValidation(BaseValidation):
         super().__init__(validated_classes)
 
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
+        classes = metainfo.get("classes", [])
+        for validated_class in self.validated_classes:
+            assert (
+                validated_class in classes
+            ), f"The species '{validated_class}' from inside the appearance validation config is not listed in the '{metainfo}' classes."
+
         self.cls_to_labels = {cls_: i for i, cls_ in enumerate(metainfo.get("classes", []))}
 
         assert batch_size > 0
         self.batch_size = int(batch_size)
 
-        assert len(input_shape) == 2
-        self.input_shape = [3]
-        for shape in input_shape:
-            assert shape > 0
-            self.input_shape.append(int(shape))
-        self.img_size = tuple(self.input_shape[-2:])
-        self.input_shape = tuple(self.input_shape)
-
-        re_identificator["input_shape"] = [(-1,) + self.input_shape]
-
         self.re_identificator = ReIDBackend(**re_identificator)
+        self.img_size = self.re_identificator.input_shape[0][-2:]
         self.device = self.re_identificator.device
         self.identities = self.re_identificator.identities
 
@@ -68,8 +64,8 @@ class AppearanceValidation(BaseValidation):
         assert min_consecutive_hits > 0
         self.min_consecutive_hits = int(min_consecutive_hits)
 
-        assert 0 < confidence_level < 1
-        self.confidence_level = float(confidence_level)
+        assert 0 < confidence_thr < 1
+        self.confidence_thr = float(confidence_thr)
 
         assert 0 < features_ema < 1
         self.strength_ema_new = float(features_ema)
@@ -172,7 +168,7 @@ class AppearanceValidation(BaseValidation):
             track_instances["bboxes"][isolated],
             track_instances["scores"][isolated],
         ):
-            if inst_id >= 0 and (self.validated_classes is None or cls in self.validated_classes):
+            if inst_id >= 0 and (self.validated_classes is None or cls in self.validated_classes) and score >= self.confidence_thr:
                 unique_key = f"{cls}_{inst_id}"
                 idx = self.unique_ids.get(unique_key)
                 assert idx is not None, (
@@ -210,13 +206,14 @@ class AppearanceValidation(BaseValidation):
         hits_mask = self.consecutive_hits[confirmed_idxs, conf_identity_idxs] >= self.min_consecutive_hits
         self.consecutive_hits[confirmed_idxs[hits_mask], conf_identity_idxs[hits_mask]] = 0
 
-        return confirmed_idxs, conf_identity_idxs, hits_mask
+        return confirmed_idxs, conf_identity_idxs, hits_mask, conf_mask
 
     def _update_and_get_confirmations(self, priorities, frame, to_switch):
         updated_idxs = self._update(priorities, frame, to_switch)
         if len(updated_idxs) == 0:
             return None
-        return updated_idxs, *self._get_confirmations(updated_idxs)
+        confirmed_idxs, conf_identity_idxs, hits_mask, conf_mask = self._get_confirmations(updated_idxs)
+        return updated_idxs[conf_mask], confirmed_idxs, conf_identity_idxs, hits_mask
 
     def _init_validation(self, tracking_results: dict):
         if "correction_instances" not in tracking_results:
@@ -259,7 +256,11 @@ class AppearanceValidation(BaseValidation):
             updated_unique_id = self.reverse_unique_ids[updated_idx]
             updated_cls, updated_inst_id = self._decode_unique_id(updated_unique_id)
 
-            confirmed_identity = self.identities[confirmed_identity_idx]
+            if is_a_hit:
+                confirmed_identity = self.identities[confirmed_identity_idx]
+            else:
+                confirmed_identity = ""
+
             u_id_linked_to_conf_identity = self.identity2uid.get(confirmed_identity)
 
             self._update_appearance_validation_instances(
@@ -273,7 +274,7 @@ class AppearanceValidation(BaseValidation):
             if not is_a_hit:  # The identity has not been confirmed enough to be a hit
                 continue
 
-            if u_id_linked_to_conf_identity is None:  # First confirmation
+            if u_id_linked_to_conf_identity is None and updated_unique_id not in self.identity2uid.values():  # First confirmation
                 self.identity2uid[confirmed_identity] = updated_unique_id
                 continue
 
@@ -294,7 +295,16 @@ class AppearanceValidation(BaseValidation):
                 track_instances["instances_id"][mask_a] = confirmed_inst_id
                 track_instances["instances_id"][mask_b] = updated_inst_id
                 self._register_correction(tracking_results, track_instances["labels"][mask_b], updated_inst_id, confirmed_inst_id)
+                tracking_results["appearance_validation_instances"]["identity"][-1] = "?"
                 idx_to_reset.extend([updated_idx, self.unique_ids[u_id_linked_to_conf_identity]])
+            elif mask_a.any():  # Confirmed identity belongs to a hidden instance: snatch it
+                track_instances["instances_id"][mask_a] = confirmed_inst_id
+                class_label = int(self.cls_to_labels.get(updated_cls, -1))
+                self._register_correction(tracking_results, class_label, updated_inst_id, confirmed_inst_id)
+                tracking_results["appearance_validation_instances"]["identity"][-1] = "?"
+                idx_to_reset.append(updated_idx)
+                if u_id_linked_to_conf_identity in self.unique_ids:
+                    idx_to_reset.append(self.unique_ids[u_id_linked_to_conf_identity])
 
         idx_to_reset = torch.tensor(idx_to_reset, dtype=torch.int64, device=self.device)
         stale_idxs = torch.where(self.did_not_check_since >= self.max_check_delay)[0]
@@ -341,7 +351,7 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
         input_shape: Optional[Tuple] = (224, 224),
         memory_length: Optional[int] = 20,
         min_consecutive_hits: Optional[int] = 5,
-        confidence_level: Optional[float] = 0.95,
+        confidence_thr: Optional[float] = 0.95,
         features_ema: Optional[float] = 0.01,
         crop_enlargement_factor: Optional[float] = 0.0,
         max_appearance_classifier_size: Optional[int] = 1000,
@@ -359,7 +369,7 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
             input_shape=input_shape,
             memory_length=memory_length,
             min_consecutive_hits=min_consecutive_hits,
-            confidence_level=confidence_level,
+            confidence_thr=confidence_thr,
             features_ema=features_ema,
             crop_enlargement_factor=crop_enlargement_factor,
             *args,
@@ -375,7 +385,7 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
         if self.appearance_classifier is None:
             feature_dim = features.shape[1]
             self.appearance_classifier = AppearanceClassifier(
-                identities=range(self.nb_identities),
+                identities=self.reverse_unique_ids,
                 features_size=feature_dim,
                 device=self.device,
                 precision=self.precision,
@@ -419,14 +429,16 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
         return updated_idxs, confirmed_idxs, conf_identity_idxs, hits_mask
 
     def _reset(self, keys):
+        self.has_been_observed[keys] = False
         self.consecutive_hits[keys] = 0.0
         self.did_not_check_since[keys] = 0
+        if self.appearance_classifier is not None:
+            self.appearance_classifier.purge(keys)
 
     def _update_appearance_validation_instances(self, tracking_results, *args, **kwargs):
-        # TODO pour visualization... avoir un nouveau csv output qui save les PCA 2D coords the chaque features dans la database
-        # TODO visualization: 2D scatter plot avec 1 couleur par identifiant + display en noir les hits
         tracking_results["appearance_database"]["features"] = self.appearance_classifier._database
         tracking_results["appearance_database"]["identities"] = self.appearance_classifier._identities
+        tracking_results["appearance_database"]["id_mapping"] = self.appearance_classifier.identities
 
     def _init_validation(self, tracking_results: dict):
         if "correction_instances" not in tracking_results:

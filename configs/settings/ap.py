@@ -102,7 +102,8 @@ init_thr_range = [0.65, 0.7, 0.75, 0.8]
 #   2.1) /Tuning
 
 #   2.2) Testing
-hyperparams = deployed_directory + "hyperparameters.json"
+hyperparameters_file_name = "hyperparameters.json"
+hyperparams = deployed_directory + hyperparameters_file_name
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]

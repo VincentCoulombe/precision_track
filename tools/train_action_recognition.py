@@ -12,7 +12,7 @@ from precision_track.deploy.to_onnx import mart_to_onnx
 from precision_track.deploy.to_tensorrt import to_tensorrt
 from precision_track.models.backends import DetectionBackend
 from precision_track.registry import TASK_UTILS
-from precision_track.utils import find_checkpoint_hook, load_user_configs, parse_pose_metainfo
+from precision_track.utils import find_checkpoint_hook, load_user_configs, parse_pose_metainfo, register_action_recognition_dataset
 
 
 def parse_args():
@@ -110,6 +110,8 @@ def main(args):
     system_configs_path = args.config
     user_system_configs_path = "../configs/user_configs.yaml"
     load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
+    deploy_cfg = load_config("../configs/tasks/deploying.py")
+    register_action_recognition_dataset(deploy_cfg["action_recognition_data_root"], system_configs_path)
 
     runner = Runner(system_configs_path, args.launcher, mode="train")
     runner()
@@ -119,7 +121,6 @@ def main(args):
     assert os.path.isfile(best_ckpt_path), f"The current best training checkpoint ({best_ckpt_path}) does not exists. "
     "This is either because you deleted it manually or because the training run stopped before a validation step took place."
 
-    deploy_cfg = load_config("../configs/tasks/deploying.py")
     deployed_path = deploy(deploy_cfg, "mart_runtime_config", best_ckpt_path, logger)
     tracking_config = load_config(deploy_cfg.tracking_cfg)
     tracking_config.load_from = deployed_path

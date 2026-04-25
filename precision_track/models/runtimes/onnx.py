@@ -36,7 +36,18 @@ class ONNXRuntime(InferenceOnlyRuntime):
         self.numpy_dtype = np.float16 if self.half_precision else np.float32
 
         self.running_batch = -1
-        self.input_shapes = [(self.running_batch,) + TASK_UTILS.build(s).shape if isinstance(s, dict) else torch.Size(s) for s in input_shapes]
+        self.input_shapes = []
+        self.dynamic_dims_per_input = []
+        for s in input_shapes:
+            if isinstance(s, dict):
+                shape_obj = TASK_UTILS.build(s)
+                dyn = shape_obj.dynamic_dims
+                template = torch.Size(len(dyn) * (-1,) + shape_obj.shape)
+            else:
+                dyn = frozenset({0})
+                template = torch.Size(s)
+            self.input_shapes.append(template)
+            self.dynamic_dims_per_input.append(dyn)
 
         self.checkpoint = checkpoint
         self._live_inputs: List[ort.OrtValue] = []
@@ -100,14 +111,22 @@ class ONNXRuntime(InferenceOnlyRuntime):
         return outputs
 
     def _bind_inputs(self, tensors: Tuple[torch.Tensor]):
-        """Create OrtValues and bind them; resizes batch if needed."""
-        for idx, (t, name, template_shape) in enumerate(zip(tensors, self.input_names, self.input_shapes)):
-            B, *features_block = t.shape
-            assert features_block == list(template_shape[1:]), f"Expected {template_shape[1:]}, got {features_block}"
-
-            if B != self.running_batch:
-                self.input_shapes[idx] = torch.Size([B, *features_block])
-            self.running_batch = B
+        """Create OrtValues and bind them; resizes dynamic dims if needed."""
+        for idx, (t, name, template_shape, dynamic_dims) in enumerate(
+            zip(tensors, self.input_names, self.input_shapes, self.dynamic_dims_per_input)
+        ):
+            n_dyn = len(dynamic_dims)
+            static_actual = list(t.shape[n_dyn:])
+            static_template = list(template_shape[n_dyn:])
+            assert static_actual == static_template, (
+                f"Input '{name}': static dims mismatch — expected {static_template}, got {static_actual}"
+            )
+            if n_dyn > 1:
+                assert len(set(t.shape[:n_dyn])) == 1, (
+                    f"Input '{name}': pairwise dynamic dims must be equal, got {list(t.shape[:n_dyn])}"
+                )
+            self.input_shapes[idx] = torch.Size(list(t.shape[:n_dyn]) + static_template)
+            self.running_batch = t.shape[0]
 
             ort_value = ort.OrtValue.ortvalue_from_numpy(
                 t.detach().to(self.torch_dtype).cpu().contiguous().numpy(),

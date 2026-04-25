@@ -121,7 +121,7 @@ class TensorRTRuntime(InferenceOnlyRuntime):
 
         self.input_profiles = {n: self.engine.get_tensor_profile_shape(n, 0) for n in self.input_names}
         self.dtypes = {n: self._TORCH_DTYPE[self.engine.get_tensor_dtype(n)] for n in self.engine}
-        self._running_batch_size = -1
+        self._running_input_shapes: dict = {}
         self._outputs = tuple()
 
         self.log_runtime(f"Inference backend set to: TensorRT: {version.parse(self.trt.__version__)}, from checkpoint: {os.path.abspath(self.checkpoint)}")
@@ -140,12 +140,14 @@ class TensorRTRuntime(InferenceOnlyRuntime):
 
     def _set_input(self, name: str, tensor: torch.Tensor) -> None:
         prof_min, _, prof_max = self.input_profiles[name]
-        batch_size = tensor.size(0)
-        assert prof_min[0] <= batch_size <= prof_max[0], f"Batch size of {batch_size} outside [{prof_min[0]}, {prof_max[0]}] for {name}"
-
+        for dim, (lo, hi) in enumerate(zip(prof_min, prof_max)):
+            if lo == hi:
+                continue  # static dim
+            assert lo <= tensor.size(dim) <= hi, (
+                f"Input '{name}' dim {dim} size {tensor.size(dim)} outside profile [{lo}, {hi}]"
+            )
         self.context.set_input_shape(name, tuple(tensor.shape))
         self.context.set_tensor_address(name, int(tensor.data_ptr()))
-        self._running_batch_size = batch_size
 
     def _alloc_output(self, name: str) -> torch.Tensor:
         shape = tuple(self.context.get_tensor_shape(name))
@@ -166,12 +168,14 @@ class TensorRTRuntime(InferenceOnlyRuntime):
         else:
             raise ValueError(f"inputs must be a torch.Tensor or a tuple. Received: {type(inputs)}.")
 
-        batch_size_changed = current_batch_size != self._running_batch_size
+        current_shapes = {name: tuple(t.shape) for name, t in zip(self.input_names, inputs)}
+        shapes_changed = current_shapes != self._running_input_shapes
         for name, tensor in zip(self.input_names, inputs):
             tensor = self._stage_to_gpu(tensor).to(self.dtypes[name])
             self._set_input(name, tensor)
             self._buffer[name] = tensor
-        if batch_size_changed:
+        if shapes_changed:
+            self._running_input_shapes = current_shapes
             self.context.infer_shapes()
             self._outputs = tuple(self._alloc_output(n) for n in self.output_names)
 

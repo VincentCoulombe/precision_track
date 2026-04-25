@@ -123,6 +123,45 @@ class FrameIdWriter(BaseWriter):
 
 
 @VISUALIZERS.register_module()
+class CorrectionWriter(BaseWriter):
+
+    def __init__(self, metainfo: str, color: Optional[List[int]] = None, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.bg_color = sv.Color(*(color if color is not None else [255, 0, 0]))
+        self.metainfo_classes = {i: cls_ for i, cls_ in enumerate(parse_pose_metainfo({"from_file": metainfo}).get("classes", []))}
+
+    def _get_corrections(self, outputs: Tuple[Dict[str, np.ndarray]], idx: int) -> np.ndarray:
+        for output in outputs:
+            if "CsvCorrections" in output:
+                data = output["CsvCorrections"]
+                if data is not None and data.size > 0:
+                    return data[data[:, 0].astype(int) == idx]
+        return np.array([])
+
+    def __call__(self, frame: np.ndarray, outputs: Tuple[Dict[str, np.ndarray]], idx: int) -> np.ndarray:
+        corrections = self._get_corrections(outputs, idx)
+        if corrections.size == 0:
+            return frame
+        _, line_height = self._get_text_width_height("A")
+        line_step = line_height + self.text_padding * 2
+        for i, row in enumerate(corrections):
+            class_id = self.metainfo_classes.get(int(float(row[1])), "?")
+            instance_id = int(float(row[2]))
+            corrected_id = int(float(row[3]))
+            text = f"Correction for class '{class_id}': {instance_id} -> {corrected_id}"
+            text_width, _ = self._get_text_width_height(text)
+            x = max(self.text_anchor.x, text_width // 2 + self.text_padding)
+            y = self.text_anchor.y + i * line_step
+            rect = self._get_text_rectangle(x - text_width // 2, y - line_height // 2, text_width, line_height)
+            sv.draw_filled_rectangle(frame, rect, self.bg_color)
+            original_y = self.text_anchor.y
+            self.text_anchor = sv.Point(x, y)
+            frame = self.write(frame, text)
+            self.text_anchor = sv.Point(x, original_y)
+        return frame
+
+
+@VISUALIZERS.register_module()
 class AppearanceDetectionWriter(BaseWriter):
     _UNIQUE_ID_PATTERN = re.compile(r"^(.+)_(\d+)$")
 
@@ -136,6 +175,7 @@ class AppearanceDetectionWriter(BaseWriter):
         bar_width: int = 40,
         bar_height: int = 80,
         bar_spacing: int = 10,
+        cache_scores: bool = True,
         *args,
         **kwargs,
     ) -> None:
@@ -168,6 +208,8 @@ class AppearanceDetectionWriter(BaseWriter):
         self.identities = re_id_metainfo.get("identities")
         assert isinstance(self.identities, list), f"The metadata file '{metainfo}' must contain a list of identities"
 
+        self.uid2ids = dict()
+
         for cls_ in self.classes:
             assert cls_ in self.metainfo_classes, f"The following unique id class: {cls_} is not in the '{metainfo}' classes: {self.metainfo_classes}."
 
@@ -188,8 +230,10 @@ class AppearanceDetectionWriter(BaseWriter):
         self.bar_spacing = bar_spacing
         self.row_height = bar_height + 60
         self.initialized = False
+        self.cache_scores = cache_scores
         self.cached_top3 = {}
         self.max_uid_width = max(self._get_text_width_height(uid)[0] for uid in unique_ids)
+        self.max_identity_width = max(self._get_text_width_height(id_)[0] for id_ in self.identities)
         label_overflow = max(0, self.max_uid_width - self.bar_width)
         self.effective_bar_spacing = max(self.bar_spacing, label_overflow + 10)
 
@@ -269,7 +313,7 @@ class AppearanceDetectionWriter(BaseWriter):
         y_axis_padding = 30
         uid_label_padding = self.max_uid_width + 15
         bars_width = 3 * (self.bar_width + self.effective_bar_spacing)
-        panel_width = max(uid_label_padding + y_axis_padding + bars_width, self.w_t + 20)
+        panel_width = max(uid_label_padding + self.max_identity_width + y_axis_padding + bars_width, self.w_t + 20)
         panel_height = len(self.unique_ids) * self.row_height + self.h_t * 3 + self.text_padding * 2
 
         text_rect = self._get_text_rectangle(
@@ -298,11 +342,17 @@ class AppearanceDetectionWriter(BaseWriter):
 
         validations = self._get_validations(outputs)
 
-        if validations is not None and len(validations) > 1:
+        if not self.cache_scores:
+            self.cached_top3 = {}
+
+        if validations is not None and validations.size > 0:
             for unique_id, cls_, inst_id in zip(self.unique_ids, self.classes, self.inst_ids):
                 for row in validations:
                     if int(float(row[1])) == self.class_map[cls_] and int(float(row[2])) == inst_id:
                         identity = str(row[3])
+                        if identity in self.identities:
+                            self.uid2ids[unique_id] = identity
+
                         scores = row[4:].astype(float)
 
                         top3_indices = np.argsort(scores)[-3:][::-1]
@@ -311,14 +361,20 @@ class AppearanceDetectionWriter(BaseWriter):
 
                         self.cached_top3[unique_id] = (top3_identities, top3_scores)
 
-        bar_start_x = self.x + uid_label_padding + y_axis_padding
+        bar_start_x = self.x + uid_label_padding + y_axis_padding + self.max_identity_width + 15
         for row_idx, unique_id in enumerate(self.unique_ids):
             row_y = self.y + self.h_t * 3 + row_idx * self.row_height + 20
 
             id_color = self.palette.by_idx(row_idx + 1)
+
+            text = unique_id
+            identity = self.uid2ids.get(unique_id)
+            if identity is not None:
+                text = f"{unique_id} ({identity})"
+
             cv2.putText(
                 img=frame,
-                text=unique_id,
+                text=text,
                 org=(self.x, row_y + self.bar_height // 2),
                 fontFace=self.text_font,
                 fontScale=self.text_scale,
@@ -331,6 +387,26 @@ class AppearanceDetectionWriter(BaseWriter):
 
             top_3 = self.cached_top3.get(unique_id)
             if top_3 is None:
+                if not self.cache_scores:
+                    lines = ["Not confident enough to", "assert an identity"]
+                    line_sizes = [self._get_text_width_height(line) for line in lines]
+                    line_h = line_sizes[0][1]
+                    line_step = line_h + self.text_padding
+                    total_h = line_h + line_step * (len(lines) - 1)
+                    bars_total_width = 3 * (self.bar_width + self.effective_bar_spacing)
+                    msg_y = row_y + self.bar_height // 2 - total_h // 2 + line_h
+                    for i, (line, (lw, _)) in enumerate(zip(lines, line_sizes)):
+                        msg_x = bar_start_x + (bars_total_width - lw) // 2
+                        cv2.putText(
+                            img=frame,
+                            text=line,
+                            org=(msg_x, msg_y + i * line_step),
+                            fontFace=self.text_font,
+                            fontScale=self.text_scale,
+                            color=self.text_color.as_bgr(),
+                            thickness=self.text_thickness,
+                            lineType=cv2.LINE_AA,
+                        )
                 continue
 
             for bar_idx in range(len(top_3[0])):

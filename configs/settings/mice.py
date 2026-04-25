@@ -15,7 +15,7 @@ deepen_factor = 0.33
 data_mode = _base_.data_mode
 data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
-deploying_directory = '../checkpoints/mice/'
+deploying_directory = '../checkpoints/mice//'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -91,8 +91,8 @@ tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
-with_action_recognition = True
-with_group_action_recognition = False
+with_action_recognition = False
+with_group_action_recognition = True
 
 num_subjects = {'mouse': 20}
 stitching_algorithm = dict(
@@ -112,7 +112,8 @@ eps_range = [1e-2, 1e-1]
 #   2.1) /Tuning
 
 #   2.2) Testing
-hyperparams = deploying_directory + "hyperparameters.json"
+hyperparameters_file_name = 'hyperparameters.json'
+hyperparams = deploying_directory + hyperparameters_file_name
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
@@ -156,7 +157,7 @@ assigner = dict(
 
 if with_action_recognition:
     action_recognition_input_names = ["features", "poses", "dynamics"]
-    gar_input_names = ["valid_mask", "distance_priors", "keypoint_priors"]
+    gar_input_names = ["distance_priors", "keypoint_priors"]
     action_recognition_output_names = ["class_logits", "action_embeddings"]
     gar_output_names = ["interaction_logits", "social_logits"]
 
@@ -253,31 +254,15 @@ action_recognition_val_interval = 1000
 
 action_recognition_data_root = '../../datasets/MICE/sequential/'
 
-action_recognition_train_sequences = [
-    "videos/train/13-10-02.avi",
-    "videos/train/13-20-02.avi",
-    "videos/train/13-40-02.avi",
-]
-action_recognition_train_bboxes_gt_paths = [
-    "bboxes/train/13-10-02.csv",
-    "bboxes/train/13-20-02.csv",
-    "bboxes/train/13-40-02.csv",
-]
-action_recognition_train_keypoints_gt_paths = [
-    "keypoints/train/13-10-02.csv",
-    "keypoints/train/13-20-02.csv",
-    "keypoints/train/13-40-02.csv",
-]
-action_recognition_train_actions_gt_paths = [
-    "actions/train/13-10-02.csv",
-    "actions/train/13-20-02.csv",
-    "actions/train/13-40-02.csv",
-]
+action_recognition_train_sequences = ['videos/train/13-10-02.avi', 'videos/train/13-20-02.avi', 'videos/train/13-40-02.avi']
+action_recognition_train_bboxes_gt_paths = ['bboxes/train/13-10-02.csv', 'bboxes/train/13-20-02.csv', 'bboxes/train/13-40-02.csv']
+action_recognition_train_keypoints_gt_paths = ['keypoints/train/13-10-02.csv', 'keypoints/train/13-20-02.csv', 'keypoints/train/13-40-02.csv']
+action_recognition_train_actions_gt_paths = ['actions/train/13-10-02.csv', 'actions/train/13-20-02.csv', 'actions/train/13-40-02.csv']
 
-action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
-action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
-action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
-action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
+action_recognition_val_sequences = ['videos/val/14-20-02.avi']
+action_recognition_val_bboxes_gt_paths = ['bboxes/val/14-20-02.csv']
+action_recognition_val_keypoints_gt_paths = ['keypoints/val/14-20-02.csv']
+action_recognition_val_actions_gt_paths = ['actions/val/14-20-02.csv']
 
 #   3.2) /Training
 
@@ -297,11 +282,14 @@ action_recognition_test_actions_gt_paths = action_recognition_val_actions_gt_pat
 display_bounding_boxes = False
 display_poses = True
 display_velocities = True
-display_species = True
+display_species = False
 display_confidence_scores = True
-display_actions = False
+display_actions = True
 display_search_zones = False
 display_validations = False
 display_untracked_detections = False
 display_predicted_bounding_boxes = False
 # 4) /Visualization
+output_clustered_features = False
+output_action_recognition_embeddings = False
+output_appearance_database = False

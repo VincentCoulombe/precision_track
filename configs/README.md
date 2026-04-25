@@ -26,23 +26,23 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 # 1. Booleans – Enable or disable functionalities
 
-- **pipelined**  
+- **<u>pipelined</u>**  
   Runs processes in parallel to make tracking _faster_.
   - Recommended for real-time use.
   - Significantly accelerate the processing speed if your are performing multiple downstream tasks (action recognition and/or re-identification).
 
-- **with_validation**  
+- **<u>with_validation</u>**  
   Enables **Re-identification**.
   - Set as `true` only if you have a valid `validation_configuration_file` and want to perform animal re-identification.
 
-- **with_action_recognition**  
+- **<u>with_action_recognition</u>**  
   Enables the MART model to recognize animal actions.
   - Set as `true` only if you have trained a MART model (Guides and tutorials on how to do it coming out soon).
 
-- **with_group_action_recognition**  
+- **<u>with_group_action_recognition</u>**  
   Enables the GMART model to recognize animal social actions. **with_action_recognition** also need to be enable to perform group action recognition.
 
-- **with_pose_estimation**  
+- **<u>with_pose_estimation</u>**  
   Enables full pose (keypoints + skeleton).
   - Set as `false` if you want box-only tracking.
   - Set as `true` only if your COCO formatted dataset (`data_root`) contain keypoints.
@@ -52,7 +52,7 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 # 2. General directories and paths
 
-- **metainfo**  
+- **<u>metainfo</u>**  
   A small python file that describes your species: names of keypoints, skeleton shape, etc. Please refer to our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) for more details.
 
 ---
@@ -61,10 +61,10 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 ### These parameters tell PrecisionTrack where your dataset is located and how training should run.
 
-- **dataset_name**  
+- **<u>dataset_name</u>**  
   The label that will appear in logs and created sub-directories under the `precision_track/work_dir/training_runs` and `precision_track/work_dir/testing_runs` directories. Namely, the training logs and testing metrics will be saved there.
 
-- **data_root**  
+- **<u>data_root</u>**  
   Root directory of your **COCO-style dataset**. Expected structure:
 
 ```text
@@ -80,53 +80,53 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 **⚠️IMPORTANT⚠️** For Windows and WSL users. Paths **outside** of your precision_track's directory will not exists within your docker container. Ensure that all the provided paths are **inside** your precision_track's directory.
 
-- **resume**  
+- **<u>resume</u>**  
   Turn ON if you want to continue a stopped training. Turning this on will:
   - Load the checkpoint saved at the `training_checkpoint` path. Therefore, `training_checkpoint` should be the path to the last saved checkpoint from the run you want to resume.
   - Resume the training from this checkpoint.
 
   **NOTE** Your latest training checkpoint is indicated in the `../<saving_directory>/training_runs/<dataset_name>/last_checkpoint` file.
 
-- **training_checkpoint**  
+- **<u>training_checkpoint</u>**  
   Path to a `.pth` file used to initialize training for transfer learning. Therefore, starting your training from a checkpoint strongly improves performance.
   - Can be either a model you already pretrained or our available **AP Checkpoint** (recommended):  
     [Download here](https://drive.google.com/drive/folders/1_U9fDDAW7UYm_xelod9ehrSNFdpYUz0o).
   - For better organization, create a dedicated **checkpoints directory** (e.g., `../checkpoints/`). You may store the AP Checkpoint locally as:  
     `../checkpoints/ap/model_ap.pth`.
 
-- **deploying_directory**  
+- **<u>deploying_directory</u>**  
   Directory where all deployment artifacts are saved after a successful training run. At minimum, a `_DEPLOYED.pth` (which is a lighter copy of the last checkpoint of your training run (`../work_dir/training_runs/<dataset_name>/epoch_300.pth`)) will be saved here. Also, a `_DEPLOYED.onnx` file will be saved if your machine supports FP16 conversion (it should). For more informations about **ONNX** please visit [The following](https://onnx.ai/). Finally, a `.engine` checkpoint will be saved if your machine is **CUDA accelerated**. This last checkpoint is the absolute fastest version of your model. As such, it will be the system's preferred **runtime** whenever it is available. For more informations about **TensorRT Engines** please visit [The following](https://docs.nvidia.com/tensorrt/index.html).
   - We also highly recommend creating a **checkpoints directory** (`../checkpoints/`) in order to organize all your model's weights. We recommend your `deploying_directory` to be inside this **checkpoints directory**. For example, you could set your `deploying_directory` as `../checkpoints/v1/` then train your network. This will tell your PrecisionTrack trainer to first create the `../checkpoints/v1/` directory then automatically save your last training checkpoint to this directory.
 
   - Please refer to our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) guide for more details.
 
-- **deploying_sanity_check_img_path**
+- **<u>deploying_sanity_check_img_path</u>**
   Path (this path is relative to your `data_root` directory, not your `tools` directory) to **any** image from your **COCO-style dataset**. This image will be used to ensure that the `.onnx` and the `.engine` checkpoints are accurate. This is only relevant if the [training tool's](https://github.com/VincentCoulombe/precision_track/tree/main/tools) `deploy` option is set to `true`.
 
-- **batch_size**  
+- **<u>batch_size</u>**  
   How many images are processed at once.
   - Bigger = faster but requires more VRAM. For example, 24GB GPUs can load batches of 38 images each.
 
-- **wandb_logging**  
+- **<u>wandb_logging</u>**  
   Enables training visualization through Weight & Biases. Please refer to our [Weight & Biases guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/wandb) for setupping instructions.
 
 ---
 
 # 4. Tracking parameters
 
-- **saving_directory**
+- **<u>saving_directory</u>**
   Specifies where PrecisionTrack will **write all tracking outputs** (e.g., bounding boxes, poses, velocities, actions, etc...). The **visualization tool** also **reads from this directory** when rendering videos.
 
   **⚠️IMPORTANT⚠️**: The **visualization tool** assumes every file in the `saving_directory` belongs to the **same tracking run**. If the `saving_directory` contains **leftovers from older runs**, you may get **incorrect or mixed visualizations**.
 
   **Best practice**: use a **fresh** or automatically cleaned **directory** for **each run**.
 
-- **num_subjects**
+- **<u>num_subjects</u>**
   Tell PrecisionTrack **how many subjects of each classes are in the scene**.
   - If animals **can enter or leave the scene**, set it to **-1**.
   - Ensure that the classes set here are coherent with those in your **metadata file**.
 
-- **tracking_checkpoint_name**  
+- **<u>tracking_checkpoint_name</u>**  
   This config allow you to select, by name, a specific checkpoint, from inside your `deploying_directory`, to track with. This checkpoint could be:
   - Your `_DEPLOYED.pth`
   - Your `_DEPLOYED.onnx`
@@ -134,7 +134,41 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
   If left empty (""), PrecisionTrack will automatically select a tracking checkpoint from your **deploying_directory**. The selection is performed **following this priority** : `.engine` -> `_DEPLOYED.onnx` -> `_DEPLOYED.pth`.
 
-- **mot_data_root** Path to your MOT dataset. Expected structure:
+- **<u>hyperparameters_file_name</u>**  
+  This config allow you to select, by name, a specific tracking hypermarameters file, from inside your `deploying_directory`. This file typically contains:
+  - `calibrated_temperature`: You can manually tune the general confidence level of your detector (optional). **NOTE** by having a valid mot dataset in `mot_data_root` and by specifying `--calibrate` when launching `train_detection.py`, our optimization loop can automatically find close to the global optima for this hyperparameter.
+  - `tracking_thresholds`: You can manually tune three different tracking thresholds:
+    - `low_thr`: The minimal level of confidence a detection must have to be considered during tracking.
+    - `conf_thr`: The threshold above which PrecisionTrack consider a detection "confident", granting it an easier time and less scrutiny during the association process.
+    - `init_thr`: The minimal level of confidence a detection must have to initiate a new track.
+  - `stitching_hyperparams`: You can manually tune these stitching parameters:
+    - `beta`: How big will search zones be relative to the subject's last seen dynamics. Augmenting its value will results in less picky stitches, which might increase the algorithm's recall, bt lower its precision.
+    - `match_thr`: How picky will the algorithm be when comes time to determine if a new track must be stitched or not. Setting it to `0.99` will make it so almost every new tracks will be stitched no matter where they reappears. Alternatively, setting it to `0.01` will make it so new tracks will have to appear almost exactly where lost ones dissapeared to be stitched.
+
+Here is an example of a valid `hyperparameters_file_name`.
+
+```json
+{
+	"calibrated_temperature": 0.69,
+	"tracking_thresholds": {
+		"low_thr": 0.05,
+		"conf_thr": 0.35,
+		"init_thr": 0.65
+	},
+	"stitching_hyperparams": {
+		"beta": 0.5,
+		"match_thr": 0.8
+	}
+}
+```
+
+**NOTE** PrecisionTrack will revert back to default values for every missing keys.
+
+- **<u>output_clustered_features</u>**
+  If enabled, will save your clustered features at the following path: `<saving_directory>/features.npy`, which you will then be able to use for further analysis. **Warning** saving the clustered features will SIGNIFICANTLY slow down the tracking process.
+
+- **<u>mot_data_root</u>**
+  Path to your MOT dataset. Expected structure:
 
   ```bash
   <mot_data_root>/
@@ -156,12 +190,12 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 # 5. Action Recognition parameters
 
-- **mart_checkpoint_name** Name of the MART checkpoint you want to use to infer animal actions during tracking. Like it is the case for **tracking_checkpoint_name**, the **mart_checkpoint_name** is assumed to be saved inside your `deploying_directory`. This checkpoint could be:
+- **<u>mart_checkpoint_name</u>** Name of the MART checkpoint you want to use to infer animal actions during tracking. Like it is the case for **tracking_checkpoint_name**, the **mart_checkpoint_name** is assumed to be saved inside your `deploying_directory`. This checkpoint could be:
   - Your `_DEPLOYED.pth`
   - Your `_DEPLOYED.onnx`
   - Your `.engine`
 
-- **action_recognition_data_root** Path to your action recognition dataset. Expected structure:
+- **<u>action_recognition_data_root</u>** Path to your action recognition dataset. Expected structure:
 
   ```text
   <action_recognition_data_root>/
@@ -190,11 +224,14 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
   **NOTE**: We achieved our MOT-styled bounding boxes and keypoints annotations by following [Julien Audet-Welke's guide](https://github.com/juauw/CVAT_pipeline) and our action labels by reformatting annotations obtained through manual labelling on the [BORIS](https://www.boris.unito.it/) software.
 
+- **<u>output_action_recognition_embeddings</u>**
+  If enabled, will save the action embeddings produced by your MART model at the following path: `<saving_directory>/action_embeddings.npy`, which you will then be able to use for further analysis. **Warning** saving the clustered features will SIGNIFICANTLY slow down the tracking process.
+
 ---
 
 # 6. Group Action Recognition parameters
 
-- **gmart_checkpoint_name** Name of the GMART checkpoint you want to use to infer animal actions during tracking. Like it is the case for **tracking_checkpoint_name**, the **gmart_checkpoint_name** is assumed to be saved inside your `deploying_directory`. This checkpoint could be:
+- **<u>gmart_checkpoint_name</u>** Name of the GMART checkpoint you want to use to infer animal actions during tracking. Like it is the case for **tracking_checkpoint_name**, the **gmart_checkpoint_name** is assumed to be saved inside your `deploying_directory`. This checkpoint could be:
   - Your `_DEPLOYED.pth`
   - Your `_DEPLOYED.onnx`
   - Your `.engine`
@@ -214,31 +251,40 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
 # 7. Validation parameters
 
-**COMING SOON**
+- **<u>validation_configuration_file</u>**
+  Path to your validation config file. In order to keep this config file as lean as possible for the non validation users, I decided to keep the validation-related configs separate. the path by defaut refers to the validation config use to obtain the results in the manuscript.
+
+- **<u>output_appearance_database</u>**
+  If enabled, will save the action embeddings produced by your MART model at the following path: `<saving_directory>/appearance_database.npy`, which you will then be able to use for further analysis. **Warning** saving the clustered features will SIGNIFICANTLY slow down the tracking process.
+
+  **NOTE**: You can use the `./tools/visualize_appearances.py` tool to visualize your appearance features offline, meaning once the tracking is completed and your have access to at least the following three files:
+  - `<saving_directory>/appearance_database.npy`
+  - `<saving_directory>/tracked_bboxes.csv`
+  - `<path to your video>`
 
 ---
 
 # 8. Visualization parameters
 
-- **display_bounding_boxes**: Render the tracked subject's bounding boxes, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
+- **<u>display_bounding_boxes</u>**: Render the tracked subject's bounding boxes, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
 
-- **display_poses**: Render the tracked subject's poses, given that a `tracked_kpts.csv` file exists in the `saving_directory`.
+- **<u>display_poses</u>**: Render the tracked subject's poses, given that a `tracked_kpts.csv` file exists in the `saving_directory`.
 
-- **display_velocities**: Render the tracked subject's velocities, (in the form of an arrow) given that a `tracked_velocities.csv` file exists in the `saving_directory`.
+- **<u>display_velocities</u>**: Render the tracked subject's velocities, (in the form of an arrow) given that a `tracked_velocities.csv` file exists in the `saving_directory`.
 
-- **display_species**: Add the tracked subject's predicted species to the subject's label bars, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
+- **<u>display_species</u>**: Add the tracked subject's predicted species to the subject's label bars, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
 
-- **display_confidence_scores**: Add the tracked subject's confidence score (which means how confident the subject's detections are) to the subject's label bars, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
+- **<u>display_confidence_scores</u>**: Add the tracked subject's confidence score (which means how confident the subject's detections are) to the subject's label bars, given that a `tracked_bboxes.csv` file exists in the `saving_directory`.
 
-- **display_actions**: Add the tracked subject's predicted actions to the subject's label bars, given that a `tracked_actions.csv` file exists in the `saving_directory`.
+- **<u>display_actions</u>**: Add the tracked subject's predicted actions to the subject's label bars, given that a `tracked_actions.csv` file exists in the `saving_directory`.
 
-- **display_search_zones**: Render the tracked subject's search zones (as described in the manuscript), given that a `stitching_search_areas.csv` file exists in the `saving_directory`.
+- **<u>display_search_zones</u>**: Render the tracked subject's search zones (as described in the manuscript), given that a `stitching_search_areas.csv` file exists in the `saving_directory`.
 
-- **display_validations**: Render the tracked subject's validations (Tailtag detections), given that a `tracked_validations.csv` file exists in the `saving_directory`.
+- **<u>display_validations</u>**: Render the tracked subject's validations (Tailtag detections), given that a `tracked_validations.csv` file exists in the `saving_directory`.
 
-- **display_untracked_detections**: Render detected bounding boxes (will be bright white), given that a `detected_bboxes.csv` file exists in the `saving_directory`.
+- **<u>display_untracked_detections</u>**: Render detected bounding boxes (will be bright white), given that a `detected_bboxes.csv` file exists in the `saving_directory`.
 
-- **display_predicted_bounding_boxes**: Render where the model think the subject will be the next time it will see it (will be bright white corners), given that a `detected_bboxes.csv` file exists in the `saving_directory`.
+- **<u>display_predicted_bounding_boxes</u>**: Render where the model think the subject will be the next time it will see it (will be bright white corners), given that a `detected_bboxes.csv` file exists in the `saving_directory`.
 
 ---
 

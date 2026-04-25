@@ -745,7 +745,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                 actions_output = self.data_prefix["actions_outputs"][actions_idx]
 
             batch = defaultdict(list)
-            for i, (frame_kpts, frame_bboxes, frame_actions) in enumerate(zip(kpts_output, bboxes_output, actions_output)):
+            for i, (frame_kpts, frame_bboxes, frame_actions, _) in enumerate(zip(kpts_output, bboxes_output, actions_output, range(len(vid_reader)))):
                 if frame_kpts and frame_bboxes:
                     frame_trk_info_kpts, frame_kpts = self._standardize_frame_data(frame_kpts)
                     frame_trk_info_bboxes, frame_bboxes = self._standardize_frame_data(frame_bboxes)
@@ -781,7 +781,7 @@ class OfflineRandomSequenceDataset(BaseDataset, metaclass=ABCMeta):
                     frame_data = dict(
                         sequence_name=sequence_name,
                         img_id=i,
-                        img=vid_reader.get_frame(i),
+                        img=img,
                         nb_instances=bboxes.shape[0],
                         id=instance_ids.astype(int),
                         bbox=reformat(bboxes, "xywh", "xyxy").astype(np.float32),

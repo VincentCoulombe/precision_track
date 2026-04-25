@@ -466,6 +466,10 @@ class InputShape(metaclass=ABCMeta):
 
 @TASK_UTILS.register_module()
 class PosesShape(InputShape):
+    """Its shape is (N, T, P). dim 0 is dynamic"""
+
+    dynamic_dims = frozenset({0})
+
     def __init__(self, block_size: int, metainfo: str):
         assert 0 < block_size
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
@@ -477,6 +481,9 @@ class PosesShape(InputShape):
 
 @TASK_UTILS.register_module()
 class VelocityShape(InputShape):
+    """Its shape is (N, T, V). dim 0 is dynamic"""
+
+    dynamic_dims = frozenset({0})
 
     def __init__(self, block_size: int, n_encoding: int = None):
         assert 0 < block_size
@@ -490,6 +497,9 @@ class VelocityShape(InputShape):
 
 @TASK_UTILS.register_module()
 class FeaturesShape(InputShape):
+    """Its shape is (N, T, E). dim 0 is dynamic"""
+
+    dynamic_dims = frozenset({0})
 
     def __init__(self, block_size: int, n_embd: int):
         for arg_ in [block_size, n_embd]:
@@ -499,6 +509,10 @@ class FeaturesShape(InputShape):
 
 @TASK_UTILS.register_module()
 class ImageShape(InputShape):
+    """Its shape is (B, C, W, H). dim 0 is dynamic"""
+
+    dynamic_dims = frozenset({0})
+
     def __init__(self, n_channels: int, width: int, height: int):
         for arg_ in [n_channels, width, height]:
             assert 0 < arg_
@@ -506,13 +520,11 @@ class ImageShape(InputShape):
 
 
 @TASK_UTILS.register_module()
-class ValidMaskShape(InputShape):
-    def __init__(self):
-        self.shape = ()
-
-
-@TASK_UTILS.register_module()
 class DistancePriorsShape(InputShape):
+    """Its shape is (N, N). Both are dynamics"""
+
+    dynamic_dims = frozenset({0, 1})
+
     def __init__(self):
         self.is_pairwise = True
         self.shape = ()
@@ -520,6 +532,10 @@ class DistancePriorsShape(InputShape):
 
 @TASK_UTILS.register_module()
 class KeypointPriorsShape(InputShape):
+    """Its shape is (N, N, K). dim 0 and 1 are dynamics"""
+
+    dynamic_dims = frozenset({0, 1})
+
     def __init__(self, metainfo: str):
         metainfo_dict = parse_pose_metainfo(dict(from_file=metainfo))
         n_kp_pairs = len(metainfo_dict.get("distance_keypoint_pairs", []))

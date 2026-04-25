@@ -1,8 +1,10 @@
 import argparse
 import os
 
+from train_detection import load_config
+
 from precision_track import Runner
-from precision_track.utils import load_user_configs
+from precision_track.utils import load_user_configs, register_action_recognition_dataset
 
 
 def parse_args():
@@ -20,6 +22,8 @@ def main(args):
     system_configs_path = args.config
     user_system_configs_path = "../configs/user_configs.yaml"
     load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
+    cfg = load_config(system_configs_path)
+    register_action_recognition_dataset(cfg["action_recognition_data_root"], system_configs_path)
     runner = Runner(system_configs_path, args.launcher, mode="test")
     runner()
 
