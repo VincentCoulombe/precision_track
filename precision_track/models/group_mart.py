@@ -407,7 +407,6 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
             poses,
             dynamics,
             _,
-            _,
             keypoint_priors,
         ) = inputs
         if len(features.shape) == 3:
