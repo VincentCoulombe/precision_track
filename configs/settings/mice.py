@@ -1,25 +1,25 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../configs/metadata/mice.py'
+metainfo = "../configs/metadata/mice.py"
 wandb_logging = False
 # /Common
 
 # 1) Detection
-with_pose_estimation = True
+with_pose_estimation = False
 half_precision = True
 
 widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
-dataset_name = 'mice'
-deploying_directory = '../checkpoints/mice//'
+data_root = "../../datasets/MICE/pose-estimation/"
+dataset_name = "mice"
+deploying_directory = "../checkpoints/stripedmice/"
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
-training_checkpoint = '../checkpoints/model_ap/model_ap.pth'
+training_checkpoint = "../checkpoints/model_ap/model_ap.pth"
 
 input_size = (640, 640)
 pad_value = 114
@@ -74,7 +74,7 @@ fe_training_checkpoint = training_work_dir + f"epoch_{num_epochs}.pth"
 #   1.4) /Feature Extraction
 
 #   1.5) Deployment
-deploying_sanity_check_img_path = 'images/0000003435.jpg'
+deploying_sanity_check_img_path = "images/0000003435.jpg"
 sanity_check_img = data_root + deploying_sanity_check_img_path
 deployment_device = "auto"
 #   1.5) /Deployment
@@ -82,19 +82,19 @@ deployment_device = "auto"
 
 
 # 2) Tracking
-tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
+tracking_checkpoint_name = "model_stripedmice_deployed.onnx"
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = True
-saving_directory = '../work_dir/'
+saving_directory = "../work_dir/test_cam_reid"
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = False
 with_action_recognition = False
-with_group_action_recognition = True
+with_group_action_recognition = False
 
-num_subjects = {'mouse': 20}
+num_subjects = {"mouse": 20}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
@@ -112,18 +112,18 @@ eps_range = [1e-2, 1e-1]
 #   2.1) /Tuning
 
 #   2.2) Testing
-hyperparameters_file_name = 'hyperparameters.json'
+hyperparameters_file_name = "hyperparameters.json"
 hyperparams = deploying_directory + hyperparameters_file_name
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
-mot_data_root = '../../datasets/MICE/pose-estimation/benchmark/'
+mot_data_root = "../../datasets/MICE/pose-estimation/benchmark/"
 testing_tracking_output_file = testing_work_dir + "mean_CLEAR_metrics_over_all_videos.csv"
 #   2.2) /Testing
 
 
 #   2.3) Validation
-validation_configuration_file = '../configs/settings/validation/appearance.yaml'
+validation_configuration_file = "../configs/settings/validation/appearance.yaml"
 #   2.3) /Validation
 
 # 2) /Tracking
@@ -133,8 +133,8 @@ validation_configuration_file = '../configs/settings/validation/appearance.yaml'
 
 #   3.1) Checkpoints
 mart_deploying_directory = deploying_directory
-mart_checkpoint_name = 'mart_DEPLOYED.pth'
-gmart_checkpoint_name = 'gmart_DEPLOYED.pth'
+mart_checkpoint_name = "mart_DEPLOYED.pth"
+gmart_checkpoint_name = "gmart_DEPLOYED.pth"
 
 mart_checkpoint = deploying_directory + mart_checkpoint_name
 gmart_checkpoint = deploying_directory + gmart_checkpoint_name
@@ -232,10 +232,10 @@ if with_action_recognition:
     )
 else:
     analyzer = None
-    action_recognition_input_names = None
-    gar_input_names = None
-    action_recognition_output_names = None
-    gar_output_names = None
+    action_recognition_input_names = []
+    gar_input_names = []
+    action_recognition_output_names = []
+    gar_output_names = []
 
 #   3.2) Training
 action_recognition_batch_size = 128
@@ -252,17 +252,17 @@ gar_warmup_iter = 10000
 action_recognition_val_interval = 1000
 
 
-action_recognition_data_root = '../../datasets/MICE/sequential/'
+action_recognition_data_root = "../../datasets/MICE/sequential/"
 
-action_recognition_train_sequences = ['videos/train/13-10-02.avi', 'videos/train/13-20-02.avi', 'videos/train/13-40-02.avi']
-action_recognition_train_bboxes_gt_paths = ['bboxes/train/13-10-02.csv', 'bboxes/train/13-20-02.csv', 'bboxes/train/13-40-02.csv']
-action_recognition_train_keypoints_gt_paths = ['keypoints/train/13-10-02.csv', 'keypoints/train/13-20-02.csv', 'keypoints/train/13-40-02.csv']
-action_recognition_train_actions_gt_paths = ['actions/train/13-10-02.csv', 'actions/train/13-20-02.csv', 'actions/train/13-40-02.csv']
+action_recognition_train_sequences = ["videos/train/13-10-02.avi", "videos/train/13-20-02.avi", "videos/train/13-40-02.avi"]
+action_recognition_train_bboxes_gt_paths = ["bboxes/train/13-10-02.csv", "bboxes/train/13-20-02.csv", "bboxes/train/13-40-02.csv"]
+action_recognition_train_keypoints_gt_paths = ["keypoints/train/13-10-02.csv", "keypoints/train/13-20-02.csv", "keypoints/train/13-40-02.csv"]
+action_recognition_train_actions_gt_paths = ["actions/train/13-10-02.csv", "actions/train/13-20-02.csv", "actions/train/13-40-02.csv"]
 
-action_recognition_val_sequences = ['videos/val/14-20-02.avi']
-action_recognition_val_bboxes_gt_paths = ['bboxes/val/14-20-02.csv']
-action_recognition_val_keypoints_gt_paths = ['keypoints/val/14-20-02.csv']
-action_recognition_val_actions_gt_paths = ['actions/val/14-20-02.csv']
+action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
+action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
+action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
+action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
 
 #   3.2) /Training
 
@@ -279,12 +279,12 @@ action_recognition_test_actions_gt_paths = action_recognition_val_actions_gt_pat
 
 
 # 4) Visualization
-display_bounding_boxes = False
-display_poses = True
+display_bounding_boxes = True
+display_poses = False
 display_velocities = True
 display_species = False
-display_confidence_scores = True
-display_actions = True
+display_confidence_scores = False
+display_actions = False
 display_search_zones = False
 display_validations = False
 display_untracked_detections = False
