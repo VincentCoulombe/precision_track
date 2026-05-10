@@ -140,7 +140,8 @@ class BaseCsvOutput(BaseOutput, metaclass=abc.ABCMeta):
         """Load a csv and a mapping (for faster __getitem__)"""
         assert os.path.exists(self.path), f"{self.path} does not exist."
         self._results = pd.read_csv(self.path)
-        self._results.fillna(0, inplace=True)
+        fill_values = {col: 0 if pd.api.types.is_numeric_dtype(self._results[col]) else "" for col in self._results.columns}
+        self._results.fillna(value=fill_values, inplace=True)
         self.columns = self._results.columns[3:].tolist()
         self._results = self._results.values.tolist()
         if os.path.exists(self.mapping_path):
