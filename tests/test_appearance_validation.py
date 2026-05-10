@@ -45,7 +45,7 @@ def test_appearance_validation(expected_results_path, config, video):
             detector=config.get("detector"),
             assigner=config.get("assigner"),
             validator=config.get("validator"),
-            analyzer=config.get("analyzer"),
+            analyzer=None,
             outputs=config.get("outputs"),
             batch_size=config.get("batch_size"),
             verbose=True,

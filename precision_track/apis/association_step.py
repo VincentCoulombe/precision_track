@@ -352,7 +352,11 @@ class AssociationStep(nn.Module):
                 isolated = (bious.sum(axis=1) - bious.max(axis=1)) == 0
                 data_sample["pred_track_instances"]["isolated"] = isolated
             else:
-                data_sample["pred_track_instances"]["isolated"] = data_sample["pred_track_instances"]["instances_id"]
+                bboxes = data_sample["pred_track_instances"]["bboxes"]
+                if isinstance(bboxes, np.ndarray):
+                    data_sample["pred_track_instances"]["isolated"] = np.zeros(bboxes.shape[0], dtype=bool)
+                else:
+                    data_sample["pred_track_instances"]["isolated"] = torch.zeros(bboxes.shape[0], dtype=torch.bool)
 
         if profile is not None:
             total_time = perf_counter() - t0
