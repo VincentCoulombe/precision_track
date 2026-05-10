@@ -274,6 +274,17 @@ class AppearanceValidation(BaseValidation):
             if not is_a_hit:  # The identity has not been confirmed enough to be a hit
                 continue
 
+            assert confirmed_identity
+            if u_id_linked_to_conf_identity is None:
+                stale_identity = next(
+                    (ident for ident, uid in self.identity2uid.items() if uid == updated_unique_id),
+                    None,
+                )
+                if stale_identity is not None:
+                    self.identity2uid.pop(stale_identity)
+                self.identity2uid[confirmed_identity] = updated_unique_id
+                continue
+
             if u_id_linked_to_conf_identity is None and updated_unique_id not in self.identity2uid.values():  # First confirmation
                 self.identity2uid[confirmed_identity] = updated_unique_id
                 continue
