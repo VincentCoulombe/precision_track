@@ -402,13 +402,8 @@ class RelationshipDetectionPoseBaselineModel(RelationshipDetectionBaselineModel)
         raise RuntimeError(f'Invalid mode "{mode}". Only supports loss and predict.')
 
     def predict(self, inputs: Tuple[Tensor], data_samples: List[PoseDataSample] = None) -> GMARTPredictions:
-        (
-            features,
-            poses,
-            dynamics,
-            _,
-            keypoint_priors,
-        ) = inputs
+        features, poses, dynamics = inputs[:3]
+        keypoint_priors = inputs[-1]
         if len(features.shape) == 3:
             N, T, _ = features.shape
             B = 1
