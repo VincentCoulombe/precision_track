@@ -37,7 +37,7 @@
   - Auto-detect default:
     - No device flag → tries CUDA; falls back to CPU if CUDA isn’t available.
 
-  - Slower build (sanity checks):
+  - Slower build (not recommended, could take hours):
     - `--test` → Perform automatic testing.
 
   - **Examples:**
