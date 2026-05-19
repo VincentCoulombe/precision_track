@@ -1,7 +1,7 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../configs/metadata/mice.py'
+metainfo = '../checkpoints/stripedmice/stripedmice.py'
 wandb_logging = False
 # /Common
 
@@ -15,7 +15,7 @@ deepen_factor = 0.33
 data_mode = _base_.data_mode
 data_root = '../../datasets/MICE/pose-estimation/'
 dataset_name = 'mice'
-deploying_directory = '../checkpoints/mice/'
+deploying_directory = '../checkpoints/stripedmice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -82,19 +82,19 @@ deployment_device = "auto"
 
 
 # 2) Tracking
-tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
+tracking_checkpoint_name = 'model_stripedmice_DEPLOYED.onnx'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = True
-saving_directory = '../work_dir/20mice_sanity_check'
+saving_directory = '../work_dir/mosaic_2025-12-22T09_08_33'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
-with_validation = False
-with_action_recognition = True
-with_group_action_recognition = True
+with_validation = True
+with_action_recognition = False
+with_group_action_recognition = False
 
-num_subjects = {'mouse': 20}
+num_subjects = {'mouse': 5}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
@@ -284,9 +284,9 @@ display_poses = True
 display_velocities = True
 display_species = False
 display_confidence_scores = True
-display_actions = True
+display_actions = False
 display_search_zones = False
-display_validations = False
+display_validations = True
 display_untracked_detections = False
 display_predicted_bounding_boxes = False
 # 4) /Visualization

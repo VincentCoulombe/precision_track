@@ -28,6 +28,17 @@ class ReIDBackend(BaseBackend):
         self.identities = metadata.get("identities")
         assert isinstance(self.identities, list), f"The metadata file '{metainfo}' must contain a list of identities"
 
+        self.disabled_identities = metadata.get("disabled_identities", [])
+        assert isinstance(
+            self.disabled_identities, list
+        ), f"The metadata file '{metainfo}' contains invalid values for key 'disabled_identities': {self.disabled_identities}"
+
+        unknown_disabled = set(self.disabled_identities) - set(self.identities)
+        assert not unknown_disabled, (
+            f"The metadata file '{metainfo}' lists 'disabled_identities' that are not part of 'identities': "
+            f"{sorted(unknown_disabled)}. Disabled identities must be a subset of the model's identities."
+        )
+
         self.nb_features = int(metadata.get("nb_features", 0))
         assert self.nb_features > 0
 

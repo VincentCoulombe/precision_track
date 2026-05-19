@@ -41,8 +41,9 @@ def batch_tracking(video, detector, batch_size, result, association_step, valida
             empty = True
         if outputs:
             output = outputs.pop()
-            output = association_step(output, switches, profile_dict if is_profiling else None)
             frame = frames.pop()
+            output["img"] = frame
+            output = association_step(output, switches, profile_dict if is_profiling else None)
             if validator is not None:
                 output, switches = validator(frame, output)
             if analyzer is not None:
