@@ -78,5 +78,34 @@ class MOTEvaluation(object):
             eval_df.to_csv(self.save_path, index=False)
         return evaluation
 
+    def identity_purity(self):
+        """Frame-weighted GT-side identity purity computed from acc.mot_events.
+
+        For each GT identity g, let f_gp be the number of frames where g and
+        predicted id p are Hungarian-matched (IoU >= threshold), and f_g the
+        number of frames where g exists at all. Purity is
+            sum_g max_p f_gp  /  sum_g f_g
+        i.e. the fraction of GT-present frames carrying the dominant predicted
+        id for that GT. Unlike IDF1 it does not enforce a global one-to-one
+        mapping, so a tracker that swaps and then recovers only loses the
+        frames inside the swap window.
+        """
+        matched_types = {"MATCH", "SWITCH"}
+        gt_types = matched_types | {"MISS"}
+        purity = {cls: {"purity_gt": -1.0, "num_gt_frames": 0} for cls in self.classes}
+        for cls, acc in self.accs.items():
+            ev = acc.mot_events
+            matched = ev[ev["Type"].isin(matched_types)]
+            gt_present = ev[ev["Type"].isin(gt_types)].groupby("OId").size()
+            if matched.empty or gt_present.sum() == 0:
+                continue
+            co = matched.groupby(["OId", "HId"]).size().unstack(fill_value=0)
+            dominant = co.max(axis=1).reindex(gt_present.index, fill_value=0)
+            purity[cls] = {
+                "purity_gt": float(dominant.sum()) / float(gt_present.sum()),
+                "num_gt_frames": int(gt_present.sum()),
+            }
+        return {k: v for k, v in purity.items() if v["num_gt_frames"] > 0}
+
     def reset(self):
         self.accs = {cls: mm.MOTAccumulator(auto_id=True) for cls in self.classes}

@@ -9,7 +9,7 @@ from mmengine.logging import print_log
 
 from precision_track.models.backends import ReIDBackend
 from precision_track.registry import MODELS, TRACKING
-from precision_track.utils import AppearanceClassifier, clip, parse_pose_metainfo
+from precision_track.utils import AppearanceClassifier, crop_bbox, parse_pose_metainfo
 
 from .base_validation import BaseValidation
 
@@ -29,9 +29,7 @@ class AppearanceValidation(BaseValidation):
         validated_classes: List[str],
         memory_length: Optional[int] = 20,
         min_consecutive_hits: Optional[int] = 5,
-        confidence_thr: Optional[float] = 0.80,
         features_ema: Optional[float] = 0.1,
-        crop_enlargement_factor: Optional[float] = 0.0,
         *args,
         **kwargs,
     ) -> None:
@@ -53,6 +51,7 @@ class AppearanceValidation(BaseValidation):
         self.img_size = self.re_identificator.input_shape[0][-2:]
         self.device = self.re_identificator.device
         self.identities = self.re_identificator.identities
+        self.disabled_identities = self.re_identificator.disabled_identities
 
         self.precision = torch.float16 if self.re_identificator.half_precision else torch.float32
 
@@ -64,22 +63,27 @@ class AppearanceValidation(BaseValidation):
         assert min_consecutive_hits > 0
         self.min_consecutive_hits = int(min_consecutive_hits)
 
-        assert 0 < confidence_thr < 1
-        self.confidence_thr = float(confidence_thr)
-
         assert 0 < features_ema < 1
         self.strength_ema_new = float(features_ema)
         self.strength_ema_baseline = 1 - self.strength_ema_new
-
-        crop_enlargement_factor = float(crop_enlargement_factor)
-        assert 0.0 <= crop_enlargement_factor < 1.0
-        self.crop_enlargement_factor = crop_enlargement_factor
 
         self.unique_ids_list = unique_ids
         print_log(
             f"Set to re-identify the following unique ids: {unique_ids}, based on their appearances.",
             logger="current",
         )
+
+        disabled = set(self.disabled_identities)
+        self.disabled_identity_mask = torch.tensor(
+            [identity in disabled for identity in self.identities],
+            dtype=torch.bool,
+            device=self.device,
+        )
+        if disabled:
+            print_log(
+                f"The following identities are disabled and will be ignored during validation: {sorted(disabled)}.",
+                logger="current",
+            )
 
         assert len(self.identities) == len(unique_ids), (
             f"The AppearanceValidation module is set to re-identify {len(unique_ids)} distinct subjects "
@@ -97,6 +101,9 @@ class AppearanceValidation(BaseValidation):
         self.identity2uid = dict()
         self.max_check_delay = 1000
 
+        self.crop_enlargement_factor = self.re_identificator.crop_enlargement_factor
+        self.confidence_thr = self.re_identificator.confidence_thr
+
     def _update(self, priorities: heapq, frame: np.ndarray, to_switch: dict):
         inputs = []
         updated_idxs = []
@@ -107,25 +114,14 @@ class AppearanceValidation(BaseValidation):
             if cls not in to_switch:
                 to_switch[cls] = set()
             unique_key = f"{cls}_{instance_id}"
-            w = cxcywh[2]
-            h = cxcywh[3]
-            w_enlargement = cxcywh[2] * self.crop_enlargement_factor
-            h_enlargement = cxcywh[3] * self.crop_enlargement_factor
-            cxcywh[2] = w + w_enlargement
-            cxcywh[3] = h + h_enlargement
 
-            clipped_coords = clip(np.array(cxcywh), "cxcywh", self.frame_size[1], self.frame_size[0])
+            crop = crop_bbox(frame, cxcywh, self.frame_size[1], self.frame_size[0], self.crop_enlargement_factor)
+            if crop is None:
+                continue
 
-            enlarged_half_w = clipped_coords[2] / 2
-            enlarged_half_h = clipped_coords[3] / 2
-
-            x1 = int(clipped_coords[0] - enlarged_half_w)
-            y1 = int(clipped_coords[1] - enlarged_half_h)
-            x2 = int(clipped_coords[0] + enlarged_half_w)
-            y2 = int(clipped_coords[1] + enlarged_half_h)
-
-            crop = cv2.resize(frame[y1:y2, x1:x2], self.img_size)
+            crop = cv2.resize(crop, self.img_size)
             crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+
             inputs.append(self.data_preprocessor(crop))
             updated_idxs.append(self.unique_ids[unique_key])
             tracked_conf.append(score)
@@ -134,6 +130,10 @@ class AppearanceValidation(BaseValidation):
             return []
 
         features, logits = self.re_identificator(torch.stack(inputs).to(self.device), [])
+
+        assert (
+            logits.shape[-1] == self.nb_identities
+        ), f"The amount of identities specified in your validation configuration ({self.nb_identities}) does not match the re-identification's output ({logits.shape[-1]})"
 
         tensor_updated_idxs = torch.tensor(updated_idxs, dtype=torch.int64, device=self.device)
         tensor_tracked_conf = torch.tensor(tracked_conf, dtype=torch.float64, device=self.device)
@@ -190,6 +190,9 @@ class AppearanceValidation(BaseValidation):
 
     def _get_confirmations(self, updated_idxs):
         updated_id_probs = self.identity_probabilities[updated_idxs, :]
+
+        # Disabled identities are never selected as a confirmed prediction
+        updated_id_probs[:, self.disabled_identity_mask] = -1.0
 
         max_return = updated_id_probs.max(1)
         identity_idxs = max_return.indices
@@ -362,9 +365,7 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
         input_shape: Optional[Tuple] = (224, 224),
         memory_length: Optional[int] = 20,
         min_consecutive_hits: Optional[int] = 5,
-        confidence_thr: Optional[float] = 0.95,
         features_ema: Optional[float] = 0.01,
-        crop_enlargement_factor: Optional[float] = 0.0,
         max_appearance_classifier_size: Optional[int] = 1000,
         max_k: Optional[int] = 15,
         *args,
@@ -380,9 +381,7 @@ class MetricBasedAppearanceValidation(AppearanceValidation):
             input_shape=input_shape,
             memory_length=memory_length,
             min_consecutive_hits=min_consecutive_hits,
-            confidence_thr=confidence_thr,
             features_ema=features_ema,
-            crop_enlargement_factor=crop_enlargement_factor,
             *args,
             **kwargs,
         )

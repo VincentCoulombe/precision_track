@@ -35,6 +35,65 @@ Uses a deep learning model to re-identify animals by their visual appearance (co
 - **<u>validated_classes</u>**  
   List of animal classes (as defined in your **metainfo** file) on which re-identification will be applied. Animals belonging to classes not listed here will not be re-identified.
 
+### Disabling identities (letting multiple subjects share the same identity)
+
+By default, PrecisionTrack expects a **one-to-one mapping** between tracked subjects and re-identification identities: each subject is matched to its own distinct identity.
+
+In some experiments this is not desirable. For example, two animals may be **visually indistinguishable** (same coat colour and pattern), so the re-identification model cannot reliably tell them apart. Forcing the validator to re-identify them only produces even more ID switches.
+
+For these cases you can **disable** specific identities. A disabled identity is still produced by your trained re-identification model, but the validation process **ignores it**: it is never selected as a confirmed prediction and never triggers an ID correction. Subjects whose appearance matches a disabled identity are simply left to the motion tracker, uncorrected.
+
+Disabled identities are declared with the **`disabled_identities`** key in the re-identification **metainfo file** (the YAML pointed to by `re_identificator.metainfo`).
+
+- **<u>disabled_identities</u>** _(optional)_  
+  List of identity names to ignore during validation. Every entry must already appear in the `identities` list of the same metainfo file. Disabled identities will never trigger the evidence-based re-identification pipeline. Here are a few possible use cases when you might considr disabling identities:
+  1. There are subjects in your experiment that you do not want to track
+  2. A few identities are often misclassified by your re-identification model (theyre hard to distinguish under certain condition) and you prefer to remove them from your study for accuracy purposes
+  3. Your experiment purposely contains a group of control subjects (which are unmarked) and you prefer if the tracker does not try to re-identify them.
+
+**Example** — a metainfo file with no disabled identities (default behaviour, every subject is re-identified):
+
+```yaml
+identities:
+  - White_1
+  - White_2
+  - Black
+  - Brown
+input_shape:
+  - 224
+  - 224
+nb_features: 128
+confidence_threshold: 0.75
+bbox_enlargement: 0.5
+```
+
+**Example** — the two white mice are indistinguishable, so identity `White` is disabled. `Black` and `Brown` are still re-identified normally, while the white mice are tracked by motion only and may share the `White` identity:
+
+```yaml
+identities:
+  - White
+  - Black
+  - Brown
+disabled_identities:
+  - White
+input_shape:
+  - 224
+  - 224
+nb_features: 128
+confidence_threshold: 0.75
+bbox_enlargement: 0.5
+```
+
+You can disable more than one identity by listing each on its own line:
+
+```yaml
+disabled_identities:
+  - White
+  - Grey
+```
+
+**⚠️IMPORTANT⚠️** Every name in `disabled_identities` must match an entry in `identities` exactly (case-sensitive). An unknown name will raise an error at startup.
+
 ---
 
 # 2. aruco.yaml – The Tailtag system

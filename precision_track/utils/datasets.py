@@ -19,6 +19,7 @@ import numpy as np
 import torch
 from mmengine import Config
 from mmengine.logging import print_log
+from logging import WARNING
 from mmengine.registry import FUNCTIONS
 from tqdm import tqdm
 
@@ -188,8 +189,7 @@ def pseudo_collate_sequences(data_batch: Sequence) -> Any:
 
 
 def assert_coco_dataset_directory(coco_path):
-    directory_tree = textwrap.dedent(
-        """
+    directory_tree = textwrap.dedent("""
         <data_root>/
         ├── annotations/
         │   ├── train.json
@@ -198,8 +198,7 @@ def assert_coco_dataset_directory(coco_path):
         │   ├── image_1.jpg   # Images may have any filename.
         │   ├── image_2.jpg
         │   ├── ...
-        """
-    ).strip()
+        """).strip()
 
     coco_path = os.path.abspath(coco_path)
     if not os.path.isdir(coco_path):
@@ -428,47 +427,51 @@ def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name
 
 
 def check_if_mot_dataset_is_ok(dataset_root_dir: str):
-    dataset_root_dir = os.path.abspath(dataset_root_dir)
+    root = Path(dataset_root_dir).resolve()
 
-    if not os.path.isdir(dataset_root_dir):
-        return False, f"Your dataset root does not exist or is not a directory: {dataset_root_dir}"
+    if not root.is_dir():
+        return False, f"Your dataset root does not exist or is not a directory: {root}"
 
-    bboxes_dir = os.path.join(dataset_root_dir, "bboxes")
-    videos_dir = os.path.join(dataset_root_dir, "videos")
+    videos_val_dir = root / "videos" / "val"
+    bboxes_val_dir = root / "bboxes" / "val"
 
-    if not os.path.isdir(bboxes_dir):
-        return False, "Your dataset does not contain a 'bboxes' subdirectory"
+    if not videos_val_dir.is_dir():
+        return False, f"Your dataset does not contain a 'videos/val' subdirectory: {videos_val_dir}"
 
-    if not os.path.isdir(videos_dir):
-        return False, "Your dataset does not contain a 'videos' subdirectory"
+    if not bboxes_val_dir.is_dir():
+        return False, f"Your dataset does not contain a 'bboxes/val' subdirectory: {bboxes_val_dir}"
 
-    csv_stems = set()
-    for root, _, files in os.walk(bboxes_dir):
-        for fname in files:
-            if fname.lower().endswith(".csv"):
-                stem, _ = os.path.splitext(fname)
-                csv_stems.add(stem)
+    video_files = sorted(f for f in videos_val_dir.iterdir() if f.is_file() and f.suffix.lower() in SUPPORTED_VIDEO_BACKEND)
 
-    if not csv_stems:
-        return False, f"Your {bboxes_dir} subdirectory does not contains any labels (.csv file)"
+    if not video_files:
+        return False, f"Your {videos_val_dir} subdirectory does not contains any videos"
 
-    video_stems = set()
-    for root, _, files in os.walk(videos_dir):
-        for fname in files:
-            ext = os.path.splitext(fname)[1].lower()
-            if ext in SUPPORTED_VIDEO_BACKEND:
-                stem, _ = os.path.splitext(fname)
-                video_stems.add(stem)
+    missing_bboxes = []
+    for video_file in video_files:
+        stem = video_file.stem
+        if not (bboxes_val_dir / f"{stem}.csv").is_file():
+            missing_bboxes.append(stem)
 
-    if not video_stems:
-        return False, f"Your {videos_dir} subdirectory does not contains any videos"
+    if missing_bboxes:
+        missing_str = ", ".join(missing_bboxes)
+        return False, f"Your {bboxes_val_dir} subdirectory does not contain .csv files matching the {missing_str} videos."
 
-    missing_videos = sorted(stem for stem in csv_stems if stem not in video_stems)
-    if missing_videos:
-        missing_str = ", ".join(missing_videos)
-        return False, f"Your {videos_dir} subdirectory does not contains videos matching the {missing_str} .csv files."
+    return True, ""
 
-    return True, _
+
+def assert_mot_file_is_ok(mot_file, mot_path):
+    MANDATORY_BBOX_COLUMNS = ["frame_id", "class_id", "instance_id", "x", "y", "w", "h", "score"]
+    missing_columns = [c for c in MANDATORY_BBOX_COLUMNS if c not in mot_file.columns]
+    if missing_columns:
+        print_log(f"The bounding boxes ground truth file: '{mot_path}' is missing the following columns: {missing_columns}.", logger="current", level=WARNING)
+        return False
+
+    extra_columns = [c for c in mot_file.columns if c not in MANDATORY_BBOX_COLUMNS]
+    if extra_columns:
+        print_log(f"The bounding boxes ground truth file: '{mot_path}' has extra columns " f"{extra_columns}.", logger="current", level=WARNING)
+        return False
+
+    return True
 
 
 def register_action_recognition_dataset(dataset_root_dir: str, system_configs_path: str):
@@ -485,10 +488,7 @@ def register_action_recognition_dataset(dataset_root_dir: str, system_configs_pa
         if not videos_dir.exists():
             raise FileNotFoundError(f"Videos directory not found: {videos_dir}")
 
-        video_files = sorted(
-            f for f in videos_dir.iterdir()
-            if f.is_file() and f.suffix.lower() in SUPPORTED_VIDEO_BACKEND
-        )
+        video_files = sorted(f for f in videos_dir.iterdir() if f.is_file() and f.suffix.lower() in SUPPORTED_VIDEO_BACKEND)
 
         for video_file in video_files:
             stem = video_file.stem

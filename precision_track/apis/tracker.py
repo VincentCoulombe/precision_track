@@ -313,6 +313,7 @@ def tracking_process(
                     input_is_loaded.set()
                     outputs = detector(inputs=frames, data_samples=indices)
                     for i, output in enumerate(outputs):
+                        output["img"] = frames[i]
                         output = association_step(output, switches)
                         if validator is not None:
                             frame = frames_np[batch_idx, i, ...]
