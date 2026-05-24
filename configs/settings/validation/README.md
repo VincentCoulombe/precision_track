@@ -46,7 +46,10 @@ For these cases you can **disable** specific identities. A disabled identity is 
 Disabled identities are declared with the **`disabled_identities`** key in the re-identification **metainfo file** (the YAML pointed to by `re_identificator.metainfo`).
 
 - **<u>disabled_identities</u>** _(optional)_  
-  List of identity names to ignore during validation. Every entry must already appear in the `identities` list of the same metainfo file — disabling never adds new identities, it only switches existing ones off. If the key is omitted, no identity is disabled and validation behaves exactly as before.
+  List of identity names to ignore during validation. Every entry must already appear in the `identities` list of the same metainfo file. Disabled identities will never trigger the evidence-based re-identification pipeline. Here are a few possible use cases when you might considr disabling identities:
+  1. There are subjects in your experiment that you do not want to track
+  2. A few identities are often misclassified by your re-identification model (theyre hard to distinguish under certain condition) and you prefer to remove them from your study for accuracy purposes
+  3. Your experiment purposely contains a group of control subjects (which are unmarked) and you prefer if the tracker does not try to re-identify them.
 
 **Example** — a metainfo file with no disabled identities (default behaviour, every subject is re-identified):
 
@@ -60,6 +63,8 @@ input_shape:
   - 224
   - 224
 nb_features: 128
+confidence_threshold: 0.75
+bbox_enlargement: 0.5
 ```
 
 **Example** — the two white mice are indistinguishable, so identity `White` is disabled. `Black` and `Brown` are still re-identified normally, while the white mice are tracked by motion only and may share the `White` identity:
@@ -75,6 +80,8 @@ input_shape:
   - 224
   - 224
 nb_features: 128
+confidence_threshold: 0.75
+bbox_enlargement: 0.5
 ```
 
 You can disable more than one identity by listing each on its own line:

@@ -6,7 +6,7 @@ import torch
 
 from precision_track.models.backends import ReIDBackend
 from precision_track.registry import MODELS, TRACKING
-from precision_track.utils import clip
+from precision_track.utils import crop_bbox
 
 from .byte_track import ByteTrack
 
@@ -83,23 +83,9 @@ class StrongSORT(ByteTrack):
 
         Returns None when the (enlarged, clipped) box is degenerate.
         """
-        box = np.array(cxcywh, dtype=np.float64)
-        box[2] += box[2] * self.crop_enlargement_factor
-        box[3] += box[3] * self.crop_enlargement_factor
-
-        clipped = clip(box, "cxcywh", max_w, max_h)
-        half_w = clipped[2] / 2
-        half_h = clipped[3] / 2
-        x1 = max(int(clipped[0] - half_w), 0)
-        y1 = max(int(clipped[1] - half_h), 0)
-        x2 = min(int(clipped[0] + half_w), max_w)
-        y2 = min(int(clipped[1] + half_h), max_h)
-        if x2 <= x1 or y2 <= y1:
-            return None
-
-        crop = img[y1:y2, x1:x2]
-        if crop.size == 0:
-            return None
+        crop = crop_bbox(img, cxcywh, max_w, max_h, self.crop_enlargement_factor)
+        if crop is None:
+            return crop
         crop = cv2.resize(crop, self.img_size)
         crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
         return self.data_preprocessor(crop)

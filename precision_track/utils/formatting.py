@@ -564,3 +564,27 @@ def unflatten_predictions(flat_preds: torch.Tensor, shapes: List[Tuple[int, int]
         idx += numel
 
     return outputs
+
+
+def crop_bbox(img: np.ndarray, cxcywh: np.ndarray, max_w: int, max_h: int, crop_enlargement_factor: float):
+    box = np.array(cxcywh, dtype=np.float64)
+    box[2] += box[2] * crop_enlargement_factor
+    box[3] += box[3] * crop_enlargement_factor
+
+    clipped = clip(box, "cxcywh", max_w, max_h)
+
+    half_w = clipped[2] / 2
+    half_h = clipped[3] / 2
+    x1 = int(clipped[0] - half_w)
+    y1 = int(clipped[1] - half_h)
+    x2 = int(clipped[0] + half_w)
+    y2 = int(clipped[1] + half_h)
+
+    if x2 <= x1 or y2 <= y1:
+        return None
+
+    crop = img[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+
+    return crop
