@@ -24,7 +24,6 @@ class StrongSORT(ByteTrack):
         init_track_thr: float = 0.8,
         appearance_weight: float = 0.25,
         appearance_ema: float = 0.1,
-        crop_enlargement_factor: float = 0.0,
         **kwargs,
     ):
         """StrongSORT: an adapted Deep OC-SORT. A ByteTrack-style IoU cascade
@@ -50,8 +49,6 @@ class StrongSORT(ByteTrack):
                 the fused high-confidence cost; the IoU keeps ``1 - weight``. Defaults to 0.25.
             appearance_ema (float, optional): EMA strength for new observations
                 when updating a track's identity-probability vector. Defaults to 0.1.
-            crop_enlargement_factor (float, optional): Relative bbox enlargement
-                applied before cropping. Defaults to 0.0.
         """
         super().__init__(
             obj_score_thrs=obj_score_thrs,
@@ -65,10 +62,9 @@ class StrongSORT(ByteTrack):
         self.appearance_weight = float(appearance_weight)
         assert 0.0 < appearance_ema < 1.0
         self.appearance_ema = float(appearance_ema)
-        assert 0.0 <= crop_enlargement_factor < 1.0
-        self.crop_enlargement_factor = float(crop_enlargement_factor)
 
         self.re_identificator = ReIDBackend(**re_identificator)
+        self.crop_enlargement_factor = self.re_identificator.crop_enlargement_factor
         self.data_preprocessor = MODELS.build(data_preprocessor)
         self.img_size = self.re_identificator.input_shape[0][-2:]
         self.device = self.re_identificator.device

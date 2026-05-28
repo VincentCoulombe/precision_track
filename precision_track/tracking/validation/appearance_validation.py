@@ -131,9 +131,10 @@ class AppearanceValidation(BaseValidation):
 
         features, logits = self.re_identificator(torch.stack(inputs).to(self.device), [])
 
-        assert (
-            logits.shape[-1] == self.nb_identities
-        ), f"The amount of identities specified in your validation configuration ({self.nb_identities}) does not match the re-identification's output ({logits.shape[-1]})"
+        assert logits.shape[-1] == self.nb_identities, (
+            f"The amount of identities specified in your validation configuration "
+            f"({self.nb_identities}) does not match the re-identification's output ({logits.shape[-1]})"
+        )
 
         tensor_updated_idxs = torch.tensor(updated_idxs, dtype=torch.int64, device=self.device)
         tensor_tracked_conf = torch.tensor(tracked_conf, dtype=torch.float64, device=self.device)
