@@ -17,8 +17,8 @@ test_dataloader = dict(
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
     dataset=dict(
         type="VideoDataset",
-        video_paths=_base_.mot_data_root + "videos/",
-        gt_paths=_base_.mot_data_root + "bboxes/",
+        video_paths=_base_.mot_data_root + "videos/val",
+        gt_paths=_base_.mot_data_root + "bboxes/val",
     ),
 )
 # /Dataloader
@@ -34,7 +34,10 @@ test_cfg = dict(
 # /Config
 
 # Evaluation
-test_evaluator = [dict(type="CLEARMetrics", metainfo=metainfo, output_file=_base_.testing_tracking_output_file, report_every_prcnt=0.25)]
+test_evaluator = [
+    dict(type="CLEARMetrics", metainfo=metainfo, output_file=_base_.testing_tracking_output_file, report_every_prcnt=0.05),
+    dict(type="IdentityPurityMetrics", metainfo=metainfo, output_file=_base_.testing_tracking_output_file_2, report_every_prcnt=0.05),
+]
 # /Evaluation
 
 # Visualization
