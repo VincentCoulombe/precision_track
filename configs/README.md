@@ -251,13 +251,21 @@ Here is an example of a valid `hyperparameters_file_name`.
 
 # 7. Validation parameters
 
+**Validation** is PrecisionTrack's **re-identification** stage: on top of motion tracking, it confirms _who is who_ and corrects ID switches. Two strategies are available — **appearance-based** re-identification (PrecisionTrack-ReID) and the **Tailtag** (ArUco) system. Which one runs, and how it behaves, is defined entirely in a **separate validation configuration file** so that users who do not need re-identification can keep their `user_configs.yaml` lean.
+
+**⚠️IMPORTANT⚠️** Validation only runs when **`with_validation`** is set to `true` in the [Booleans](#1-booleans--enable-or-disable-functionalities) section. If `with_validation` is `false`, every parameter below is ignored.
+
 - **<u>validation_configuration_file</u>**
-  Path to your validation config file. In order to keep this config file as lean as possible for the non validation users, I decided to keep the validation-related configs separate. the path by defaut refers to the validation config use to obtain the results in the manuscript.
+  Path to the validation configuration file that defines _how_ re-identification is performed (which strategy, which model, which classes and identities, etc.). Keeping these settings in their own file lets non-validation users ignore them entirely. The default path points to the configuration used to produce the results reported in the manuscript.
+
+  **All of the parameters inside this file — and the choice between appearance-based and Tailtag re-identification — are documented in their own dedicated guide:** [Validation Configuration Guide](./settings/validation/README.md).
+
+  That guide also explains an important behavioural detail of the appearance pipeline: re-identification results are **unstable during an initial warm-up period** and only stabilize once every enabled subject has been seen at least once. Please read it before interpreting your re-identification output.
 
 - **<u>output_appearance_database</u>**
-  If enabled, will save the action embeddings produced by your MART model at the following path: `<saving_directory>/appearance_database.npy`, which you will then be able to use for further analysis. **Warning** saving the clustered features will SIGNIFICANTLY slow down the tracking process.
+  If enabled, saves the appearance database (the embeddings used by the re-identification model to distinguish individuals) at `<saving_directory>/appearance_database.npy`, which you can then use for further analysis. **Warning**: saving the appearance database will SIGNIFICANTLY slow down the tracking process. This option is only relevant when running **appearance-based** validation.
 
-  **NOTE**: You can use the `./tools/visualize_appearances.py` tool to visualize your appearance features offline, meaning once the tracking is completed and your have access to at least the following three files:
+  **NOTE**: You can use the `./tools/visualize_appearances.py` tool to visualize your appearance features offline — i.e. once tracking is completed and you have access to at least the following three files:
   - `<saving_directory>/appearance_database.npy`
   - `<saving_directory>/tracked_bboxes.csv`
   - `<path to your video>`
