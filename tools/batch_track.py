@@ -16,11 +16,6 @@ from precision_track.utils.io import SUPPORTED_VIDEO_BACKEND
 def parse_args():
     parser = argparse.ArgumentParser(description="Batch track every video of a MOT dataset and save the tracked bounding boxes.")
     parser.add_argument(
-        "--mot_data_root",
-        default=None,
-        help="Path to the MOT dataset root (with videos/{train,val}). Defaults to the 'mot_data_root' of the user configs.",
-    )
-    parser.add_argument(
         "--force",
         type=str2bool,
         default=False,
@@ -39,7 +34,7 @@ def main(args):
     config = Config.fromfile(system_configs_path)
     load_validation_config(config)
 
-    mot_data_root = Path(args.mot_data_root or config.mot_data_root)
+    mot_data_root = Path(config.mot_data_root)
 
     nb_cpu_cores = psutil.cpu_count(logical=False)
     pipelined = config.pipelined

@@ -19,6 +19,24 @@ Two validation strategies are available, each with its own config file:
 
 Uses a deep learning model to re-identify animals by their visual appearance (coat pattern, texture, etc.), without requiring any physical markers on the animals.
 
+> ## ⚠️ Warm-up period: expect unstable results until every subject has been seen ⚠️
+>
+> The appearance re-identification pipeline needs a **warm-up period** at the start of a video. During this period its corrections are **provisional and may change**. The pipeline only becomes stable once it has observed **all** the subjects whose identities are _enabled_ (i.e. every identity **not** listed in `disabled_identities`). Until then, do not trust the early identity assignments — they will settle on their own once everyone has appeared.
+>
+> **Why this happens:**
+> The validator does not know in advance which on-screen track belongs to which identity. It learns this **one subject at a time** as the animals appear:
+>
+> 1. **The first time** it confidently recognizes a given identity, it simply **writes it down**. It does **not** correct anything yet, because it has nothing to compare against.
+> 2. A real **ID-switch correction** can only happen when the recognized identity is **already registered but pointing at a _different_ track**. That is the only situation where the validator knows for sure that two tracks got swapped and can fix it.
+>
+> The consequence: as long as some enabled identities have **never been seen**, the registration is incomplete. The validator may temporarily hand an identity to the wrong animal simply because the rightful owner hasn't shown up yet. The moment that missing subject finally appears and gets recognized, the conflict is detected and the identities are swapped back into place. This is why the **first few seconds can show a burst of ID switches** that then disappear.
+>
+> **Practical guidance:**
+>
+> - Make sure every enabled subject becomes clearly visible **early** in the recording (good lighting, separated animals, no occlusion). The sooner each one is seen, the sooner the pipeline stabilizes.
+> - Treat identities assigned during the warm-up period as tentative; rely on them only after every enabled subject has appeared at least once.
+> - Identities you have placed in `disabled_identities` do **not** count — the pipeline never waits for them and never assigns them (see the [Disabling identities](#disabling-identities-letting-multiple-subjects-share-the-same-identity) section below).
+
 - **<u>type</u>**  
   Must be set to `AppearanceValidation`. Tells PrecisionTrack which validation backend to instantiate.
 

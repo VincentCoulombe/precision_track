@@ -180,16 +180,15 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 - **Purpose:** Batch-track an entire **MOT-style dataset** to automatically produce **MOT-formatted bounding boxes annotations**. Where `track.py` runs on a single video and emits the full set of outputs into your `work_dir`, `batch_track.py` walks every video of a dataset and writes a single, MOT-compatible `tracked_bboxes` file per video, named after the video itself. This is the fastest way to bootstrap (or pre-annotate) a dataset that so far only contains videos: the resulting files are ready to be reviewed/corrected and reused as ground truth by `test_tracking.py`.
 
 - **Inputs:**
-  - `--mot_data_root` — path to the dataset root. The expected layout is the standard MOT structure:
-
-    ```text
-    mot_data_root/
-    ├── videos/{train,val}/<stem>.{mp4,avi,mov,mkv,mpg,mpeg}
-    └── bboxes/{train,val}/<stem>.csv      # generated here (next to any ground truth)
-    ```
-
-    Default to the `mot_data_root` defined in your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs).
   - `--force` — set to `true` to re-process and **overwrite** videos that already have a bounding boxes file. Default to `false`.
+
+  The dataset root is read from the `mot_data_root` value of your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs). The expected layout is the standard MOT structure:
+
+  ```text
+  mot_data_root/
+  ├── videos/{train,val}/<stem>.{mp4,avi,mov,mkv,mpg,mpeg}
+  └── bboxes/{train,val}/<stem>.csv      # generated here (next to any ground truth)
+  ```
 
 - **Outputs:** For every video found under `videos/train` and `videos/val`, a `bboxes/<split>/<stem>.csv` file containing the **MOT-formatted bounding boxes** of all the tracked subjects over the whole recording. The columns are `frame_id, class_id, instance_id, x, y, w, h, score` (top-left `xywh`), matching the ground-truth schema expected by `test_tracking.py`.
   - **Resumable / non-destructive:** if a `bboxes/<split>/<stem>.csv` already exists (a previous run, or hand-labelled ground truth), the video is **skipped with a warning** so existing annotations are never overwritten. Use `--force=true` to regenerate them.
@@ -200,9 +199,6 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   ```bash
   <!-- Annotate the dataset defined in your user configs. -->
   python batch_track.py
-
-  <!-- Annotate a specific dataset root. -->
-  python batch_track.py --mot_data_root=../../datasets/my_dataset/
 
   <!-- Re-generate every annotation, overwriting existing files. -->
   python batch_track.py --force=true
@@ -258,8 +254,8 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 - **Auto-annotate a dataset → Benchmark**
 
   ```bash
-  <!-- Generate MOT-formatted annotations for every video of a dataset, then benchmark on it. -->
-  python batch_track.py --mot_data_root=../../datasets/my_dataset/
+  <!-- Generate MOT-formatted annotations for every video of the dataset, then benchmark on it. -->
+  python batch_track.py
   python test_tracking.py
   ```
 
