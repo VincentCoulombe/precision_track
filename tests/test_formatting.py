@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from precision_track.utils import clip, reformat
+from precision_track.utils import clip, crop_bbox, reformat
 
 
 @pytest.fixture
@@ -162,6 +162,36 @@ def test_clip(format, max_width, max_height, instance_fixture, expected_fixture,
     assert isinstance(clipped, torch.Tensor)
     assert clipped.shape == torch_instance.shape
     np.testing.assert_array_almost_equal(clipped.numpy(), expected, 1e-2)
+
+
+@pytest.mark.parametrize(
+    "cxcywh, factor, expected_shape",
+    [
+        (np.array([50, 50, 20, 30], np.float32), 0.0, (30, 20, 3)),
+        (np.array([50, 50, 20, 30], np.float32), 0.5, (45, 30, 3)),
+        (np.array([10, 10, 40, 40], np.float32), 0.0, (30, 30, 3)),
+    ],
+)
+def test_crop_bbox_returns_array(cxcywh, factor, expected_shape):
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    crop = crop_bbox(frame, cxcywh, frame.shape[1], frame.shape[0], factor)
+    assert isinstance(crop, np.ndarray)
+    assert crop.size > 0
+    assert crop.shape == expected_shape
+
+
+@pytest.mark.parametrize(
+    "cxcywh",
+    [
+        np.array([-50, -50, 10, 10], np.float32),
+        np.array([200, 200, 10, 10], np.float32),
+        np.array([50, 50, 0, 0], np.float32),
+    ],
+)
+def test_crop_bbox_returns_none_when_degenerate(cxcywh):
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    crop = crop_bbox(frame, cxcywh, frame.shape[1], frame.shape[0], 0.0)
+    assert crop is None
 
 
 if __name__ == "__main__":

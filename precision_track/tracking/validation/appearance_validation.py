@@ -61,7 +61,7 @@ class AppearanceValidation(BaseValidation):
         self.memory_length = int(memory_length)
 
         assert min_consecutive_hits > 0
-        self.min_consecutive_hits = int(min_consecutive_hits)
+        self.min_consecutive_hits = float(min_consecutive_hits)
 
         assert 0 < features_ema < 1
         self.strength_ema_new = float(features_ema)
@@ -92,7 +92,7 @@ class AppearanceValidation(BaseValidation):
         self.nb_identities = len(unique_ids)
 
         self.has_been_observed = torch.zeros(self.nb_identities, dtype=torch.bool, device=self.device)
-        self.consecutive_hits = torch.zeros(self.nb_identities, self.nb_identities, dtype=torch.int64, device=self.device)
+        self.consecutive_hits = torch.zeros(self.nb_identities, self.nb_identities, dtype=torch.float32, device=self.device)
         self.did_not_check_since = torch.zeros(self.nb_identities, dtype=torch.int64, device=self.device)
         self.identity_probabilities = torch.zeros((self.nb_identities, self.nb_identities), dtype=self.precision, device=self.device)
 
@@ -131,9 +131,10 @@ class AppearanceValidation(BaseValidation):
 
         features, logits = self.re_identificator(torch.stack(inputs).to(self.device), [])
 
-        assert (
-            logits.shape[-1] == self.nb_identities
-        ), f"The amount of identities specified in your validation configuration ({self.nb_identities}) does not match the re-identification's output ({logits.shape[-1]})"
+        assert logits.shape[-1] == self.nb_identities, (
+            f"The amount of identities specified in your validation configuration "
+            f"({self.nb_identities}) does not match the re-identification's output ({logits.shape[-1]})"
+        )
 
         tensor_updated_idxs = torch.tensor(updated_idxs, dtype=torch.int64, device=self.device)
         tensor_tracked_conf = torch.tensor(tracked_conf, dtype=torch.float64, device=self.device)
@@ -199,12 +200,23 @@ class AppearanceValidation(BaseValidation):
         updated_id_prob = max_return.values
         conf_mask = updated_id_prob > min(self.strength_ema_baseline, self._MAX_CONF)
 
+        # Disable confirmation when the same enabled identity is the top prediction
+        # for two or more instances within this frame (ambiguous collision).
+        conf_candidates = identity_idxs[conf_mask]
+        if conf_candidates.numel() > 0:
+            unique_identities, identity_counts = torch.unique(conf_candidates, return_counts=True)
+            colliding = unique_identities[identity_counts > 1]
+            if colliding.numel() > 0:
+                conf_mask = conf_mask & ~torch.isin(identity_idxs, colliding)
+
         conf_identity_idxs = identity_idxs[conf_mask]
         confirmed_idxs = updated_idxs[conf_mask]
 
         keep = self.consecutive_hits[confirmed_idxs, conf_identity_idxs].clone()
         self.consecutive_hits[confirmed_idxs] = 0
-        self.consecutive_hits[confirmed_idxs, conf_identity_idxs] = keep + 1
+
+        # Weight each frame's contribution by its prediction confidence.
+        self.consecutive_hits[confirmed_idxs, conf_identity_idxs] = keep + updated_id_prob[conf_mask].float()
 
         hits_mask = self.consecutive_hits[confirmed_idxs, conf_identity_idxs] >= self.min_consecutive_hits
         self.consecutive_hits[confirmed_idxs[hits_mask], conf_identity_idxs[hits_mask]] = 0

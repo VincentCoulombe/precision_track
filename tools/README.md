@@ -44,7 +44,7 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
    cd ./tools
    ```
 
-- **There are eight tools in the `tools` directory**
+- **There are nine tools in the `tools` directory**
   - `train_detection.py` — Orchestrate the training and deployment of **Detection models**.
   - `train_action_recognition.py` — Orchestrate the training and deployment of **MART** (and optionally **GMART**) models.
 
@@ -55,6 +55,8 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   - `test_action_recognition.py` — Evaluate the trained **MART** or **GMART models** on your **action recognition dataset**. Report the [standards classification metrics](https://cohere.com/blog/classification-eval-metrics). The reports will be logged and also saved in the `precision_track/work_dir/testing_runs/<dataset_name>` directory.
 
   - `track.py` — Run tracking on pre‑recorded videos.
+
+  - `batch_track.py` — Batch-track every video of a **MOT-style dataset** to automatically generate **MOT-formatted bounding boxes annotations**.
 
   - `visualize.py` — Render tracking + action recognition from MOT outputs.
 
@@ -173,7 +175,38 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 
 ---
 
-## 7) visualize.py — render tracking & actions
+## 7) batch_track.py — auto-generate MOT annotations for a dataset
+
+- **Purpose:** Batch-track an entire **MOT-style dataset** to automatically produce **MOT-formatted bounding boxes annotations**. Where `track.py` runs on a single video and emits the full set of outputs into your `work_dir`, `batch_track.py` walks every video of a dataset and writes a single, MOT-compatible `tracked_bboxes` file per video, named after the video itself. This is the fastest way to bootstrap (or pre-annotate) a dataset that so far only contains videos: the resulting files are ready to be reviewed/corrected and reused as ground truth by `test_tracking.py`.
+
+- **Inputs:**
+  - `--force` — set to `true` to re-process and **overwrite** videos that already have a bounding boxes file. Default to `false`.
+
+  The dataset root is read from the `mot_data_root` value of your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs). The expected layout is the standard MOT structure:
+
+  ```text
+  mot_data_root/
+  ├── videos/{train,val}/<stem>.{mp4,avi,mov,mkv,mpg,mpeg}
+  └── bboxes/{train,val}/<stem>.csv      # generated here (next to any ground truth)
+  ```
+
+- **Outputs:** For every video found under `videos/train` and `videos/val`, a `bboxes/<split>/<stem>.csv` file containing the **MOT-formatted bounding boxes** of all the tracked subjects over the whole recording. The columns are `frame_id, class_id, instance_id, x, y, w, h, score` (top-left `xywh`), matching the ground-truth schema expected by `test_tracking.py`.
+  - **Resumable / non-destructive:** if a `bboxes/<split>/<stem>.csv` already exists (a previous run, or hand-labelled ground truth), the video is **skipped with a warning** so existing annotations are never overwritten. Use `--force=true` to regenerate them.
+  - Each video is tracked independently, so `instance_id`s restart from the first subject in every file.
+
+- **Examples**
+
+  ```bash
+  <!-- Annotate the dataset defined in your user configs. -->
+  python batch_track.py
+
+  <!-- Re-generate every annotation, overwriting existing files. -->
+  python batch_track.py --force=true
+  ```
+
+---
+
+## 8) visualize.py — render tracking & actions
 
 - **Purpose:** Turn the available MOT outputs, in the defined `work_dir` from the settings, into annotated videos. The visuals are completely configurable in the "Visualization" section of the `tasks/tracking.py` setting file.
 - **Inputs:** `source` (path to the recording file) `sink` (path to the annotated video file)
@@ -183,7 +216,7 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   python visualize.py source data/sample.mp4 sink data/annotated_data_sample.mp4
   ```
 
-## 8) plot_profiles.py — visualize timing profiles
+## 9) plot_profiles.py — visualize timing profiles
 
 - **Purpose:** Turn a profiling JSON produced by `track.py --profile=true` into annotated timing charts. Highlights JiT (just-in-time compilation) spikes and statistical outlier peaks.
 - **Inputs:**
@@ -216,6 +249,14 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   <!-- Track on a specified video and the render the results. -->
   python track.py video <your video name>.mp4
   python visualize.py source <your video name>.mp4 sink annotated_<your video name>.mp4
+  ```
+
+- **Auto-annotate a dataset → Benchmark**
+
+  ```bash
+  <!-- Generate MOT-formatted annotations for every video of the dataset, then benchmark on it. -->
+  python batch_track.py
+  python test_tracking.py
   ```
 
 - **Track → Profile → Plot**
