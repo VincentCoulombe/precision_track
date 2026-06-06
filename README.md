@@ -358,6 +358,8 @@ The `user_configs.yaml` allow you to customize your own PrecisionTracker. In it,
 
 For a detailed breakdown of the file’s structure and all available options, consult our [user configuration guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs).
 
+If you plan to use **re-identification** (the appearance-based PrecisionTrack-ReID or the Tailtag/ArUco system), its settings live in a **separate validation configuration file**. Everything about configuring it (choosing a strategy, pointing to your model, enabling or disabling identities, and an important note on the appearance pipeline's warm-up behaviour) is documented in our dedicated [validation configuration guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/settings/validation).
+
 ### 6) Get started with PrecisionTrack’s Toolkit
 
 You’ve now configured all the essential inputs:
