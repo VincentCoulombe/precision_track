@@ -4,9 +4,10 @@
 booleans:
   pipelined: true
   with_validation: false
+  with_offline_correction_refinement: false
   with_action_recognition: false
   with_group_action_recognition: false
-  with_pose_estimation: true
+  with_pose_estimation: false
 
 # ================================
 # General directories and paths
@@ -71,7 +72,7 @@ validation:
 # Visualization parameters
 # ================================
 visualization:
-  display_bounding_boxes: false
+  display_bounding_boxes: true
   display_poses: true
   display_velocities: true
   display_species: false

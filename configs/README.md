@@ -35,6 +35,16 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
   Enables **Re-identification**.
   - Set as `true` only if you have a valid `validation_configuration_file` and want to perform animal re-identification.
 
+- **<u>with_offline_correction_refinement</u>**  
+  Improves the **timing** of the ID corrections made by re-identification. Only has an effect when **with_validation** is also `true`.
+
+  **The problem it solves:** during tracking, the ystem can make mistakes and switch IDs (e.g. when the animals huddle, cross paths or briefly disappear). The re-identification (validation) system fixes these swaps, but it only does so _once it is confident enough (once it has gathered enough evidence)_ about who is who. This means the correction is usually applied **with a delay** (as documented in the manuscript), meaning there is a short window, between the moment the IDs actually got swapped and the moment the system corrects them, where the IDs are still wrong.
+
+  **What this option does:** after tracking is finished, PrecisionTrack re-reads its own output files and, for each correction it made, **walks back in time** to find the most likely frame where the swap really happened.
+
+  When a likely swap frame is found, the corrected IDs are **applied retroactively** across that gap and **all the affected output files are overwritten** with the refined validationa. The net result is more accurate IDs around every correction, without any change to how live tracking runs.
+  - Set as `true` only if **with_validation** is `true`. If validation is off, this option does nothing.
+
 - **<u>with_action_recognition</u>**  
   Enables the MART model to recognize animal actions.
   - Set as `true` only if you have trained a MART model (Guides and tutorials on how to do it coming out soon).

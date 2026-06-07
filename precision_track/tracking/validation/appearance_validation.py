@@ -33,7 +33,12 @@ class AppearanceValidation(BaseValidation):
         *args,
         **kwargs,
     ) -> None:
-        super().__init__(validated_classes)
+        self.re_identificator = ReIDBackend(**re_identificator)
+        super().__init__(
+            validated_classes,
+            identities=self.re_identificator.identities,
+            disabled_identities=self.re_identificator.disabled_identities,
+        )
 
         metainfo = parse_pose_metainfo(dict(from_file=metainfo))
         classes = metainfo.get("classes", [])
@@ -47,11 +52,8 @@ class AppearanceValidation(BaseValidation):
         assert batch_size > 0
         self.batch_size = int(batch_size)
 
-        self.re_identificator = ReIDBackend(**re_identificator)
         self.img_size = self.re_identificator.input_shape[0][-2:]
         self.device = self.re_identificator.device
-        self.identities = self.re_identificator.identities
-        self.disabled_identities = self.re_identificator.disabled_identities
 
         self.precision = torch.float16 if self.re_identificator.half_precision else torch.float32
 

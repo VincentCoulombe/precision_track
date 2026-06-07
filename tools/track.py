@@ -10,7 +10,8 @@ from mmengine.logging import print_log
 from train_detection import str2bool
 
 from precision_track import PipelinedTracker, Tracker
-from precision_track.utils import VideoReader, load_user_configs, load_validation_config
+from precision_track.registry import TRACKING
+from precision_track.utils import VideoReader, load_user_configs, load_validation_config, refine_corrections_offline
 
 
 def parse_args():
@@ -75,6 +76,12 @@ def main(args):
             profile=profile,
         )
         tracker(video=video)
+
+    if config.get("with_offline_correction_refinement") and config.get("validator") is not None:
+        validator = getattr(tracker, "validator", None)
+        if validator is None or not hasattr(validator, "identities"):
+            validator = TRACKING.build(config.get("validator"))
+        refine_corrections_offline(config.get("outputs"), validator)
 
 
 if __name__ == "__main__":

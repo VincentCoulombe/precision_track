@@ -8,6 +8,7 @@ from .formatting import *
 from .io import *
 from .matching import *
 from .metrics import *
+from .offline_correction import *
 from .postprocessing import *
 from .re_identification import *
 from .stats import *
