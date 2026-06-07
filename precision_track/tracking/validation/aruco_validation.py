@@ -59,7 +59,10 @@ class ArucoValidation(BaseValidation):
             min_precision (Optional[float], optional): What precision does the tag need to have for a reading to count as a detection.
             Defaults to 0.9.
         """
-        super(ArucoValidation, self).__init__(validated_classes)
+        super(ArucoValidation, self).__init__(
+            validated_classes,
+            identities=valid_tags,
+        )
         self.logger = MMLogger.get_current_instance()
         assert isinstance(num_tags, int) and isinstance(tags_size, int)
         assert num_tags >= 0 and tags_size >= 0
