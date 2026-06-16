@@ -5,3 +5,4 @@ re_identificator:
   metainfo: ../tests/configs/re-identification_metadata.yaml
   checkpoint: ../tests/configs/precision_track_re-identificator.onnx
 validated_classes: ["mouse"]
+min_consecutive_hits: 5

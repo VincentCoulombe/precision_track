@@ -53,6 +53,13 @@ Uses a deep learning model to re-identify animals by their visual appearance (co
 - **<u>validated_classes</u>**  
   List of animal classes (as defined in your **metainfo** file) on which re-identification will be applied. Animals belonging to classes not listed here will not be re-identified.
 
+- **<u>min_consecutive_hits</u>** _(optional, default `5`)_  
+  this defines the sensitivity of the validation process.
+  - **Lower** → the validator reacts faster and corrects more aggressively, but is more prone to **false ID switches**.
+  - **Higher** → the validator is more conservative: fewer false switches, but it takes longer to fix real ID swaps.
+
+  This is the main knob to reach for when tuning the trade-off described in the [warm-up note](#️-warm-up-period-expect-unstable-results-until-every-subject-has-been-seen-️) above and in [Tips](#tips) (tip #3): if you see frequent ID switches, **increase** it; if corrections feel too slow, **decrease** it.
+
 ### Disabling identities (letting multiple subjects share the same identity)
 
 By default, PrecisionTrack expects a **one-to-one mapping** between tracked subjects and re-identification identities: each subject is matched to its own distinct identity.
