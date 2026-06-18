@@ -33,13 +33,14 @@ from .preprocessing.action_recognition_preprocessor import (
     GroupActionRecognitionTrainingPreprocessor,
     RelationshipDetectionBaselinePreprocessor,
 )
-from .preprocessing.inference_preprocessor import InferencePreprocessor, WildLifeReIDPreprocessor
+from .preprocessing.inference_preprocessor import InferencePreprocessor, WildLifeReIDPreprocessor, CLIPPreprocessor
 from .preprocessing.training_preprocessor import BatchSyncRandomResize, DoublePoseDataPreprocessor, PoseDataPreprocessor
 
 __all__ = [
     "RTMDetPoseHead",
     "InferencePreprocessor",
     "WildLifeReIDPreprocessor",
+    "CLIPPreprocessor",
     "RTMDetPose",
     "RTMDetPoseHeadModule",
     "YOLOXPoseHeadModule",

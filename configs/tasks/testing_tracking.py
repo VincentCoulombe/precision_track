@@ -29,6 +29,7 @@ test_cfg = dict(
     test_cfg=dict(
         batch_size=batch_size,
         dataloader=test_dataloader,
+        profile_output_file=_base_.testing_tracking_output_file_3,
     ),
 )
 # /Config

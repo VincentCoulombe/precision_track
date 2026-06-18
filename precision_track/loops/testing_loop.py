@@ -1,7 +1,9 @@
+import json
 import multiprocessing as mp
 import os
 from typing import Dict, List, Sequence, Union
 
+import pandas as pd
 import torch
 from mmengine import Config
 from mmengine.evaluator import Evaluator
@@ -13,7 +15,8 @@ from torch.utils.data import DataLoader
 from precision_track import PipelinedTracker, Tracker
 from precision_track.models.backends import DetectionBackend
 from precision_track.models.runtimes import PytorchRuntime
-from precision_track.utils import VideoReader, get_device
+from precision_track.registry import TRACKING
+from precision_track.utils import VideoReader, get_device, refine_corrections_offline
 
 
 @LOOPS.register_module(force=True)
@@ -152,6 +155,36 @@ class TrackingTestingLoop(BaseLoop):
         self.assigner_cfg = runner.cfg.assigner
         self.detector_cfg = runner.cfg.detector
 
+        # When offline correction refinement is enabled, also write the corrections and
+        # appearance validations so the refinement pass has its inputs on disk. It then
+        # refines tracking_predictions.csv in place, which is the file the metrics read.
+        self.with_offline_correction_refinement = bool(runner.cfg.get("with_offline_correction_refinement")) and self.validator_cfg is not None
+        self._refine_validator = None
+        if self.with_offline_correction_refinement:
+            self.outputs += [
+                dict(
+                    type="CsvCorrections",
+                    path=os.path.join(work_dir, "tracking_corrections.csv"),
+                    precision=32,
+                ),
+                dict(
+                    type="CsvAppearanceValidations",
+                    path=os.path.join(work_dir, "tracking_appearance_validations.csv"),
+                    precision=64,
+                ),
+            ]
+
+        # Per-substep throughput profiling. When ``profile_output_file`` is set, each video is
+        # tracked with the non-pipelined Tracker's profiling enabled, dumping per-frame substep
+        # latencies to a temporary JSON. The latencies are pooled over all videos and a single
+        # throughput CSV is written next to the other testing metric CSVs.
+        self.profile_output_file = test_cfg.get("profile_output_file")
+        self._profile_tmp_dir = None
+        self._profile_records = {}
+        if self.profile_output_file:
+            self._profile_tmp_dir = os.path.join(work_dir, ".substep_profiles")
+            os.makedirs(self._profile_tmp_dir, exist_ok=True)
+
         if isinstance(evaluator, dict) or isinstance(evaluator, list):
             self.evaluator = runner.build_evaluator(evaluator)  # type: ignore
         else:
@@ -183,9 +216,16 @@ class TrackingTestingLoop(BaseLoop):
 
         self.runner.call_hook("before_test")
         self.runner.call_hook("before_test_epoch")
+        # Profiling is only supported by the non-pipelined Tracker; the PipelinedTracker runs
+        # substeps across processes and would silently swallow the ``profile`` argument.
+        profiling = bool(self.profile_output_file) and self._tracker is Tracker
         for data_batch in self.dataloader:
             for video_path, gt_path in zip(data_batch["inputs"], data_batch["data_samples"]):
                 video = VideoReader(video_path)
+                profile = ""
+                if profiling:
+                    video_stem = os.path.splitext(os.path.basename(video_path))[0]
+                    profile = os.path.join(self._profile_tmp_dir, f"{video_stem}.json")
                 tracker = self._tracker(
                     detector=self.detector_cfg,
                     assigner=self.assigner_cfg,
@@ -195,10 +235,62 @@ class TrackingTestingLoop(BaseLoop):
                     batch_size=self.test_cfg.get("batch_size"),
                     verbose=self.verbose,
                     expected_resolution=(video.resolution[1], video.resolution[0], 3),
+                    profile=profile,
                 )
                 tracker(video=video)
+                if profiling:
+                    self._accumulate_profile(profile)
+                if self.with_offline_correction_refinement:
+                    validator = getattr(tracker, "validator", None)
+                    if validator is None or not hasattr(validator, "identities"):
+                        if self._refine_validator is None:
+                            self._refine_validator = TRACKING.build(self.validator_cfg)
+                        validator = self._refine_validator
+                    refine_corrections_offline(self.outputs, validator)
                 self.evaluator.process(data_batch=[self.output_path], data_samples=[gt_path])
+
+        if profiling:
+            self._save_throughput_csv()
 
         metrics = self.evaluator.evaluate(len(self.dataloader))
         self.runner.call_hook("after_test")
         return metrics
+
+    # Order substeps from earliest to latest in the tracking pipeline; absent keys are skipped.
+    _PROFILE_SUBSTEP_ORDER = [
+        "detection",
+        "init_frame",
+        "tracking",
+        "stitching",
+        "association_housekeeping",
+        "validation",
+        "analysis",
+        "saving_results",
+    ]
+
+    def _accumulate_profile(self, profile_path: str) -> None:
+        """Pool a video's per-frame substep latencies into ``self._profile_records``."""
+        if not os.path.isfile(profile_path):
+            return
+        with open(profile_path, "r") as f:
+            profile = json.load(f)
+        for substep, latencies in profile.items():
+            self._profile_records.setdefault(substep, []).extend(latencies)
+
+    def _save_throughput_csv(self) -> None:
+        """Write the mean per-substep throughput (frames/sec) pooled over all videos."""
+        rows = []
+        keys = [k for k in self._PROFILE_SUBSTEP_ORDER if k in self._profile_records]
+        keys += [k for k in self._profile_records if k not in self._PROFILE_SUBSTEP_ORDER]
+        total_mean_latency = 0.0
+        for substep in keys:
+            latencies = self._profile_records[substep]
+            if not latencies:
+                continue
+            mean_latency = sum(latencies) / len(latencies)
+            total_mean_latency += mean_latency
+            rows.append(dict(substep=substep, throughput_fps=1.0 / mean_latency if mean_latency > 0 else float("inf")))
+        if total_mean_latency > 0:
+            rows.append(dict(substep="end_to_end", throughput_fps=1.0 / total_mean_latency))
+        os.makedirs(os.path.dirname(self.profile_output_file), exist_ok=True)
+        pd.DataFrame(rows).to_csv(self.profile_output_file, index=False)

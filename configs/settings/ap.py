@@ -110,6 +110,7 @@ init_thr = init_thr_range[1]
 testing_video_paths = "../../datasets/APT-test/data/"
 testing_gt_paths = "../../datasets/APT-test/annotations/"
 testing_tracking_output_file = testing_work_dir + "CLEAR_metrics.csv"
+testing_tracking_output_file_3 = testing_work_dir + "mean_throughput_per_substep.csv"
 #   2.2) /Testing
 # 2) /Tracking
 

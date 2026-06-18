@@ -286,6 +286,103 @@ class CsvBoundingBoxes(BaseCsvOutput):
 
 
 @OUTPUTS.register_module()
+class CsvBoundingBoxesWValidation(CsvBoundingBoxes):
+    """Same as ``CsvBoundingBoxes`` for tracked instances, but the third column holds the
+    validated ``instances_identity`` instead of the tracker-assigned ``instance_id``.
+
+    The identity is cross-referenced from whichever validator is active: ``AppearanceValidation``
+    (string identities in ``appearance_validation_instances``) or ``ArucoValidation`` (tag numbers
+    in ``validation_instances``). Since a validator only refreshes the identity of a subset of
+    instances per frame, a running ``instance_id -> identity`` map is kept and each bbox row gets
+    the latest known identity (empty string until an identity is confirmed).
+    """
+
+    APPEARANCE_DATA = "appearance_validation_instances"
+    ARUCO_DATA = "validation_instances"
+
+    def __init__(
+        self,
+        path: str,
+        subtype: str,
+        bbox_format: str = "cxcywh",
+        instance_data: str = "pred_track_instances",
+        confidence_threshold: float = 0.1,
+        precision: int = 32,
+        ids_field: str = "instances_id",
+        save_bbox_format: list = None,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            path=path,
+            subtype=subtype,
+            bbox_format=bbox_format,
+            instance_data=instance_data,
+            confidence_threshold=confidence_threshold,
+            precision=precision,
+            ids_field=ids_field,
+            save_bbox_format=save_bbox_format,
+        )
+        assert self.instance_data == "pred_track_instances", "CsvBoundingBoxesWValidation only supports the 'pred_track_instances' instance data."
+
+    def reset(self) -> None:
+        self.identity_map = {}
+        super().reset()
+
+    def _update_identity_map(self, det_data_sample: dict):
+        appearance = det_data_sample.get(self.APPEARANCE_DATA)
+        if appearance is not None:
+            for inst_id, identity in zip(appearance["instances_id"], appearance["identity"]):
+                if isinstance(identity, str) and identity not in ("", "?"):
+                    self.identity_map[int(inst_id)] = identity
+        aruco = det_data_sample.get(self.ARUCO_DATA)
+        if aruco is not None:
+            for inst_id, tag_id in zip(aruco["instances_id"], aruco["tags_id"]):
+                if int(inst_id) >= 0:
+                    self.identity_map[int(inst_id)] = int(tag_id)
+
+    def __call__(self, det_data_sample: dict):
+        self._update_identity_map(det_data_sample)
+        instance_data, frame_id = self._get_ds_info(det_data_sample)
+        ids = self._set_ids(instance_data)
+        i = 0
+        for id_, label, bbox, score in zip(
+            ids,
+            instance_data["labels"],
+            instance_data["bboxes"],
+            instance_data["scores"],
+        ):
+            label = to_numpy(label)
+            bbox = to_numpy(bbox)
+            score = to_numpy(score)
+            if id_ >= 0:
+                if self.bbox_format != self.save_bbox_format_str:
+                    bbox = reformat(bbox, self.bbox_format, self.save_bbox_format_str)
+                identity = self.identity_map.get(int(id_), "")
+                self._add_row(frame_id, label, identity, *bbox, score)
+                i += 1
+        self._update_frame_id_mapping(frame_id, i)
+
+    def to_dataframe(self) -> pd.DataFrame:
+        df = pd.DataFrame(self._results, columns=["frame_id", "class_id", "instances_identity"] + self.columns)
+        df["frame_id"] = df["frame_id"].astype("uint32")
+        df["class_id"] = df["class_id"].astype("uint16")
+        for col in self.columns:
+            df[col] = df[col].astype(self.SUPPORTED_PRECISION[self.precision])
+        return df
+
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        """Scale the bbox columns, leaving the (possibly string) identity column untouched."""
+        ratio_x = new_scale[0] / ori_scale[0]
+        ratio_y = new_scale[1] / ori_scale[1]
+        for row in self._results:
+            row[3] *= ratio_x
+            row[4] *= ratio_y
+            row[5] *= ratio_x
+            row[6] *= ratio_y
+
+
+@OUTPUTS.register_module()
 class CsvTailtagValidations(BaseCsvOutput):
     SUPPORTED_FORMATS = ["cxcywh"]
 
