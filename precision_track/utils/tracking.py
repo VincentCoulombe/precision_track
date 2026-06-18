@@ -1,6 +1,7 @@
 import json
 import os
 from collections import deque
+from time import perf_counter
 
 from precision_track.outputs.display import display_progress_bar
 
@@ -45,9 +46,17 @@ def batch_tracking(video, detector, batch_size, result, association_step, valida
             output["img"] = frame
             output = association_step(output, switches, profile_dict if is_profiling else None)
             if validator is not None:
+                if is_profiling:
+                    validation_start = perf_counter()
                 output, switches = validator(frame, output)
+                if is_profiling:
+                    profile_dict.setdefault("validation", []).append(perf_counter() - validation_start)
             if analyzer is not None:
+                if is_profiling:
+                    analysis_start = perf_counter()
                 output = analyzer.predict(output)
+                if is_profiling:
+                    profile_dict.setdefault("analysis", []).append(perf_counter() - analysis_start)
             output["fps"] = fps
             result(output, profile_dict.get("saving_results"))
         elif empty and not b_frames:

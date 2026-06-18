@@ -3,6 +3,7 @@ from .csv import (
     CsvActions,
     CsvAppearanceValidations,
     CsvBoundingBoxes,
+    CsvBoundingBoxesWValidation,
     CsvCorrections,
     CsvKeypoints,
     CsvSearchAreas,
@@ -16,6 +17,7 @@ from .pth import PthAppearanceDatabaseOutput
 
 __all__ = [
     "CsvBoundingBoxes",
+    "CsvBoundingBoxesWValidation",
     "CsvKeypoints",
     "CsvVelocities",
     "CsvTailtagValidations",

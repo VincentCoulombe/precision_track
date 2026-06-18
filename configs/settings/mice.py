@@ -1,12 +1,12 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../checkpoints/stripedmice/stripedmice.py'
+metainfo = '../configs/metadata/stripedmice.py'
 wandb_logging = False
 # /Common
 
 # 1) Detection
-with_pose_estimation = True
+with_pose_estimation = False
 half_precision = True
 
 widen_factor = 0.5
@@ -86,11 +86,12 @@ tracking_checkpoint_name = 'model_stripedmice_DEPLOYED.onnx'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = True
-saving_directory = '../work_dir/mosaic_2025-12-22T09_08_33'
+saving_directory = '../work_dir/test23_mosaic_2026-05-01T07_46_42_trimmed_1min'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
 with_validation = True
+with_offline_correction_refinement = True
 with_action_recognition = False
 with_group_action_recognition = False
 
@@ -117,8 +118,10 @@ hyperparams = deploying_directory + hyperparameters_file_name
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
-mot_data_root = '../../datasets/MICE/pose-estimation/benchmark/'
+mot_data_root = '../../datasets/stripedmice/mot/'
 testing_tracking_output_file = testing_work_dir + "mean_CLEAR_metrics_over_all_videos.csv"
+testing_tracking_output_file_2 = testing_work_dir + "mean_purity_metrics_over_all_videos.csv"
+testing_tracking_output_file_3 = testing_work_dir + "mean_throughput_per_substep.csv"
 #   2.2) /Testing
 
 
@@ -279,7 +282,7 @@ action_recognition_test_actions_gt_paths = action_recognition_val_actions_gt_pat
 
 
 # 4) Visualization
-display_bounding_boxes = False
+display_bounding_boxes = True
 display_poses = True
 display_velocities = True
 display_species = False

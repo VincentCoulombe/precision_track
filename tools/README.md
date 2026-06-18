@@ -64,6 +64,14 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 
 - **Configuration**
   - Via your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs)
+  - Or, with a **local web UI** that validates your settings and launches these tools for you:
+
+    ```bash
+    pip install -r ../requirements/web.txt
+    python -m web_ui   # from the precision_track root; opens http://127.0.0.1:8000
+    ```
+
+    See [`web_ui/README.md`](../web_ui/README.md) for details.
 
 ---
 
@@ -159,6 +167,7 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   - `--profile` — set to `true` to record per-frame timing data. Saves a `profile_<timestamp>.json` to your `saving_directory`. Not supported in pipelined mode. Default to `false`.
 - **Outputs:** All the available outputs will be saved at the defined `work_dir` from the settings. Heres a list of all the possible outputs:
   - `tracked_bboxes.csv`: Contains the MOT formatted bounding boxes of all the tracked subjects over the whole recording.
+  - `tracked_identities.csv`: Same as `tracked_bboxes.csv`, but the third column holds the validated `instances_identity` (e.g. an appearance identity name or an ArUco tag number) instead of the tracker-assigned `instance_id`. The identity is carried forward from the most recent confirmation, so a subject's rows stay empty until its identity is first confirmed. Only available when a validation/ReID algorithm is used.
   - `detected_bboxes.csv`: Contains the MOT formatted bounding boxes of all the detected subjects for every frame of the recording.
   - `tracked_kpts.csv`: Contains the MOT formatted keypoints of all the tracked subjects over the whole recording.
   - `tracked_velocities.csv`: Contains the MOT formatted velocities of all the tracked subjects over the whole recording.

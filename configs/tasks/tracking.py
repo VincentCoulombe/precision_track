@@ -107,6 +107,13 @@ outputs = [
         precision=64,
     ),
     dict(
+        type="CsvBoundingBoxesWValidation",
+        path=_base_.saving_directory + "/tracked_identities.csv",
+        instance_data="pred_track_instances",
+        subtype="tracked_identities",
+        precision=64,
+    ),
+    dict(
         type="CsvBoundingBoxes",
         path=_base_.saving_directory + "/predicted_bboxes.csv",
         instance_data="next_frame_pred_track_instances",

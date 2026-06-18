@@ -113,7 +113,15 @@ class StrongSORT(ByteTrack):
         if crops:
             batch = torch.stack(crops).to(self.device)
             _, logits = self.re_identificator(batch, [])
-            probs[valid] = logits.softmax(1).detach().cpu().float().numpy()
+            crop_probs = logits.softmax(1).detach().cpu().float().numpy()
+            # Some ReID backbones emit non-finite logits under FP16 (e.g.
+            # dinov3-vit), which softmax turns into NaN rows. Fall back to a
+            # uniform row for those crops so the appearance cue stays neutral
+            # instead of poisoning the association cost matrix with NaN.
+            bad = ~np.isfinite(crop_probs).all(axis=1)
+            if bad.any():
+                crop_probs[bad] = uniform
+            probs[valid] = crop_probs
         return probs
 
     def _appearance_affinity(self, track_ids: List[int], det_identity_probs: np.ndarray, pred_idx: np.ndarray) -> np.ndarray:
