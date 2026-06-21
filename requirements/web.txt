@@ -1,0 +1,6 @@
+# Dependencies for the local web UI (web_ui/). Install into the same env as precision_track:
+#   pip install -r requirements/web.txt
+fastapi>=0.110
+uvicorn>=0.27
+ruamel.yaml>=0.18
+python-multipart>=0.0.9

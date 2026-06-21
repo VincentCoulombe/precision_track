@@ -188,3 +188,6 @@ precision_track/.mim
 !/tests/work_dir/*
 !/tests/configs/*
 .DS_Store
+
+# Timestamped config backups (created by web_ui and config tooling)
+*.bak
