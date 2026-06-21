@@ -44,7 +44,7 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
    cd ./tools
    ```
 
-- **There are nine tools in the `tools` directory**
+- **There are ten tools in the `tools` directory**
   - `train_detection.py` — Orchestrate the training and deployment of **Detection models**.
   - `train_action_recognition.py` — Orchestrate the training and deployment of **MART** (and optionally **GMART**) models.
 
@@ -57,6 +57,8 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   - `track.py` — Run tracking on pre‑recorded videos.
 
   - `batch_track.py` — Batch-track every video of a **MOT-style dataset** to automatically generate **MOT-formatted bounding boxes annotations**.
+
+  - `batch_track_directory.py` — Run the **full configured tracking pipeline** (and every enabled downstream task) on **every video inside a directory**.
 
   - `visualize.py` — Render tracking + action recognition from MOT outputs.
 
@@ -215,7 +217,29 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 
 ---
 
-## 8) visualize.py — render tracking & actions
+## 8) batch_track_directory.py — track every video in a directory
+
+- **Purpose:** Run the **full configured tracking pipeline** on **every video inside a directory**. Unlike `batch_track.py` — which walks a **MOT-style dataset** (`mot_data_root`) and writes only a single MOT bounding-boxes file per video — this tool behaves exactly like `track.py` repeated for each video: it produces **every output enabled in your settings** (poses, velocities, actions, validations, etc., and offline correction refinement if enabled).
+
+- **Inputs:**
+  - `directory` (positional) — path to the directory containing the videos to track. Recognized extensions: `.mp4, .avi, .mov, .mkv, .mpg, .mpeg`.
+  - `--recursive` — set to `true` to also track videos in sub-directories. Default to `false`.
+
+- **Outputs:** For each video, the same set of files `track.py` produces, written to a **per-video sub-directory** of your `saving_directory`: `<saving_directory>/<video_name>/`. Keeping each video in its own sub-directory avoids the mixed-output pitfall described in the [Tracking parameters](https://github.com/VincentCoulombe/precision_track/tree/main/configs) guide and keeps every run cleanly separated for the **visualization tool**.
+
+- **Examples**
+
+  ```bash
+  <!-- Track every video directly inside the directory. -->
+  python batch_track_directory.py ../recordings/session_1/
+
+  <!-- Track every video in the directory and all its sub-directories. -->
+  python batch_track_directory.py ../recordings/ --recursive=true
+  ```
+
+---
+
+## 9) visualize.py — render tracking & actions
 
 - **Purpose:** Turn the available MOT outputs, in the defined `work_dir` from the settings, into annotated videos. The visuals are completely configurable in the "Visualization" section of the `tasks/tracking.py` setting file.
 - **Inputs:** `source` (path to the recording file) `sink` (path to the annotated video file)
@@ -225,7 +249,7 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   python visualize.py source data/sample.mp4 sink data/annotated_data_sample.mp4
   ```
 
-## 9) plot_profiles.py — visualize timing profiles
+## 10) plot_profiles.py — visualize timing profiles
 
 - **Purpose:** Turn a profiling JSON produced by `track.py --profile=true` into annotated timing charts. Highlights JiT (just-in-time compilation) spikes and statistical outlier peaks.
 - **Inputs:**

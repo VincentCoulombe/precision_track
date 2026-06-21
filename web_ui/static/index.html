@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PrecisionTrack</title>
+    <link rel="icon" href="/assets/icon.png" />
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <img src="/assets/logo.png" alt="PrecisionTrack" class="logo" />
+      </div>
+      <nav class="nav">
+        <button class="nav-link active" data-view="configure">Configure</button>
+        <button class="nav-link" data-view="run">Run</button>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section id="view-configure" class="view active"></section>
+      <section id="view-run" class="view"></section>
+    </main>
+
+    <pt-toaster></pt-toaster>
+    <pt-fs-picker></pt-fs-picker>
+
+    <script type="module" src="/static/js/app.js"></script>
+  </body>
+</html>
