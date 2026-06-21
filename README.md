@@ -25,6 +25,14 @@ TODO Ajouter mes tags de isitmaintained lorsque le repo sera publique
 PrecisionTrack is a real-time, online, multi-animal tracking system. It can be extended such as with our provided Tailtags validation plugin to track animals over extended periods.
 Furthermore, we provide built-in individual action recognition and group-level social behaviour analysis, enabling behavioral and social dynamics analysis at scale.
 
+> **🆕 New: a point-and-click Web UI** — configure PrecisionTrack and run every tool from your browser, with no YAML editing and no CLI flags to remember.
+
+<div align="center">
+  <img width="80%" src="https://raw.githubusercontent.com/VincentCoulombe/precision_track/main/assets/web_ui.png"/>
+</div>
+
+See the [Web UI](#web-ui) section to get started.
+
 ## Demos
 
 <div align="center">
@@ -52,9 +60,27 @@ Furthermore, we provide built-in individual action recognition and group-level s
 
 </div>
 
+## Web UI
+
+The **easiest way** to use PrecisionTrack is its built-in Web UI: a local, single-user browser app that runs in the **same Python environment as PrecisionTrack** (it imports `precision_track` to validate your setup exactly the way the tools will). It is the recommended path for getting started — the CLI and `tools/` remain available for advanced or scripted workflows.
+
+```bash
+pip install -r requirements/web.txt
+python -m web_ui            # serves http://127.0.0.1:8000 and opens your browser
+```
+
+With it you can:
+
+- **Configure** `user_configs.yaml` through a form with live validation and file/folder pickers — no hand-editing YAML.
+- **Edit** the separate validation / ReID configuration through a dedicated editor.
+- **Run** any tool: pick it, set its options, and watch its output stream live in an embedded terminal — no CLI flags to remember.
+
+For full details, see the [Web UI guide](https://github.com/VincentCoulombe/precision_track/tree/main/web_ui).
+
 ## Quick Navigation
 
 - [Demos](#demos)
+- [Web UI](#web-ui)
 - [Resources](#resources)
 - [Where to start?](#where-to-start)
 - [Tutorials](#tutorials)
@@ -346,6 +372,8 @@ For the full reference (environment variable overrides, troubleshooting, file-la
 
 ### 5) Define your `user_configs.yaml` (configuration file)
 
+- **Tip:** the easiest way to create and edit this file is the [Web UI](#web-ui), which renders `user_configs.yaml` as a form and validates every field for you — no manual YAML editing required.
+
 The `user_configs.yaml` allow you to customize your own PrecisionTracker. In it, you will define:
 
 - what features you want to enable and/or disable.
@@ -373,7 +401,7 @@ You’ve now configured all the essential inputs:
 - **Local Docker Container**
 - **Google COLAB Notebooks**
 
-With these in place, you’re ready to make the most of PrecisionTrack’s features. We recommend either following our [tooling guide](https://github.com/VincentCoulombe/precision_track/tree/main/tools) **AND** our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) to understand where to go from here. You can also use our pre-configured [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab) to train, test, deploy, track and visualize your experiments.
+With these in place, you’re ready to make the most of PrecisionTrack’s features. The recommended way to run the tools is the [Web UI](#web-ui) — pick a tool, set its options, and watch it run live in your browser. For advanced or scripted use, you can instead follow our [tooling guide](https://github.com/VincentCoulombe/precision_track/tree/main/tools) **AND** our [checkpoints and hyperparameters](https://github.com/VincentCoulombe/precision_track/tree/main/checkpoints) to understand where to go from here. You can also use our pre-configured [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab) to train, test, deploy, track and visualize your experiments.
 
 ## Tutorials
 
