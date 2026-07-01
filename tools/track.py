@@ -22,16 +22,23 @@ def parse_args():
     return args
 
 
-def main(args):
-
-    system_configs_path = "../configs/tasks/tracking.py"
-    user_system_configs_path = "../configs/user_configs.yaml"
-    video_name = os.path.splitext(os.path.basename(args.video))[0]
+def build_video_config(
+    video_path,
+    system_configs_path="../configs/tasks/tracking.py",
+    user_system_configs_path="../configs/user_configs.yaml",
+):
+    """Compute the per-video tracking config (with output paths pointing at this video's
+    per-video sub-directory). Kept separate from tracker construction so a shared tracker
+    instance can be re-pointed at each video's outputs in batch mode."""
+    video_name = os.path.splitext(os.path.basename(video_path))[0]
     load_user_configs(user_system_configs_path, system_configs_path, dynamic_work_dir_subdir=video_name)
-
     config = Config.fromfile(system_configs_path)
     load_validation_config(config)
-    video = VideoReader(args.video)
+    return config
+
+
+def decide_pipelined(config):
+    """Whether tracking should run pipelined, given the config and the machine's core count."""
     nb_cpu_cores = psutil.cpu_count(logical=False)
     pipelined = config.pipelined
     if pipelined and nb_cpu_cores < 3:
@@ -41,6 +48,14 @@ def main(args):
             level=WARNING,
         )
         pipelined = False
+    return pipelined
+
+
+def main(args):
+
+    config = build_video_config(args.video)
+    video = VideoReader(args.video)
+    pipelined = decide_pipelined(config)
     if pipelined:
         if args.profile:
             print_log(

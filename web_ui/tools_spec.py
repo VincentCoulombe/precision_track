@@ -84,11 +84,30 @@ TOOLS = {
     "batch_track_directory.py": {
         "label": "Batch-track a directory",
         "description": "Run the 'Track a video' tool on every video inside a directory.",
+        "warning": (
+            "Turning OFF “restart-tracker-instance” makes a single tracker span the whole "
+            "directory, and takes for granted that every video is a frame-by-frame follow-up of "
+            "the previous one (one long recording split into consecutive parts). If the videos "
+            "are not consecutive fragments of the same recording, the results can be really bad. "
+            "It also requires all videos to share the same resolution, track IDs keep counting up "
+            "across videos, and (when tracking runs pipelined) offline correction refinement runs "
+            "per video without cross-video identity state."
+        ),
         "positionals": [
             {"name": "directory", "type": "path", "picker": {"mode": "dir"}, "help": "Directory containing the videos to track."},
         ],
         "flags": [
             {"name": "recursive", "type": "bool", "default": False, "help": "Recurse into sub-directories."},
+            {
+                "name": "restart-tracker-instance",
+                "type": "bool",
+                "default": True,
+                "help": (
+                    "Keep ON unless the videos are consecutive fragments of ONE continuous recording. "
+                    "When OFF, a single tracker spans the whole directory so track IDs stay consistent "
+                    "across videos (see the warning above)."
+                ),
+            },
         ],
     },
     "visualize.py": {

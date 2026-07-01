@@ -224,8 +224,16 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 - **Inputs:**
   - `directory` (positional) — path to the directory containing the videos to track. Recognized extensions: `.mp4, .avi, .mov, .mkv, .mpg, .mpeg`.
   - `--recursive` — set to `true` to also track videos in sub-directories. Default to `false`.
+  - `--restart-tracker-instance` — set to `false` to have **one single tracker instance** track the whole directory so that **track IDs stay consistent across the videos**. Set to `true` (the default) to build a **fresh tracker for every video** (IDs restart at `1` per video, current behaviour).
 
 - **Outputs:** For each video, the same set of files `track.py` produces, written to a **per-video sub-directory** of your `saving_directory`: `<saving_directory>/<video_name>/`. Keeping each video in its own sub-directory avoids the mixed-output pitfall described in the [Tracking parameters](https://github.com/VincentCoulombe/precision_track/tree/main/configs) guide and keeps every run cleanly separated for the **visualization tool**.
+
+- **⚠️IMPORTANT⚠️ — about `--restart-tracker-instance=false`:** This mode is meant for **one long recording that was split into consecutive sub-videos**. It takes for granted that every video in the directory is a **frame-by-frame follow-up of the previous one** (the tracker carries its IDs, motion and appearance state across the video boundaries, treating the whole directory as a single continuous recording). **If the videos are not consecutive fragments of the same recording, the results can be really bad** — tracks will be mismatched across videos. Leave it at the default (`true`) unless your directory really is one recording chopped into parts.
+
+- **Known limitations of `--restart-tracker-instance=false`:**
+  - **All videos must share the same resolution.** A differing resolution raises a hard error when tracking runs pipelined (the default on machines with 3+ physical CPU cores) and a warning otherwise.
+  - **Track IDs keep counting up across videos.** Since the ID counters are never reset, the first ID of the second video continues from where the first video left off (e.g. it may start at `7`, not `1`). This is intended so a subject keeps the same ID across the whole recording.
+  - **Offline correction refinement runs per video without cross-video identity state** when tracking is pipelined (same behaviour as a single pipelined `track.py` run).
 
 - **Examples**
 
@@ -235,6 +243,9 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 
   <!-- Track every video in the directory and all its sub-directories. -->
   python batch_track_directory.py ../recordings/ --recursive=true
+
+  <!-- One long recording split into parts: keep IDs consistent across the sub-videos. -->
+  python batch_track_directory.py ../recordings/session_1/ --restart-tracker-instance=false
   ```
 
 ---
