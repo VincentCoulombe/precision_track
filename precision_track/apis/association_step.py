@@ -29,6 +29,7 @@ class AssociationStep(nn.Module):
         num_tentatives: Optional[int] = 3,
         memory_length: Optional[int] = 1,
         return_isolations: Optional[bool] = True,
+        auto_reset: Optional[bool] = True,
         verbose: Optional[bool] = True,
         **kwargs,
     ) -> None:
@@ -44,9 +45,13 @@ class AssociationStep(nn.Module):
             nb_frames_retain (int, optional): The number of frames a track is kept in the data structures after its last detection. Defaults to 10.
             num_tentatives (int, optional): The number of consecutive detections before an unconfirmed track become confirmed. Defaults to 3.
             memory_length (int, optional): The number of past frames data kept in RAM. Defaults to 30.
+            auto_reset (bool, optional): Whether to wipe the track buffer/ID registry whenever a
+                frame with img_id 0 is seen. Set to False to keep IDs consistent across several
+                consecutive videos fed to the same instance. Defaults to True.
         """
         super().__init__()
         self.verbose = verbose
+        self.auto_reset = bool(auto_reset)
         self.num_frames_retain = nb_frames_retain
         assert 0 < nb_frames_retain
         metadata = parse_pose_metainfo({"from_file": metafile})
@@ -117,6 +122,21 @@ class AssociationStep(nn.Module):
         self.tracks = dict()
         self.registry = dict()
 
+    def rebase_for_new_video(self) -> None:
+        """Prepare the carried-over tracks for a new video whose img_id restarts at 0, WITHOUT
+        losing track identities or Kalman state (used in shared-instance mode across videos).
+
+        The motion model computes its time delta as ``img_id - track.frame_ids[-1]`` (see
+        DynamicKalmanFilter.predict). Without rebasing, a track last seen at e.g. frame 5000 in
+        the previous video would produce a negative/huge delta on the next video's frame 0,
+        corrupting the prediction and breaking re-association (hence new IDs). Rebasing the
+        frame clock to -1 makes the next frame's delta a sane 1 while keeping the mean/covariance
+        and instance ids intact. Tracks not re-detected then age out normally via
+        ``pop_invalid_tracks`` over ``num_frames_retain`` frames into the new video."""
+        for track in self.tracks.values():
+            track["frame_ids"] = deque([-1], maxlen=self.memory_length)
+            track.init_frame = -1
+
     def init_frame(self, data_sample: dict, corrections: Optional[Dict[str, List[Tuple]]] = None) -> None:
         frame_id = data_sample.get("img_id", None)
         assert frame_id is not None, "frame_id must be provided"
@@ -124,7 +144,7 @@ class AssociationStep(nn.Module):
             assert frame_id.ndim == 0, "frame_id must be a scalar"
             frame_id = frame_id.item()
         assert isinstance(frame_id, int), "frame_id must be an integer"
-        if frame_id == 0:
+        if frame_id == 0 and self.auto_reset:
             self.reset()
         frame_size = data_sample.get("ori_shape", None)
         assert frame_size is not None, "ori_shape must be provided"
