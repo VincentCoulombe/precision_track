@@ -21,6 +21,10 @@ from precision_track.utils import PoseDataSample, VideoReader, batch_tracking, f
 from .association_step import AssociationStep
 from .result import Result
 
+# Sentinel sent through the tracking->analyzing pipe to mark the end of a video in
+# shared-instance mode (distinct from the terminal ``None`` shutdown sentinel).
+VIDEO_BOUNDARY = "__VIDEO_BOUNDARY__"
+
 
 @MODELS.register_module()
 class Tracker(BaseModel):
@@ -77,6 +81,18 @@ class Tracker(BaseModel):
 
     def _init_association_step(self):
         self.association_step = AssociationStep(**self._assigner)
+
+    def set_outputs(self, outputs: Optional[List[dict]]) -> None:
+        """Rebuild the output pipeline (e.g. to point at a new video's per-video paths)
+        while keeping the detector/validator/analyzer/association state alive."""
+        if outputs is not None:
+            outputs = filter_outputs(
+                self.validator,
+                self.association_step.stitching_algorithm,
+                self.analyzer if self._analyzing else None,
+                outputs=outputs,
+            )
+        self.result = Result(outputs=outputs)
 
     def forward(self, mode: Optional[str] = "predict", *args, **kwargs) -> Any:
         if mode == "predict":
@@ -141,7 +157,7 @@ class Tracker(BaseModel):
             return [output]
         return batched_outputs
 
-    def predict(self, video: VideoReader, save: bool = True) -> Result:
+    def predict(self, video: VideoReader, save: bool = True, reset_after_save: bool = False) -> Result:
         assert isinstance(video, VideoReader)
 
         total_frames = len(video)
@@ -166,6 +182,8 @@ class Tracker(BaseModel):
             )
         if save:
             self.result.save()
+        if reset_after_save:
+            self.result.reset()
         return self.result
 
     def _process_sequence(
@@ -254,6 +272,11 @@ class SharedFrameBatch:
         self.input_is_loaded.wait()
         self.input_is_loaded.clear()
 
+    def reset_fill(self):
+        """Reset the fill counters so the buffer can stream a new video from scratch."""
+        self.fill_status = [0, 0]
+        self.running_batch = 0
+
     def close(self):
         for shm in [self.shm, self.shm_indices]:
             shm.close()
@@ -324,6 +347,17 @@ def tracking_process(
                         ann_input_is_loaded.wait()
                         ann_input_is_loaded.clear()
                         # result(output)
+                elif batch_idx == -2:
+                    # Video boundary (shared-instance mode): keep the association/validator
+                    # state alive (IDs persist) but rebase the frame clock so the next video's
+                    # img_id 0 yields sane motion deltas. Forward the marker downstream so the
+                    # analyzing process flushes and re-points its outputs.
+                    input_is_loaded.set()
+                    trk_output_connexion.send(VIDEO_BOUNDARY)
+                    ann_input_is_loaded.wait()
+                    ann_input_is_loaded.clear()
+                    association_step.rebase_for_new_video()
+                    switches = None
                 elif batch_idx == -1:
                     input_is_loaded.set()
                     trk_output_connexion.send(None)
@@ -351,6 +385,8 @@ def analyzing_process(
     analyzer_cfg=None,
     outout_cfg=None,
     save=True,
+    ann_ctrl_connexion=None,
+    save_done=None,
 ):
     analyzer = analyzer_cfg
     if analyzer is not None:
@@ -367,7 +403,16 @@ def analyzing_process(
                 print("[analyzing_process] pipe closed unexpectedly (tracking_process likely crashed).", flush=True)
                 break
             ann_input_is_loaded.set()
-            if output is not None:
+            if isinstance(output, str) and output == VIDEO_BOUNDARY:
+                # End of a video in shared-instance mode: save the accumulated outputs,
+                # then rebuild the pipeline for the next video's per-video paths.
+                if save:
+                    result.save()
+                new_outputs_cfg = ann_ctrl_connexion.recv() if ann_ctrl_connexion is not None else None
+                result = Result(outputs=new_outputs_cfg)
+                if save_done is not None:
+                    save_done.set()
+            elif output is not None:
                 if analyzer is not None:
                     try:
                         output = analyzer.predict(output)
@@ -400,6 +445,11 @@ class PipelinedTracker:
         self.expected_resolution = expected_resolution
         shape = (batch_size,) + self.expected_resolution
 
+        # Kept so per-video outputs can be re-filtered/re-split in shared-instance mode.
+        self._filter_validator = validator
+        self._filter_stitching = assigner.stitching_algorithm
+        self._filter_analyzer = analyzer
+
         self.stop_tracking = mp.Event()
         self.main_connexion, tracking_input_connexion = mp.Pipe()
         self.input_is_loaded = mp.Event()
@@ -409,19 +459,14 @@ class PipelinedTracker:
         ann_input_is_loaded = mp.Event()
         self.analyzer_ready = mp.Event()
 
+        # Shared-instance (multi-video) machinery: a control pipe to hand the next video's
+        # output cfg to the analyzing process, plus an event signalling its rebuild is done.
+        self.ann_ctrl_main, ann_ctrl_child = mp.Pipe()
+        self.save_done = mp.Event()
+
         self.shared_batch = SharedFrameBatch(shape, self.input_is_loaded)
 
-        timestamps_output = None
-        if outputs is not None:
-            outputs = filter_outputs(validator, assigner.stitching_algorithm, analyzer, outputs=outputs)
-            filtered_outputs = []
-            for output_cfg in outputs:
-                if output_cfg.get("type") == "CsvTimestamps":
-                    timestamps_output = output_cfg
-                else:
-                    filtered_outputs.append(output_cfg)
-            outputs = filtered_outputs if filtered_outputs else None
-
+        outputs, timestamps_output = self._split_timestamps(outputs)
         self.timestamps_output = OUTPUTS.build(timestamps_output) if timestamps_output else None
 
         self.tracking = mp.Process(
@@ -454,12 +499,42 @@ class PipelinedTracker:
                 self.analyzer_ready,
                 analyzer,
                 outputs,
+                True,
+                ann_ctrl_child,
+                self.save_done,
             ),
         )
         self.analyzing.start()
         self.analyzer_ready.wait()
 
-    def __call__(self, video: VideoReader) -> None:
+    def _split_timestamps(self, outputs: Optional[List[dict]]) -> Tuple[Optional[List[dict]], Optional[dict]]:
+        """Apply output filtering and split the ``CsvTimestamps`` cfg (handled in the main
+        process) from the rest (handled in the analyzing process)."""
+        if outputs is None:
+            return None, None
+        outputs = filter_outputs(self._filter_validator, self._filter_stitching, self._filter_analyzer, outputs=outputs)
+        timestamps_output = None
+        filtered_outputs = []
+        for output_cfg in outputs:
+            if output_cfg.get("type") == "CsvTimestamps":
+                timestamps_output = output_cfg
+            else:
+                filtered_outputs.append(output_cfg)
+        return (filtered_outputs if filtered_outputs else None), timestamps_output
+
+    def _assert_resolution(self, video: VideoReader) -> None:
+        res = (video.resolution[1], video.resolution[0], 3)
+        if res != self.expected_resolution:
+            raise ValueError(
+                "PipelinedTracker shared-instance mode requires a constant resolution across "
+                f"videos. Expected {self.expected_resolution}, got {res} for this video."
+            )
+
+    def stream(self, video: VideoReader) -> None:
+        """Stream a single video through the pipeline. Does NOT tear down the child processes,
+        so it can be called repeatedly (with ``_advance_to_next_video`` in between) in
+        shared-instance mode. Call ``close()`` when done. For a one-shot, use ``__call__``."""
+        self._assert_resolution(video)
         fps = video.fps
         try:
             for i, frame in tqdm(enumerate(video)):
@@ -473,19 +548,60 @@ class PipelinedTracker:
         except Exception:
             error_trace = traceback.format_exc()  # TODO log
             print(error_trace)
-            self.shared_batch.close()
+            raise
+
+    def set_timestamps_output(self, timestamps_cfg: Optional[dict]) -> None:
+        """Re-point the main-process timestamps output at a new video's per-video path."""
+        self.timestamps_output = OUTPUTS.build(timestamps_cfg) if timestamps_cfg else None
+
+    def _advance_to_next_video(self, outputs: Optional[List[dict]]) -> None:
+        """Flush and save the current video's outputs, then re-point the pipeline at the next
+        video's per-video output paths. Must be called between two ``__call__`` invocations in
+        shared-instance mode."""
+        next_outputs, next_timestamps = self._split_timestamps(outputs)
+
+        # Re-point the main-process timestamps output for the upcoming video.
+        self.set_timestamps_output(next_timestamps)
+
+        # Signal the boundary to the tracking process, which forwards it to the analyzing
+        # process (behind all in-flight outputs of the current video, so the save is complete).
+        self.save_done.clear()
+        self.main_connexion.send((-2, -1))
+        self.input_is_loaded.wait()
+        self.input_is_loaded.clear()
+
+        # Hand the next video's output cfg to the analyzing process and wait for its rebuild.
+        self.ann_ctrl_main.send(next_outputs)
+        if not self.save_done.wait(timeout=120):
+            print_log("Analyzing process did not confirm the per-video save/reset in time.", level=WARNING)
+        self.save_done.clear()
+
+        # Ready the shared frame buffer for a fresh (img_id 0-based) video.
+        self.shared_batch.reset_fill()
+
+    def close(self) -> None:
+        """Tear down the child processes and free the shared memory. Triggers the final
+        video's save inside the analyzing process."""
+        self.main_connexion.send((-1, -1))
+        self.input_is_loaded.wait()
+        self.input_is_loaded.clear()
+        self.stop_tracking.set()
+        trk_cleared = wait_until_clear(self.tracking_ready, timeout=60)
+        an_cleared = wait_until_clear(self.analyzer_ready, timeout=60)
+        for lbl, cleared in zip(["Tracking", "Analyzer"], [trk_cleared, an_cleared]):
+            if not cleared:
+                print_log(f"{lbl} process was not closed properly.", level=WARNING)
+
+        for step in [self.tracking, self.analyzing]:
+            step.join()
+
+        self.shared_batch.close()
+
+    def __call__(self, video: VideoReader) -> None:
+        """One-shot: track a single video and tear everything down (legacy behavior)."""
+        try:
+            self.stream(video)
+        except Exception:
+            pass  # already logged in stream(); teardown still runs below
         finally:
-            self.main_connexion.send((-1, -1))
-            self.input_is_loaded.wait()
-            self.input_is_loaded.clear()
-            self.stop_tracking.set()
-            trk_cleared = wait_until_clear(self.tracking_ready, timeout=60)
-            an_cleared = wait_until_clear(self.analyzer_ready, timeout=60)
-            for lbl, cleared in zip(["Tracking", "Analyzer"], [trk_cleared, an_cleared]):
-                if not cleared:
-                    print_log(f"{lbl} process was not closed properly.", level=WARNING)
-
-            for step in [self.tracking, self.analyzing]:
-                step.join()
-
-            self.shared_batch.close()
+            self.close()

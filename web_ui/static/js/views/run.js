@@ -86,6 +86,9 @@ function renderArgsPanel() {
   }
   const spec = tools[selected];
   const body = el("div", { class: "section-body" });
+  if (spec.warning) {
+    body.appendChild(el("div", { class: "field-warning" }, [el("strong", { text: "⚠ Warning " }), document.createTextNode(spec.warning)]));
+  }
   spec.positionals.forEach((p) => body.appendChild(argRow(p, true)));
   spec.flags.forEach((f) => body.appendChild(argRow(f, false)));
   panel.appendChild(el("div", { class: "section-head" }, [el("h2", { class: "section-title", text: `${spec.label} — options` })]));
