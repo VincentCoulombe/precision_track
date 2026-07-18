@@ -64,6 +64,7 @@ class ArucoValidation(BaseValidation):
             identities=valid_tags,
         )
         self.logger = MMLogger.get_current_instance()
+        self.logger.info(msg=f"You are using the Tailtag system to re-identify your subjects.")
         assert isinstance(num_tags, int) and isinstance(tags_size, int)
         assert num_tags >= 0 and tags_size >= 0
         self.dictionnary = cv2.aruco.Dictionary_create(num_tags, tags_size)

@@ -22,7 +22,9 @@ def evaluate_mot(
 
     gt = pd.read_csv(ground_truth_path)
     is_ok = assert_mot_file_is_ok(gt, ground_truth_path)
-    assert is_ok, f"The {os.path.abspath(ground_truth_path)} file is not correctly formatted. Expected the frame_id, class_id, instances_id, x, y, w, h"
+    assert (
+        is_ok
+    ), f"The {os.path.abspath(ground_truth_path)} file is not correctly formatted. Expected the 'frame_id, class_id, instances_id, x, y, w, h, score' format."
     gt = gt.values
     evaluator = Evaluator(metafile=metadata_path, save_path=save_path)
     unique_frames = np.unique(gt[:, 0])

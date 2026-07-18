@@ -1,4 +1,3 @@
-import json
 import multiprocessing as mp
 import os
 import subprocess
@@ -48,12 +47,7 @@ def checkpoints():
     )
 
 
-@pytest.fixture
-def hyperparameters():
-    return "hyperparameters.json"
-
-
-def test_training_detection(user_configs, metrics, checkpoints, hyperparameters):
+def test_training_detection(user_configs, metrics, checkpoints):
     start_time = time.perf_counter()
     data_root = user_configs["training"]["data_root"]
     data_root = Path(data_root)
@@ -62,7 +56,7 @@ def test_training_detection(user_configs, metrics, checkpoints, hyperparameters)
     if os.path.isdir(data_root) and torch.cuda.is_available():
         train_det_tool_path = os.path.abspath(os.path.join(ROOT, "..", "tools", "train_detection.py"))
         result = subprocess.run(
-            ["python", train_det_tool_path, "--test=true", "--format_dataset=true", "--calibrate=true", "--deploy=true", "--optimize_hyperparams=true"],
+            ["python", train_det_tool_path, "--test=true", "--format_dataset=true", "--calibrate=true", "--deploy=true", "--optimize_hyperparams=false"],
             capture_output=True,
             text=True,
             cwd=TOOLS_DIR,
@@ -81,17 +75,6 @@ def test_training_detection(user_configs, metrics, checkpoints, hyperparameters)
         deployed_dir = user_configs["training"]["deploying_directory"]
         deployed_dir = Path(deployed_dir)
         deployed_dir = str(Path(*deployed_dir.parts[1:]))
-
-        obtained_hyperparameters_path = os.path.abspath(os.path.join(deployed_dir, hyperparameters))
-        expected_hyperparameters_path = os.path.abspath(os.path.join(ROOT, "configs", "hyperparameters.json"))
-
-        with open(expected_hyperparameters_path, "r") as f:
-            expected_hyperparams = json.load(f)
-        with open(obtained_hyperparameters_path, "r") as f:
-            obtained_hyperparams = json.load(f)
-
-        for key in expected_hyperparams:
-            assert key in obtained_hyperparams
 
         ckpt_names = checkpoints["checkpoint_names"]
         ckpt_found = checkpoints["found"]

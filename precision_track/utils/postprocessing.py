@@ -8,6 +8,76 @@ from addict import Dict
 from precision_track.utils import PoseDataSample, xyxy_cxcywh
 
 
+def format_detection_output(
+    data_sample: PoseDataSample,
+    bboxes: torch.Tensor,
+    scores: torch.Tensor,
+    labels: torch.Tensor,
+    keypoints: torch.Tensor,
+    keypoint_scores: torch.Tensor,
+    features: torch.Tensor,
+    scale: torch.Tensor,
+    translation: torch.Tensor,
+    kept_idxs: Optional[torch.Tensor] = None,
+    feature_maps: Optional[torch.Tensor] = None,
+    priors: Optional[torch.Tensor] = None,
+    kpt_score_thr: float = 0.0,
+    normalize_features: bool = True,
+) -> dict:
+    """Shared detection post-processing tail used by every detection backend.
+
+    Given a single image's *already-decoded, already-NMS'd* predictions expressed in the model's
+    (letterboxed) input space, this:
+      1. rescales boxes/keypoints to the original image with the affine ``pt * scale + translation``
+         (per-axis ``scale``/``translation`` (2,) — the inverse of whatever letterbox the backend used),
+      2. converts boxes ``xyxy -> cxcywh``,
+      3. zeroes keypoints whose (already-activated) score is below ``kpt_score_thr``,
+      4. assembles the ``pred_instances`` structure + per-frame metadata the tracker expects.
+
+    Backends differ only in how they produce ``bboxes``/``scores``/... and ``scale``/``translation``;
+    the boilerplate here is identical, so both ``DetectionBackend`` and ``UltralyticsDetectionBackend``
+    wrap this function.
+
+    Args:
+        bboxes: ``(N, 4)`` xyxy in input space.
+        keypoints: ``(N, K, 2)`` in input space.
+        keypoint_scores: ``(N, K)`` already-activated visibility/confidence.
+        scale / translation: ``(2,)`` per-axis input->original mapping (``x`` then ``y``).
+    """
+    scale = scale.to(device=bboxes.device, dtype=torch.float32)
+    translation = translation.to(device=bboxes.device, dtype=torch.float32)
+    s4 = torch.cat([scale, scale])  # (4,) for xyxy
+    t4 = torch.cat([translation, translation])
+
+    keypoints = keypoints * scale.view(1, 1, 2) + translation.view(1, 1, 2)
+    keypoints[keypoint_scores < kpt_score_thr] = 0.0
+
+    bboxes = bboxes * s4 + t4
+    bboxes = xyxy_cxcywh(bboxes)
+
+    pred_instances = Dict()
+    pred_instances.bboxes = bboxes
+    pred_instances.scores = scores
+    pred_instances.keypoints = keypoints
+    pred_instances.keypoint_scores = keypoint_scores
+    pred_instances.labels = labels
+    pred_instances.features = F.normalize(features, p=2, dim=-1, eps=1e-12) if normalize_features else features
+    pred_instances.kept_idxs = kept_idxs
+    pred_instances.feature_maps = feature_maps
+    pred_instances.priors = priors
+
+    return {
+        "ori_shape": getattr(data_sample, "ori_shape", None),
+        "img_id": getattr(data_sample, "img_id", None),
+        "seq_id": getattr(data_sample, "seq_id", None),
+        "img_path": getattr(data_sample, "img_path", None),
+        "id": getattr(data_sample, "id", None),
+        "category_id": getattr(data_sample, "category_id", 1),
+        "gt_instances": getattr(data_sample, "gt_instance_labels", None),
+        "pred_instances": pred_instances,
+    }
+
+
 def postprocess_one_stage_detections(
     post_processor,
     scores: torch.Tensor,
@@ -29,15 +99,8 @@ def postprocess_one_stage_detections(
 
     formatted_outputs = []
     for i, data_sample in enumerate(data_samples):
-        i_bboxes = bboxes[i]
-        i_scores = scores[i]
-        i_kpts = kpts[i]
-        i_kpt_vis = kpt_vis[i]
-        i_labels = labels[i]
-        i_features = features[i]
-
         i_bboxes, i_scores, i_kpts, i_kpt_vis, i_labels, i_features, i_priors, i_kept_idxs = post_processor(
-            i_bboxes, i_scores, i_kpts, i_kpt_vis, i_labels, i_features, priors[0], torch.tensor(0)
+            bboxes[i], scores[i], kpts[i], kpt_vis[i], labels[i], features[i], priors[0], torch.tensor(0)
         )
 
         i_scores = i_scores.flatten()
@@ -52,35 +115,23 @@ def postprocess_one_stage_detections(
         rescale = scale / torch.tensor(input_size, dtype=torch.float32, device=i_bboxes.device)
         translation = torch.tensor(input_center, dtype=torch.float32, device=i_bboxes.device) - 0.5 * scale
 
-        i_kpts = i_kpts * rescale.view(1, 1, 2) + translation.view(1, 1, 2)
-        i_kpts[i_kpt_vis < kpt_score_thr] = 0.0
-
-        i_bboxes = i_bboxes * torch.tile(rescale, (i_bboxes.shape[0], 2)) + torch.tile(translation, (i_bboxes.shape[0], 2))
-        i_bboxes = xyxy_cxcywh(i_bboxes)
-
-        pred_instances = Dict()
-        pred_instances.bboxes = i_bboxes
-        pred_instances.scores = i_scores
-        pred_instances.keypoints = i_kpts
-        pred_instances.keypoint_scores = i_kpt_vis
-        pred_instances.labels = i_labels
-        pred_instances.features = F.normalize(i_features, p=2, dim=-1, eps=1e-12)
-        pred_instances.kept_idxs = i_kept_idxs
-        pred_instances.feature_maps = features[i]
-        pred_instances.priors = i_priors
-
-        formatted_pred_instances = {
-            "ori_shape": getattr(data_sample, "ori_shape", None),
-            "img_id": getattr(data_sample, "img_id", None),
-            "seq_id": getattr(data_sample, "seq_id", None),
-            "img_path": getattr(data_sample, "img_path", None),
-            "id": getattr(data_sample, "id", None),
-            "category_id": getattr(data_sample, "category_id", 1),
-            "gt_instances": getattr(data_sample, "gt_instance_labels", None),
-        }
-
-        formatted_pred_instances["pred_instances"] = pred_instances
-        formatted_outputs.append(formatted_pred_instances)
+        formatted_outputs.append(
+            format_detection_output(
+                data_sample,
+                bboxes=i_bboxes,
+                scores=i_scores,
+                labels=i_labels,
+                keypoints=i_kpts,
+                keypoint_scores=i_kpt_vis,
+                features=i_features,
+                scale=rescale,
+                translation=translation,
+                kept_idxs=i_kept_idxs,
+                feature_maps=features[i],
+                priors=i_priors,
+                kpt_score_thr=kpt_score_thr,
+            )
+        )
     return formatted_outputs
 
 

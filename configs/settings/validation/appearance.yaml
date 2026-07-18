@@ -2,7 +2,11 @@ type: AppearanceValidation
 data_preprocessor:
   type: WildLifeReIDPreprocessor
 re_identificator:
-  metainfo: ../tests/configs/re-identification_metadata.yaml
-  checkpoint: ../tests/configs/precision_track_re-identificator.onnx
+  # metainfo: ../tests/configs/re-identification_metadata.yaml
+  # checkpoint: ../tests/configs/precision_track_re-identificator.onnx
+  metainfo: ../../precision_track-ReID/work_dir/training_runs/re-identification_metadata.yaml
+  checkpoint: ../../precision_track-ReID/work_dir/training_runs/precision_track_re-identificator.onnx
+
 validated_classes: ["mouse"]
-min_consecutive_hits: 5
+min_consecutive_hits: 20
+update_cooldown: 5

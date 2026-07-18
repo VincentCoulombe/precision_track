@@ -109,6 +109,20 @@ function argRow(arg, required) {
     input.checked = v[arg.name] === true;
     input.addEventListener("change", () => (v[arg.name] = input.checked));
     control.appendChild(el("label", { class: "toggle" }, [input, el("span", { class: "track" }, [el("span", { class: "thumb" })])]));
+    // The pipelined tracker does not support profiling — disable & force off the
+    // track.py "profile" flag while booleans.pipelined is on.
+    if (selected === "track.py" && arg.name === "profile" && store.get("booleans", "pipelined") === true) {
+      v[arg.name] = false;
+      input.checked = false;
+      input.disabled = true;
+      label.appendChild(
+        el("div", { class: "field-warning" }, [
+          document.createTextNode(
+            "Disabled — the pipelined tracker does not support profiling. Turn off 'pipelined' in the Configure tab to enable profiling."
+          ),
+        ])
+      );
+    }
   } else if (arg.type === "float" || arg.type === "number") {
     const input = el("input", { type: "number" });
     if (arg.type === "float") input.step = "any";
@@ -179,6 +193,14 @@ async function onRun() {
       window.notify({ level: "error", title: "Missing argument", message: `${p.name} is required.` });
       return;
     }
+  }
+  if (selected === "track.py" && values[selected].profile === true && store.get("booleans", "pipelined") === true) {
+    window.notify({
+      level: "warning",
+      title: "Profiling unavailable",
+      message: "The pipelined tracker does not support profiling. Turn off 'pipelined' in the Configure tab first.",
+    });
+    return;
   }
   try {
     await api.run(selected, values[selected]);

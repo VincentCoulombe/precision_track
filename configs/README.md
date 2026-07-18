@@ -144,6 +144,14 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
 
   If left empty (""), PrecisionTrack will automatically select a tracking checkpoint from your **deploying_directory**. The selection is performed **following this priority** : `.engine` -> `_DEPLOYED.onnx` -> `_DEPLOYED.pth`.
 
+  **Tracking with an Ultralytics checkpoint.** Besides PrecisionTrack's built-in detector, you can also track with a [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) detector trained and exported by the [precision_track-detection](https://github.com/VincentCoulombe/precision_track-detection) companion repository:
+  1. Train and deploy it in `precision_track-detection` — you get an end-to-end `.onnx` (and, on a CUDA machine, a `.engine`).
+  2. Manually place the produced `.onnx`/`.engine` checkpoint file in your `deploying_directory` (or point `tracking_checkpoint_name` at it). **No other change is required** — PrecisionTrack **auto-detects** an Ultralytics model automatically.
+
+  Notes when tracking with an Ultralytics checkpoint:
+  - Only `.onnx` and `.engine` are supported (there is no `.pth` variant). Whether the model does **pose** or **detection-only** is detected automatically.
+  - The [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) detectors produces **no appearance features**, so **action recognition (MART/GMART) is unavailable** and is disabled with a warning. Motion-based tracking, pose, and appearance/Tailtag **validation** all continue to work normally.
+
 - **<u>hyperparameters_file_name</u>**  
   This config allow you to select, by name, a specific tracking hypermarameters file, from inside your `deploying_directory`. This file typically contains:
   - `calibrated_temperature`: You can manually tune the general confidence level of your detector (optional). **NOTE** by having a valid mot dataset in `mot_data_root` and by specifying `--calibrate` when launching `train_detection.py`, our optimization loop can automatically find close to the global optima for this hyperparameter.

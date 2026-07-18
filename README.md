@@ -25,6 +25,45 @@ TODO Ajouter mes tags de isitmaintained lorsque le repo sera publique
 PrecisionTrack is a real-time, online, multi-animal tracking system. It can be extended such as with our provided Tailtags validation plugin to track animals over extended periods.
 Furthermore, we provide built-in individual action recognition and group-level social behaviour analysis, enabling behavioral and social dynamics analysis at scale.
 
+## Companion repositories — train & export custom models
+
+PrecisionTrack currently includes two companion reporitories:
+
+### [precision_track-detection](https://github.com/VincentCoulombe/precision_track-detection) — track using Ultralytics YOLO detectors
+
+- **What it does:** trains an [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) detection and (optionally **pose-estimation**) model on your PrecisionTrack-style COCO dataset + `metadata.py` file, then exports to model into a format PrecisionTrack supports **(ONNX (`.onnx` files) & TensorRT (`.engine` files))**.
+
+- **How it fits in:** drop the exported `.onnx`/`.engine` into your `deploying_directory` (or set `tracking_checkpoint_name`) — it is picked up automatically.
+
+- **NOTE**: Ultralytics detectors emits no appearance features, so **action recognition is unavailable** while using them (PrecisionTrack logs a warning).
+
+- **How to use & configure:**
+
+  ```bash
+  git clone https://github.com/VincentCoulombe/precision_track-detection
+  cd precision_track-detection
+  pip install -e .
+  # edit configs/user_configs.yaml (model, coco_dataset_root, metadata), then:
+  cd tools && python train_test_deploy.py     # -> checkpoints/<name>.onnx (+ .engine)
+  ```
+
+### [precision_track-ReID](https://github.com/VincentCoulombe/precision_track-ReID) — track using appearance-based subject re-identification
+
+- **What it does:** trains an **appearance re-identification model** (built on [wildlife-tools](https://github.com/WildlifeDatasets/wildlife-tools); MegaDescriptor/CLIP backbones) from your MOT-dataset crops, then exports an **ONNX (`.onnx` files)**.
+
+- **How it fits in:** point `re_identificator.checkpoint` in [`configs/settings/validation/appearance.yaml`](https://github.com/VincentCoulombe/precision_track/tree/main/configs/settings/validation) at the exported ONNX and set `with_validation: true`. See the [validation configuration guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/settings/validation) for details.
+
+- **How to use & configure:**
+
+  ```bash
+  git clone https://github.com/VincentCoulombe/precision_track-ReID
+  cd precision_track-ReID
+  pip install -e .
+  python tools/create_crops_dataset.py        # build the crops dataset from your MOT data
+  # edit configs/user_configs.yaml, then:
+  python tools/train_test_deploy.py           # -> *_DEPLOYED.onnx
+  ```
+
 > **🆕 New: a point-and-click Web UI** — configure PrecisionTrack and run every tool from your browser, with no YAML editing and no CLI flags to remember.
 
 <div align="center">
@@ -79,6 +118,7 @@ For full details, see the [Web UI guide](https://github.com/VincentCoulombe/prec
 
 ## Quick Navigation
 
+- [Companion repositories](#companion-repositories--train--export-custom-models)
 - [Demos](#demos)
 - [Web UI](#web-ui)
 - [Resources](#resources)
@@ -96,6 +136,35 @@ For full details, see the [Web UI guide](https://github.com/VincentCoulombe/prec
 - [Training checkpoints](https://drive.google.com/drive/folders/1fpKgfnE3xD9xicfxzWdXDmA1p5lE8qmm?usp=drive_link) from the AP and MICE datasets.
 
 ## Where to start?
+
+You will notice that there are alot of README.md files troughout the repository. And that most of them are very exhaustives. This amount to a ton of documentation. In fact, all the information you need is written somewhere in the repository. In order to not feel overwhelmed, I encourage you to use an AI assistant to help you summarize the content of the README.md (and answer your plain english questions). Either way, here is an inventory of all the usefull README.md files.
+
+### General Documentation
+
+This file
+
+### Installation-related Documentation
+
+- `docker/README.md`
+
+### Configuration-related Documentation
+
+- `configs/README.md`
+- `configs/metadata/README.md`
+- `configs/settings/validation/README.md`
+- `configs/wandb/README.md`
+
+### Checkpoints-related Documentation
+
+- `checkpoints/README.md`
+
+### Tools-related Documentation
+
+- `tools/README.md`
+
+### GUI
+
+- `web_ui/README.md`
 
 ### 1) Install python on you machine
 
@@ -146,9 +215,11 @@ However, if you plan to track poses or infer actions, you will need to define yo
 
 In that case, follow the instructions in our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) to properly adapt your copied metadata file to your specific needs.
 
-### 3) Labelling data (getting annotations)
+### 3) Creating your COCO-formatted Dataset
 
-Next, you will need labelled data to train your PrecisionTrack algorithm. While we have seen trivial projects achieve good tracking results after been trained with as few as 50 labelled images, we recommend labelling at least 100 images (just to be safe). If you notice subpar detection quality during tracking, it likely means you either need to label more frames or verify the quality of your existing labels. We will explain how to address both of these issues in the following subsections.
+COCO is the most popular object-detection and pose-estimation dataset format in the world. There is a lot of sources online on how you can format your dataset into a COCO dataset. As such, I highly encourage you to check some out (or ask an AI to list you some if you already have a detection and pose-estimation dataset. Most notably, you can use the [SLEAP IO](https://io.sleap.ai/latest/) repository to format your current DLC or SLEAP dataset into COCO.
+
+Unfortunately, if you do not currently have an object-detection and pose-estimation dataset, you will need one. This means that you will need to create one. While we have seen trivial projects achieve good tracking results after been trained on COCO-formatted datasets containing as few as 50 labelled images, we recommend labelling at least ~250 images (just to be safe). If you notice subpar detection quality during tracking, it likely means you either need to label more frames or verify the quality of your existing labels. We will explain how to address both of these issues in the following subsections.
 
 #### 3.1) Record experiments
 
@@ -181,17 +252,21 @@ Would you choose to follow Julien's guide or not, you will need COCO formatted l
 
 - **Important:** Your subject’s keypoints labelling order must exactly match the order of the ids in the `keypoint_info` field of your `metadata.py` file.
 
+- **Important** The quality of your annotations is the most important thing here. You want pixel perfect bounding boxes and keypoints as well as no false positive an/or false netagive annotations in your dataset. It is much, much better to have a small dataset of high quality than a huge dataset of bad quality.
+
 #### 3.5) Building your Action Recognition dataset
+
+If you want to train a MART action recognition algorithm, you will need an action recognition dataset (note that this step is not mandatory).
 
 - **NOTE** Please refer to our [MICE sequential dataset](https://drive.google.com/drive/folders/1WcDkX-92X6SCgZPAZXFyDc6EGUzU0Onq?usp=drive_link) as a valid Action Recognition dataset.
 
-Your Action Recognition dataset will need 3 [MOT-styled](https://motchallenge.net/) annotation files for each of your video files:
+Your Action Recognition dataset will be composed of 3 [MOT-styled](https://motchallenge.net/) annotation files for each of your video files:
 
 - A MOT file containing the subject's bounding boxes (bboxes)
 - A MOT file containing the subject's keypoints
 - A MOT file containing the subject's actions
 
-All these four files will need to share the same name. Obviously, this mean that they will be saved in different directories. More speciffically:
+All these four files will need to share the same name. Obviously, this mean that they will be saved in different directories. More speciffically, PrecisionTrack expect your action recognition dataset to have the followign structure:
 
 ```text
 <action_recognition_data_root>/
@@ -234,10 +309,16 @@ wsl --install
 
 Reboot your computer.
 
+If WSL is not launching, check the following:
+
+1. Open a PowerShell terminal
+2. Type `wsl lst`
+3. If no distribution is installed, install Ubuntu: `wsl.exe --install Ubuntu-22.04`
+
 **All subsequent commands** are run **inside your WSL (Ubuntu) terminal**.
 If a command is denied, prefix with **sudo** (e.g., `sudo apt-get update`). Doing so, the system will ask you for your password.
 
-#### 4.2) Install Docker (inside WSL/Ubuntu)
+#### 4.2.1) Install Docker (inside WSL/Ubuntu)
 
 To install [Docker](https://www.youtube.com/watch%3Fv%3Datb4nL-wI_M&ved=2ahUKEwj5men36qaPAxW7l4kEHZyuLZU4ChDdqg16BAgVEA4&usg=AOvVaw3w6GndpM3xsu3cwUr7s2rk), simply run the following:
 
@@ -262,6 +343,16 @@ Verify your installation by running:
 ```bash
 sudo docker run hello-world
 ```
+
+#### 4.2.2) Install Docker (inside Windows)
+
+1. [Install Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
+2. Open Docker Desktop
+3. Go to Settings-Ressources-WSL integration and activate Enable integration with my default WSL distro and make sure that the Distro version is on (see screenshot below)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/VincentCoulombe/precision_track/main/assets/docker_desktop_installation.png" width="75%"/>
+</div>
+4. Apply/restart
 
 ### 4.3) Ensure your machine is CUDA-accelerated (for GPU use)
 

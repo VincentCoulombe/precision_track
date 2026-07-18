@@ -186,13 +186,13 @@ def main(args):
     if args.optimize_hyperparams:
         load_user_configs(dict(training=dict(data_root=data_root)), system_configs_path)
         deploy_cfg = load_config("../configs/tasks/deploying.py")
-        testing_tracking_data_root = deploy_cfg.mot_testing_data_root
+        testing_tracking_data_root = deploy_cfg.mot_data_root
         mot_dataset_ok, feedback = check_if_mot_dataset_is_ok(testing_tracking_data_root)
 
         if mot_dataset_ok:
 
-            video_paths = os.path.join(os.path.normpath(testing_tracking_data_root), "videos")
-            gt_paths = os.path.join(os.path.normpath(testing_tracking_data_root), "bboxes")
+            video_paths = os.path.join(os.path.normpath(testing_tracking_data_root), "videos", "val")
+            gt_paths = os.path.join(os.path.normpath(testing_tracking_data_root), "bboxes", "val")
 
             logger.info(f"Searching for optimal tracking hyperparameters...")
             search_results = ThresholdsGridSearch(
