@@ -30,6 +30,7 @@ class AppearanceValidation(BaseValidation):
         memory_length: Optional[int] = 20,
         min_consecutive_hits: Optional[int] = 5,
         features_ema: Optional[float] = 0.1,
+        update_cooldown: Optional[int] = 0,
         *args,
         **kwargs,
     ) -> None:
@@ -69,6 +70,9 @@ class AppearanceValidation(BaseValidation):
         self.strength_ema_new = float(features_ema)
         self.strength_ema_baseline = 1 - self.strength_ema_new
 
+        assert update_cooldown >= 0
+        self.update_cooldown = int(update_cooldown)
+
         self.unique_ids_list = unique_ids
         print_log(
             f"Set to re-identify the following unique ids: {unique_ids}, based on their appearances.",
@@ -87,16 +91,19 @@ class AppearanceValidation(BaseValidation):
                 logger="current",
             )
 
-        assert len(self.identities) == len(unique_ids), (
+        self.nb_identity_classes = len(self.identities)
+        enabled_identities = self.nb_identity_classes - len(disabled)
+        assert enabled_identities == len(unique_ids), (
             f"The AppearanceValidation module is set to re-identify {len(unique_ids)} distinct subjects "
-            f"({unique_ids}) with an incoherant number of identities {len(self.identities)} ({self.identities})."
+            f"({unique_ids}) with an incoherant number of enabled identities {enabled_identities} "
+            f"({self.nb_identity_classes} identities in total ({self.identities}) minus {len(disabled)} disabled ({sorted(disabled)}))."
         )
         self.nb_identities = len(unique_ids)
 
         self.has_been_observed = torch.zeros(self.nb_identities, dtype=torch.bool, device=self.device)
-        self.consecutive_hits = torch.zeros(self.nb_identities, self.nb_identities, dtype=torch.float32, device=self.device)
+        self.consecutive_hits = torch.zeros(self.nb_identities, self.nb_identity_classes, dtype=torch.float32, device=self.device)
         self.did_not_check_since = torch.zeros(self.nb_identities, dtype=torch.int64, device=self.device)
-        self.identity_probabilities = torch.zeros((self.nb_identities, self.nb_identities), dtype=self.precision, device=self.device)
+        self.identity_probabilities = torch.zeros((self.nb_identities, self.nb_identity_classes), dtype=self.precision, device=self.device)
 
         self.unique_ids = {u: i for i, u in enumerate(self.unique_ids_list)}
         self.reverse_unique_ids = {i: u for i, u in enumerate(self.unique_ids_list)}
@@ -133,9 +140,9 @@ class AppearanceValidation(BaseValidation):
 
         features, logits = self.re_identificator(torch.stack(inputs).to(self.device), [])
 
-        assert logits.shape[-1] == self.nb_identities, (
+        assert logits.shape[-1] == self.nb_identity_classes, (
             f"The amount of identities specified in your validation configuration "
-            f"({self.nb_identities}) does not match the re-identification's output ({logits.shape[-1]})"
+            f"({self.nb_identity_classes}) does not match the re-identification's output ({logits.shape[-1]})"
         )
 
         tensor_updated_idxs = torch.tensor(updated_idxs, dtype=torch.int64, device=self.device)
@@ -178,6 +185,8 @@ class AppearanceValidation(BaseValidation):
                     f"The appearance validator encountered the following not registered unique id at runtime: "
                     f"{unique_key}. The registered unique ids are: {self.unique_ids_list}."
                 )
+                if self.update_cooldown > 0 and self.did_not_check_since[idx] < self.update_cooldown:
+                    continue
                 did_not_check_since = self.did_not_check_since[idx] / self.max_check_delay
                 heapq.heappush(priority_queue, (-float(did_not_check_since + score), (cls, int(inst_id), cxcywh.tolist(), score)))
         return priority_queue

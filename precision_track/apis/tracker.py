@@ -13,7 +13,7 @@ from mmengine.logging import print_log
 from mmengine.model import BaseModel
 from tqdm import tqdm
 
-from precision_track.models.backends import DetectionBackend
+from precision_track.models.backends import UltralyticsDetectionBackend, build_detection_backend
 from precision_track.outputs.display import display_latency
 from precision_track.registry import MODELS, OUTPUTS, TRACKING
 from precision_track.utils import PoseDataSample, VideoReader, batch_tracking, filter_outputs, wait_until_clear
@@ -47,9 +47,18 @@ class Tracker(BaseModel):
         self.verbose = verbose
 
         detector["verbose"] = self.verbose
-        self.detector = DetectionBackend(**detector)
+        self.detector = build_detection_backend(detector)
         is_frozen = detector.runtime.get("freeze", False) or detector.runtime.get("type") != "PytorchRuntime"
         self._detection_mode = "predict" if is_frozen else "loss"
+
+        if isinstance(self.detector, UltralyticsDetectionBackend) and analyzer is not None:
+            print_log(
+                "The Ultralytics detection backend produces no appearance features; action recognition "
+                "(MART/GMART) is unavailable and has been disabled for this run.",
+                logger="current",
+                level=WARNING,
+            )
+            analyzer = None
 
         if validator is not None:
             validator = TRACKING.build(validator)
@@ -303,7 +312,7 @@ def tracking_process(
     verbose=False,
 ):
     detector_cfg["verbose"] = verbose
-    detector = DetectionBackend(**detector_cfg)
+    detector = build_detection_backend(detector_cfg)
 
     if validator_cfg is not None:
         validator = TRACKING.build(validator_cfg)

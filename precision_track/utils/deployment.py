@@ -35,10 +35,22 @@ def onnx_is_fp16(nn):
     return True
 
 
+def onnx_is_converted_to_fp16(nn):
+    """True if the model has already been FP16-converted.
+
+    ``float16.convert_float_to_float16`` legitimately keeps some initializers in FP32 (mixed precision),
+    so a fully-FP16 check (:func:`onnx_is_fp16`) is not a reliable "already converted" signal — for such
+    models it would report ``False`` and trigger a *second*, in-place conversion, which duplicates the
+    inserted Cast nodes and corrupts the graph. Presence of *any* FP16 initializer means a conversion has
+    already happened, so we treat that as the idempotency guard.
+    """
+    return any(tensor.data_type == onnx.TensorProto.FLOAT16 for tensor in nn.graph.initializer)
+
+
 def onnx_to_fp16(checkpoint, logger):
     assert os.path.isfile(checkpoint), f"The checkpoint path: {checkpoint}, does not lead to a valid file."
     nn = onnx.load(checkpoint)
-    if not onnx_is_fp16(nn):
+    if not onnx_is_converted_to_fp16(nn):
         if isinstance(logger, MMLogger):
             logger.info(f"Converting {checkpoint} to FP16...")
         nn = float16.convert_float_to_float16(nn)
@@ -573,3 +585,47 @@ def set_runtime_attributes(checkpoint: Optional[str] = None):
         raise ValueError(
             f"No supported checkpoint was found in directory '{checkpoint}'. " f"Supported extensions: {PYTHON_CKPT_EXTS + ONNX_CKPT_EXTS + TRT_CKPT_EXTS}"
         )
+
+
+def read_ultralytics_metadata(checkpoint: Optional[str]):
+    """Return the metadata dict embedded by Ultralytics in an ``.onnx``/``.engine`` export, else None.
+
+    - ONNX: stored as ``metadata_props`` (string values, parsed with ``ast.literal_eval`` when possible).
+    - TensorRT engine: Ultralytics prepends a 4-byte little-endian length followed by a JSON blob.
+    Typical keys: ``author`` ("Ultralytics"), ``task`` (detect/pose/...), ``imgsz``, ``names``,
+    ``kpt_shape`` (pose only), ``stride``, ``batch``.
+    """
+    if not (isinstance(checkpoint, str) and os.path.isfile(checkpoint)):
+        return None
+    ext = os.path.splitext(checkpoint)[1].lower()
+    try:
+        if ext in ONNX_CKPT_EXTS:
+            import ast
+
+            import onnx
+
+            model = onnx.load(checkpoint, load_external_data=False)
+            meta = {}
+            for prop in model.metadata_props:
+                try:
+                    meta[prop.key] = ast.literal_eval(prop.value)
+                except (ValueError, SyntaxError):
+                    meta[prop.key] = prop.value
+            return meta or None
+        elif ext in TRT_CKPT_EXTS:
+            import json
+
+            with open(checkpoint, "rb") as f:
+                meta_len = int.from_bytes(f.read(4), "little")
+                if meta_len <= 0 or meta_len > 1_000_000:
+                    return None
+                return json.loads(f.read(meta_len).decode("utf-8")) or None
+    except Exception:
+        return None
+    return None
+
+
+def is_ultralytics_checkpoint(checkpoint: Optional[str]) -> bool:
+    """True when ``checkpoint`` is an Ultralytics-exported ``.onnx``/``.engine`` graph."""
+    meta = read_ultralytics_metadata(checkpoint)
+    return bool(meta) and str(meta.get("author", "")).lower() == "ultralytics"

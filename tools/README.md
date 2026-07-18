@@ -219,7 +219,7 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 
 ## 8) batch_track_directory.py — track every video in a directory
 
-- **Purpose:** Run the **full configured tracking pipeline** on **every video inside a directory**. Unlike `batch_track.py` — which walks a **MOT-style dataset** (`mot_data_root`) and writes only a single MOT bounding-boxes file per video — this tool behaves exactly like `track.py` repeated for each video: it produces **every output enabled in your settings** (poses, velocities, actions, validations, etc., and offline correction refinement if enabled).
+- **Purpose:** Run the **full configured tracking pipeline** on **every video inside a directory**.
 
 - **Inputs:**
   - `directory` (positional) — path to the directory containing the videos to track. Recognized extensions: `.mp4, .avi, .mov, .mkv, .mpg, .mpeg`.

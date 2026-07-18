@@ -60,6 +60,13 @@ Uses a deep learning model to re-identify animals by their visual appearance (co
 
   This is the main knob to reach for when tuning the trade-off described in the [warm-up note](#️-warm-up-period-expect-unstable-results-until-every-subject-has-been-seen-️) above and in [Tips](#tips) (tip #3): if you see frequent ID switches, **increase** it; if corrections feel too slow, **decrease** it.
 
+- **<u>update_cooldown</u>** _(optional, default `0`)_  
+  Minimum number of frames that must pass before the same identity's probability can be updated again, expressed in **frames** (not seconds), since the validator has no notion of your video's fps. `0` disables the cooldown (every frame can update, the original behaviour).
+
+  **Why this exists:** the validator re-checks appearance every frame. If a subject briefly (say, for ~2 seconds) resembles another identity, that can produce dozens of confident updates in a row — enough to satisfy `min_consecutive_hits` from a momentary coincidence rather than a real, sustained resemblance. `update_cooldown` spreads out how often those updates can count at all, so `min_consecutive_hits` worth of evidence has to be gathered over a longer real-time window.
+
+  `min_consecutive_hits` and `update_cooldown` work together: the first controls **how much** evidence is needed, the second controls **how fast** that evidence can accumulate. As a rule of thumb, pick `update_cooldown ≈ fps / desired_max_updates_per_second` — e.g. at 30fps, `update_cooldown: 5` caps confirmed updates at ~6/sec per identity.
+
 ### Disabling identities (letting multiple subjects share the same identity)
 
 By default, PrecisionTrack expects a **one-to-one mapping** between tracked subjects and re-identification identities: each subject is matched to its own distinct identity.
@@ -189,6 +196,7 @@ disabled_identities:
   1. For **appearance.yaml**: verify that the `checkpoint` and `metainfo` paths are correct and that your model was trained on a similar species/dataset.
   2. For **aruco.yaml**: check that `valid_tags` matches the tags physically in your experiment and that `estimation_range` is large enough to cover the tag's position relative to `tag_kpt`.
   3. Increase `min_sample_size` to make identity assignments more conservative if you observe frequent ID switches.
-  4. If nothing is working, you can contact us directly for help, or open an issue in the repository.
+  4. For **appearance.yaml**, if false ID switches seem caused by brief, momentary resemblances rather than sustained ones, increase `update_cooldown` so evidence has to accumulate over a longer real-time window.
+  5. If nothing is working, you can contact us directly for help, or open an issue in the repository.
 
 - YAML files are sensitive to indentation — avoid using tabs.

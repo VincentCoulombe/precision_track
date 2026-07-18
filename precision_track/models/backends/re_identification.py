@@ -65,7 +65,7 @@ class ReIDBackend(BaseBackend):
         super(ReIDBackend, self).__init__(
             dict(
                 checkpoint=checkpoint,
-                output_names=["output"],
+                output_names=["output", "logits"],
                 input_shapes=input_shape,
             )
         )

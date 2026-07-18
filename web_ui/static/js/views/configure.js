@@ -84,10 +84,18 @@ function renderBool(section, f, fieldId) {
   input.addEventListener("change", async () => {
     const newVal = input.checked;
     store.set(section.key, f.key, newVal);
+    // Cascade: offline correction refinement needs validation on, so turning
+    // validation off also turns it off.
+    let cascadePrev = null;
+    if (section.key === "booleans" && f.key === "with_validation" && newVal === false && store.get("booleans", "with_offline_correction_refinement") === true) {
+      cascadePrev = true;
+      store.set("booleans", "with_offline_correction_refinement", false);
+    }
     if (section.key === "booleans") renderConfigure(); // gated sections may appear/disappear
     const ok = await autosave(fieldId, null, null, () => {
       store.set(section.key, f.key, prev);
       input.checked = prev;
+      if (cascadePrev !== null) store.set("booleans", "with_offline_correction_refinement", cascadePrev);
       if (section.key === "booleans") renderConfigure();
     });
     if (ok) prev = newVal;
