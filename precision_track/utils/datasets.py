@@ -287,7 +287,7 @@ def assert_coco_dataset_directory(coco_path):
                 f"  - Images in {ann_dir}/val.json file: {num_images_in_val}\n"
                 f"  - Total unique images in annotations: {num_images_in_annotations}"
             ),
-            level="WARNING",
+            level=WARNING,
         )
 
         # Check for images in directory but not in annotations
@@ -296,7 +296,7 @@ def assert_coco_dataset_directory(coco_path):
             print_log(
                 logger="current",
                 msg=f"These images are in the {img_dir} directory, but not in any of the annotation files: {sorted(missing_in_annotations)}",
-                level="WARNING",
+                level=WARNING,
             )
 
         # Check for images in annotations but not in directory
@@ -305,7 +305,7 @@ def assert_coco_dataset_directory(coco_path):
             print_log(
                 logger="current",
                 msg=f"These images are in the annotation files, but not in the {img_dir} image directory: {sorted(missing_in_directory)}",
-                level="WARNING",
+                level=WARNING,
             )
 
 
