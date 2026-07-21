@@ -66,26 +66,41 @@ if _base_.with_action_recognition and _base_.with_group_action_recognition:
     mart = _base_.analyzer.runtime.model
     analyzer = dict(
         input_names=_base_.action_recognition_input_names + _base_.gar_input_names,
-        data_preprocessor=dict(
-            with_distance_prior=True,
-            with_keypoint_priors=True,
-        ),
+        # data_preprocessor=dict(
+        #     with_distance_prior=True,
+        #     with_keypoint_priors=True,
+        # ),
+        # runtime=dict(
+        #     model=dict(
+        #         type="GMART",
+        #         mart_config=mart,
+        #         mart_checkpoint=_base_.mart_checkpoint,
+        #         metainfo=_base_.metainfo,
+        #         with_keypoint_priors=True,
+        #         _delete_=True,
+        #     ),
+        #     checkpoint=_base_.gmart_checkpoint,
+        #     input_shapes=list(_base_.analyzer.runtime.input_shapes)
+        #     + [
+        #         dict(type="DistancePriorsShape"),
+        #         dict(type="KeypointPriorsShape", metainfo=metainfo),
+        #     ],
+        #     output_names=_base_.action_recognition_output_names + _base_.gar_output_names,
+        # ),
+        output_names=_base_.action_recognition_output_names + _base_.gar_output_names,
         runtime=dict(
             model=dict(
-                type="GMART",
+                type="RelationshipDetectionPoseBaselineModel",
                 mart_config=mart,
                 mart_checkpoint=_base_.mart_checkpoint,
                 metainfo=_base_.metainfo,
+                with_vel_coherence=False,
+                with_vel_approach=False,
+                with_orientation_priors=False,
                 with_keypoint_priors=True,
                 _delete_=True,
             ),
-            checkpoint=_base_.gmart_checkpoint,
-            input_shapes=list(_base_.analyzer.runtime.input_shapes)
-            + [
-                dict(type="DistancePriorsShape"),
-                dict(type="KeypointPriorsShape", metainfo=metainfo),
-            ],
-            output_names=_base_.action_recognition_output_names + _base_.gar_output_names,
+            checkpoint=None,
         ),
     )
 # /Model
