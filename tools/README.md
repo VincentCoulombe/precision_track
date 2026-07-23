@@ -199,13 +199,13 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   mot_data_root/
   ├── videos/{train,val}/<stem>.{mp4,avi,mov,mkv,mpg,mpeg}
   ├── bboxes/{train,val}/<stem>.csv      # generated here (next to any ground truth)
-  └── kpts/{train,val}/<stem>.csv        # generated here if with_pose_estimation is true
+  └── kpts/{train,val}/<stem>.csv        # generated here if with_pose_estimation is true (Usefull if you want to create an action recognition dataset)
   ```
 
 - **Outputs:** For every video found under `videos/train` and `videos/val`, a `bboxes/<split>/<stem>.csv` file containing the **MOT-formatted bounding boxes** of all the tracked subjects over the whole recording. The columns are `frame_id, class_id, instance_id, x, y, w, h, score` (top-left `xywh`), matching the ground-truth schema expected by `test_tracking.py`.
   - **Resumable / non-destructive:** if a `bboxes/<split>/<stem>.csv` already exists (a previous run, or hand-labelled ground truth), the video is **skipped with a warning** so existing annotations are never overwritten. Use `--force=true` to regenerate them.
   - Each video is tracked independently, so `instance_id`s restart from the first subject in every file.
-  - **Keypoints:** if `with_pose_estimation` is set to `true` in your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs), a matching `kpts/<split>/<stem>.csv` file is also written for every video, containing the tracked subjects' keypoints.
+  - **Keypoints:** if `with_pose_estimation` is set to `true` in your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs), a matching `kpts/<split>/<stem>.csv` file is also written for every video, containing the tracked subjects' keypoints. This usefull if you want to create an action recognition dataset.
 
 - **Examples**
 
@@ -255,11 +255,11 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 ## 9) visualize.py — render tracking & actions
 
 - **Purpose:** Turn the available MOT outputs, in the defined `work_dir` from the settings, into annotated videos. The visuals are completely configurable in the "Visualization" section of the `tasks/tracking.py` setting file.
-- **Inputs:** `source` (path to the recording file) `sink` (path to the annotated video file)
+- **Inputs:** `source` (path to the recording file) `sink` (`<saving_directory>/<name of the video (where your tracking results will be saved)>/<Whatever name you want your visualization video to have>`)
 - **Outputs:** An annotated video will be saved at the provided sink path.
 - **Examples**
   ```bash
-  python visualize.py source data/sample.mp4 sink data/annotated_data_sample.mp4
+  python visualize.py source data/sample.mp4 sink ../work_dir/sample/vis.mp4
   ```
 
 ## 10) plot_profiles.py — visualize timing profiles

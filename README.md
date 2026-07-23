@@ -110,7 +110,7 @@ python -m web_ui            # serves http://127.0.0.1:8000 and opens your browse
 
 With it you can:
 
-- **Configure** `user_configs.yaml` through a form with live validation and file/folder pickers — no hand-editing YAML.
+- **Configure** `user_configs.yaml` through a form with live validation and file/folder pickers — no hand-editing YAML. Please refer to our [configuration documentation](https://github.com/VincentCoulombe/precision_track/tree/main/configs) for more details.
 - **Edit** the separate validation / ReID configuration through a dedicated editor.
 - **Run** any tool: pick it, set its options, and watch its output stream live in an embedded terminal — no CLI flags to remember.
 
@@ -215,7 +215,7 @@ However, if you plan to track poses or infer actions, you will need to define yo
 
 In that case, follow the instructions in our [metadata guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/metadata) to properly adapt your copied metadata file to your specific needs.
 
-### 3) Creating your COCO-formatted Dataset
+### 3) Creating a subject detection & pose-estimation (COCO-formatted) Dataset
 
 COCO is the most popular object-detection and pose-estimation dataset format in the world. There is a lot of sources online on how you can format your dataset into a COCO dataset. As such, I highly encourage you to check some out (or ask an AI to list you some if you already have a detection and pose-estimation dataset. Most notably, you can use the [SLEAP IO](https://io.sleap.ai/latest/) repository to format your current DLC or SLEAP dataset into COCO.
 
@@ -254,9 +254,11 @@ Would you choose to follow Julien's guide or not, you will need COCO formatted l
 
 - **Important** The quality of your annotations is the most important thing here. You want pixel perfect bounding boxes and keypoints as well as no false positive an/or false netagive annotations in your dataset. It is much, much better to have a small dataset of high quality than a huge dataset of bad quality.
 
-#### 3.5) Building your Action Recognition dataset
+#### 3.5) Creating an Action Recognition dataset (optional)
 
-If you want to train a MART action recognition algorithm, you will need an action recognition dataset (note that this step is not mandatory).
+**This guide contains a step-by-step guide to creating an action recignition dataset + a fully working example**
+
+If you want to train a MART action recognition algorithm, you will need an action recognition dataset (note that you only need an action recognition dataset if you want to leveraged a trained MART algorithm to augment PrecisionTrack so it can produce behavioral data on top of tracking data).
 
 - **NOTE** Please refer to our [MICE sequential dataset](https://drive.google.com/drive/folders/1WcDkX-92X6SCgZPAZXFyDc6EGUzU0Onq?usp=drive_link) as a valid Action Recognition dataset.
 
@@ -290,6 +292,23 @@ All these four files will need to share the same name. Obviously, this mean that
   │ ├── val/
   | | ├── video2.avi
 ```
+
+- **How we created our action recognition dataset**: We created our action recognition dataset by doing the following:
+  1. Train a good (80%+ detection F1 & 80%+ OKS) subject detection and pose-estimation model
+  2. Use the `batch_track_directory.py` tool with `with_pose_estimation: true` (from inside the `user_configs.yaml` file),
+     Please refer to the [tooling documentation](https://github.com/VincentCoulombe/precision_track/tree/main/tools) and the [configuration documentation](https://github.com/VincentCoulombe/precision_track/tree/main/configs), to generate tracking results for every of your videos. The relevant tracking results (for creating action recognition dataset) will be saved in the `<saving_directory>/*/{tracked_bboxes.csv, kpts.csv}` files.
+  3. Use the `visualize.py` tool (with only `display_bounding_boxes` set to `true` as Visualization parameter) to create a visual for every tracking results obtained in 2).
+  4. Manually review the tracking results and correct the tracking errors (ID switches).
+  - You can manually edit the tracking switches by editing the `instance_id` column (meaning switching back the swapped IDs) of the `tracked_bboxes.csv` file saved inside the `saving_directory` from which the visual was created.
+  5. replace the `instance_id` column in your `kpts.csv` file with the one inside your `tracked_bboxes.csv` file (the one you just edited) by copy/pasting it. This will synchronize your pose-estimation results with your edited bounding boxes results.
+  6. Re-running the step 3) to generate up-to-date visuals. These new visuals will take into account your manual corrections.
+  7. Creating your `<action_recognition_data_root>` folder and formatting it according to the guide above.
+  - This mean that you will need to rename your `tracked_bboxes.csv` and `kpts.csv` files so their names matches their corresponding video names.
+  8. Uploading your visualization videos to [BORIS](https://www.boris.unito.it/) and manually annotating actions for every tracked subjects.
+  9. Converting your [BORIS](https://www.boris.unito.it/) annotatinos into our action recognition format
+  10. Saving the action recognition `.csv` file into the `<action_recognition_data_root>/actions/` directory (following the format above) and renaming them to match their corresponding video names.
+- **Alternatively**: You can use the `create_mot_dataset.py` tool with `with_pose_estimation: true` (from inside the `user_configs.yaml` file),
+  Please refer to the [tooling documentation](https://github.com/VincentCoulombe/precision_track/tree/main/tools) and the [configuration documentation](https://github.com/VincentCoulombe/precision_track/tree/main/configs) for more details, to automatically create an action recognition dataset. This second method (while fully automatic) is harder to manually review and correct.
 
 - **NOTE** We used the the [BORIS](https://www.boris.unito.it/) software to label our actions then reformatted the labels to fit our needs.
 
