@@ -6,7 +6,7 @@ import { el } from "../util.js";
 // Tools grouped into sections (top to bottom). AR/MART tools listed in AR_TOOLS
 // are hidden when with_action_recognition is off.
 const SECTIONS = [
-  { title: "Tracking", tools: ["track.py", "batch_track.py", "batch_track_directory.py"] },
+  { title: "Tracking", tools: ["track.py", "create_mot_dataset.py", "batch_track_directory.py"] },
   { title: "Visualization", tools: ["visualize.py", "plot_profiles.py"] },
   { title: "Training", tools: ["train_detection.py", "train_action_recognition.py"] },
   { title: "Testing", tools: ["test_detection.py", "test_tracking.py", "test_action_recognition.py"] },

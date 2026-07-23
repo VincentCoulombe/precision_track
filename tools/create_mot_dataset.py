@@ -35,6 +35,7 @@ def main(args):
     load_validation_config(config)
 
     mot_data_root = Path(config.mot_data_root)
+    with_pose_estimation = config.get("with_pose_estimation", False)
 
     nb_cpu_cores = psutil.cpu_count(logical=False)
     pipelined = config.pipelined
@@ -58,6 +59,10 @@ def main(args):
 
         bboxes_dir = mot_data_root / "bboxes" / split
         bboxes_dir.mkdir(parents=True, exist_ok=True)
+
+        if with_pose_estimation:
+            kpts_dir = mot_data_root / "kpts" / split
+            kpts_dir.mkdir(parents=True, exist_ok=True)
 
         video_files = sorted(f for f in videos_dir.iterdir() if f.is_file() and f.suffix.lower() in SUPPORTED_VIDEO_BACKEND)
 
@@ -84,6 +89,17 @@ def main(args):
                     precision=64,
                 )
             ]
+
+            if with_pose_estimation:
+                out_kpts_csv = kpts_dir / f"{video_file.stem}.csv"
+                outputs.append(
+                    dict(
+                        type="CsvKeypoints",
+                        path=str(out_kpts_csv),
+                        instance_data="pred_track_instances",
+                        precision=64,
+                    )
+                )
 
             if pipelined:
                 tracker = PipelinedTracker(
