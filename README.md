@@ -254,7 +254,7 @@ Would you choose to follow Julien's guide or not, you will need COCO formatted l
 
 - **Important** The quality of your annotations is the most important thing here. You want pixel perfect bounding boxes and keypoints as well as no false positive an/or false netagive annotations in your dataset. It is much, much better to have a small dataset of high quality than a huge dataset of bad quality.
 
-#### 3.5) Creating an Action Recognition dataset (optional)
+### 4) Creating an Action Recognition dataset (optional)
 
 **This guide contains a step-by-step guide to creating an action recignition dataset + a fully working example**
 
@@ -314,11 +314,11 @@ All these four files will need to share the same name. Obviously, this mean that
 
 - **NOTE** Actions with non null values > 0 under the `target_ids` columns will be considered as social actions and will be used to train your GMART algorithm.
 
-### 4) Installing mandatory third-party software (local execution only)
+### 5) Installing mandatory third-party software (local execution only)
 
 Using our [COLAB Notebooks](https://github.com/VincentCoulombe/precision_track/tree/main/Colab)? You can **skip this entire section**.
 
-#### 4.1) Install Windows Subsystem for Linux (WSL) - **Windows users only**
+#### 5.1) Install Windows Subsystem for Linux (WSL) - **Windows users only**
 
 Open [Administrator PowerShell](https://www.youtube.com/watch%3Fv%3DUegCqUZcnq8&ved=2ahUKEwi9q-Dw46aPAxUTwvACHSz9GHsQ3aoNegQIFxAO&usg=AOvVaw3UJ0yzE6YAWzjWEyuyx5py) → run:
 
@@ -337,7 +337,7 @@ If WSL is not launching, check the following:
 **All subsequent commands** are run **inside your WSL (Ubuntu) terminal**.
 If a command is denied, prefix with **sudo** (e.g., `sudo apt-get update`). Doing so, the system will ask you for your password.
 
-#### 4.2.1) Install Docker (inside WSL/Ubuntu)
+#### 5.2.1) Install Docker (inside WSL/Ubuntu)
 
 To install [Docker](https://www.youtube.com/watch%3Fv%3Datb4nL-wI_M&ved=2ahUKEwj5men36qaPAxW7l4kEHZyuLZU4ChDdqg16BAgVEA4&usg=AOvVaw3w6GndpM3xsu3cwUr7s2rk), simply run the following:
 
@@ -363,7 +363,7 @@ Verify your installation by running:
 sudo docker run hello-world
 ```
 
-#### 4.2.2) Install Docker (inside Windows)
+#### 5.2.2) Install Docker (inside Windows)
 
 1. [Install Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)
 2. Open Docker Desktop
@@ -373,9 +373,9 @@ sudo docker run hello-world
 </div>
 4. Apply/restart
 
-### 4.3) Ensure your machine is CUDA-accelerated (for GPU use)
+### 5.3) Ensure your machine is CUDA-accelerated (for GPU use)
 
-##### 4.3.1) Check for an NVIDIA GPU and driver
+##### 5.3.1) Check for an NVIDIA GPU and driver
 
 First, ensure that your machine contains an NVIDIA Graphic Processor Unit (GPU) with at least 8BG of VRAM.
 
@@ -388,7 +388,7 @@ Inside WSL:
 - If you see your GPU and a CUDA version as well as its specifications such the number of tensor cores and the amount of VRAM, you’re good.
 - If not: install the latest Windows [NVIDIA driver](<(https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.html)>) (do not install a Linux driver inside WSL), then wsl --update and try again.
 
-##### 4.3.2) Allow Docker containers to access your NVIDIA GPU
+##### 5.3.2) Allow Docker containers to access your NVIDIA GPU
 
 Run the following bash command in your terminal:
 
@@ -415,7 +415,7 @@ Test GPU inside a container:
 sudo docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi
 ```
 
-#### 4.4) Clone the PrecisionTrack repository
+#### 5.4) Clone the PrecisionTrack repository
 
 You are going to need Git to clone this repository locally.
 
@@ -434,7 +434,7 @@ Run the following git command in your terminal:
   cd precision_track
 ```
 
-#### 4.5) Setup PrecisionTrack's execution environment
+#### 5.5) Setup PrecisionTrack's execution environment
 
 **Step 1 — Build the Docker image (once)**
 
@@ -480,7 +480,7 @@ For the full reference (environment variable overrides, troubleshooting, file-la
   - User Configs → `precision_track/configs/user_configs.yaml`
   - Metadata → `precision_track/configs/metadata/<your metadata file>.py`
 
-### 5) Define your `user_configs.yaml` (configuration file)
+### 6) Define your `user_configs.yaml` (configuration file)
 
 - **Tip:** the easiest way to create and edit this file is the [Web UI](#web-ui), which renders `user_configs.yaml` as a form and validates every field for you — no manual YAML editing required.
 
@@ -498,7 +498,7 @@ For a detailed breakdown of the file’s structure and all available options, co
 
 If you plan to use **re-identification** (the appearance-based PrecisionTrack-ReID or the Tailtag/ArUco system), its settings live in a **separate validation configuration file**. Everything about configuring it (choosing a strategy, pointing to your model, enabling or disabling identities, and an important note on the appearance pipeline's warm-up behaviour) is documented in our dedicated [validation configuration guide](https://github.com/VincentCoulombe/precision_track/tree/main/configs/settings/validation).
 
-### 6) Get started with PrecisionTrack’s Toolkit
+### 7) Get started with PrecisionTrack’s Toolkit
 
 You’ve now configured all the essential inputs:
 
