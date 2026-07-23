@@ -31,7 +31,7 @@ PrecisionTrack currently includes two companion reporitories:
 
 ### [precision_track-detection](https://github.com/VincentCoulombe/precision_track-detection) — track using Ultralytics YOLO detectors
 
-- **What it does:** trains an [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) detection and (optionally **pose-estimation**) model on your PrecisionTrack-style COCO dataset + `metadata.py` file, then exports to model into a format PrecisionTrack supports **(ONNX (`.onnx` files) & TensorRT (`.engine` files))**.
+- **What it does:** trains an [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) detection and (optionally **pose-estimation**) model on your PrecisionTrack-style COCO dataset + `metadata.py` file, then exports to model into a format PrecisionTrack supports **(ONNX (`.onnx` files) & TensorRT (`.engine` files))** This will allow your to use an Ultralytics detector instead of our own.
 
 - **How it fits in:** drop the exported `.onnx`/`.engine` into your `deploying_directory` (or set `tracking_checkpoint_name`) — it is picked up automatically.
 
@@ -296,7 +296,7 @@ All these four files will need to share the same name. Obviously, this mean that
 - **How we created our action recognition dataset**: We created our action recognition dataset by doing the following:
   1. Train a good (80%+ detection F1 & 80%+ OKS) subject detection and pose-estimation model
   2. Use the `batch_track_directory.py` tool with `with_pose_estimation: true` (from inside the `user_configs.yaml` file),
-     Please refer to the [tooling documentation](https://github.com/VincentCoulombe/precision_track/tree/main/tools) and the [configuration documentation](https://github.com/VincentCoulombe/precision_track/tree/main/configs), to generate tracking results for every of your videos. The relevant tracking results (for creating action recognition dataset) will be saved in the `<saving_directory>/*/{tracked_bboxes.csv, kpts.csv}` files.
+     Please refer to the [tooling documentation](https://github.com/VincentCoulombe/precision_track/tree/main/tools) and the [configuration documentation](https://github.com/VincentCoulombe/precision_track/tree/main/configs). This tool will generate tracking results for every videos in the provided directory. The relevant tracking results (for creating action recognition dataset) will be saved in the `<saving_directory>/*/{tracked_bboxes.csv, kpts.csv}` files.
   3. Use the `visualize.py` tool (with only `display_bounding_boxes` set to `true` as Visualization parameter) to create a visual for every tracking results obtained in 2).
   4. Manually review the tracking results and correct the tracking errors (ID switches).
   - You can manually edit the tracking switches by editing the `instance_id` column (meaning switching back the swapped IDs) of the `tracked_bboxes.csv` file saved inside the `saving_directory` from which the visual was created.
