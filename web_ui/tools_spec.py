@@ -73,7 +73,7 @@ TOOLS = {
             {"name": "profile", "type": "bool", "default": False, "help": "Record per-frame timing data."},
         ],
     },
-    "batch_track.py": {
+    "create_mot_dataset.py": {
         "label": "Batch-track a dataset",
         "description": "Auto-generate MOT bounding-box annotations for every video of a MOT dataset.",
         "positionals": [],

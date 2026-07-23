@@ -56,7 +56,7 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 
   - `track.py` — Run tracking on pre‑recorded videos.
 
-  - `batch_track.py` — Batch-track every video of a **MOT-style dataset** to automatically generate **MOT-formatted bounding boxes annotations**.
+  - `create_mot_dataset.py` — Batch-track every video of a **MOT-style dataset** to automatically generate **MOT-formatted bounding boxes annotations**.
 
   - `batch_track_directory.py` — Run the **full configured tracking pipeline** (and every enabled downstream task) on **every video inside a directory**.
 
@@ -186,9 +186,9 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 
 ---
 
-## 7) batch_track.py — auto-generate MOT annotations for a dataset
+## 7) create_mot_dataset.py — auto-generate MOT annotations for a dataset
 
-- **Purpose:** Batch-track an entire **MOT-style dataset** to automatically produce **MOT-formatted bounding boxes annotations**. Where `track.py` runs on a single video and emits the full set of outputs into your `work_dir`, `batch_track.py` walks every video of a dataset and writes a single, MOT-compatible `tracked_bboxes` file per video, named after the video itself. This is the fastest way to bootstrap (or pre-annotate) a dataset that so far only contains videos: the resulting files are ready to be reviewed/corrected and reused as ground truth by `test_tracking.py`.
+- **Purpose:** Batch-track an entire **MOT-style dataset** to automatically produce **MOT-formatted bounding boxes annotations**. Where `track.py` runs on a single video and emits the full set of outputs into your `work_dir`, `create_mot_dataset.py` walks every video of a dataset and writes a single, MOT-compatible `tracked_bboxes` file per video, named after the video itself. This is the fastest way to bootstrap (or pre-annotate) a dataset that so far only contains videos: the resulting files are ready to be reviewed/corrected and reused as ground truth by `test_tracking.py`.
 
 - **Inputs:**
   - `--force` — set to `true` to re-process and **overwrite** videos that already have a bounding boxes file. Default to `false`.
@@ -198,21 +198,23 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
   ```text
   mot_data_root/
   ├── videos/{train,val}/<stem>.{mp4,avi,mov,mkv,mpg,mpeg}
-  └── bboxes/{train,val}/<stem>.csv      # generated here (next to any ground truth)
+  ├── bboxes/{train,val}/<stem>.csv      # generated here (next to any ground truth)
+  └── kpts/{train,val}/<stem>.csv        # generated here if with_pose_estimation is true
   ```
 
 - **Outputs:** For every video found under `videos/train` and `videos/val`, a `bboxes/<split>/<stem>.csv` file containing the **MOT-formatted bounding boxes** of all the tracked subjects over the whole recording. The columns are `frame_id, class_id, instance_id, x, y, w, h, score` (top-left `xywh`), matching the ground-truth schema expected by `test_tracking.py`.
   - **Resumable / non-destructive:** if a `bboxes/<split>/<stem>.csv` already exists (a previous run, or hand-labelled ground truth), the video is **skipped with a warning** so existing annotations are never overwritten. Use `--force=true` to regenerate them.
   - Each video is tracked independently, so `instance_id`s restart from the first subject in every file.
+  - **Keypoints:** if `with_pose_estimation` is set to `true` in your [user configuration file](https://github.com/VincentCoulombe/precision_track/tree/main/configs), a matching `kpts/<split>/<stem>.csv` file is also written for every video, containing the tracked subjects' keypoints.
 
 - **Examples**
 
   ```bash
   <!-- Annotate the dataset defined in your user configs. -->
-  python batch_track.py
+  python create_mot_dataset.py
 
   <!-- Re-generate every annotation, overwriting existing files. -->
-  python batch_track.py --force=true
+  python create_mot_dataset.py --force=true
   ```
 
 ---
@@ -299,7 +301,7 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 
   ```bash
   <!-- Generate MOT-formatted annotations for every video of the dataset, then benchmark on it. -->
-  python batch_track.py
+  python create_mot_dataset.py
   python test_tracking.py
   ```
 
