@@ -142,7 +142,13 @@ class TrainingConfig(BaseModel):
     @classmethod
     def deploying_directory_not_blank(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError(f"deploying_directory must not be blank. {doc_pointer('training')}")
+            raise ValueError(
+                f"training.deploying_directory is blank. Every checkpoint field (tracking_checkpoint_name, "
+                f"mart_checkpoint_name, gmart_checkpoint_name, hyperparameters_file_name) is resolved as "
+                f"'deploying_directory/<name>', so an empty value would break all of them. Set it to the directory "
+                f"where your deployed checkpoints are (or should be) saved, e.g. '../checkpoints/my_model/'. "
+                f"{doc_pointer('training')}"
+            )
         return v
 
     @model_validator(mode="after")
@@ -169,7 +175,11 @@ class TrackingConfig(BaseModel):
     @classmethod
     def saving_directory_not_blank(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError(f"saving_directory must not be blank. {doc_pointer('tracking')}")
+            raise ValueError(
+                f"tracking.saving_directory is blank. This is where PrecisionTrack writes all tracking outputs "
+                f"(tracked_bboxes.csv, tracked_kpts.csv, etc.), and where the visualization tool reads from — it "
+                f"can't be left empty. {doc_pointer('tracking')}"
+            )
         return v
 
     @field_validator("num_subjects")
