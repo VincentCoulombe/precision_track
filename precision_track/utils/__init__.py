@@ -1,3 +1,4 @@
+from .config_schema import *
 from .cuda import *
 from .datasets import *
 from .deployment import *
