@@ -957,7 +957,6 @@ def load_system_config_dict(system_configs_path: str, final_base: str = "./_base
         else:
             raise ValueError(f"Unexpected _base_ encountered when parsing the '{path}' config file.")
 
-        # Is multiple bases, follow the first one. Enforce this convention in your config files.
         base_file = base_files[0]
         base_path = (path.parent / base_file).resolve()
 
@@ -969,6 +968,7 @@ def load_system_config_dict(system_configs_path: str, final_base: str = "./_base
 def load_user_configs(
     user_configs: Union[dict, str], system_configs_path: str, dynamic_work_dir_subdir: Optional[str] = None, dynamic_ar_flag: Optional[bool] = None
 ) -> None:
+    is_top_level_load = isinstance(user_configs, str)
     if isinstance(user_configs, str):
         with open(user_configs, "r") as f:
             user_configs = yaml.safe_load(f)
@@ -977,6 +977,18 @@ def load_user_configs(
         user_configs["tracking"]["saving_directory"] = os.path.join(user_configs["tracking"]["saving_directory"], dynamic_work_dir_subdir)
     if isinstance(dynamic_ar_flag, bool):
         user_configs["booleans"]["with_action_recognition"] = dynamic_ar_flag
+
+    if is_top_level_load:
+        from pydantic import ValidationError
+
+        from .config_schema import UserConfig, format_config_errors
+
+        try:
+            UserConfig(**user_configs)
+        except ValidationError as e:
+            print_log(format_config_errors(e), logger="current", level=logging.ERROR)
+            raise SystemExit(1)
+
     system_configs_path, system_configs = load_system_config_dict(system_configs_path)
 
     for section_dict in user_configs.values():
