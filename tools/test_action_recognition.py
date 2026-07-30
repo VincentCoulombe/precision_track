@@ -21,7 +21,7 @@ def parse_args():
 def main(args):
     system_configs_path = args.config
     user_system_configs_path = "../configs/user_configs.yaml"
-    load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
+    load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True, tool="test_action_recognition")
     cfg = load_config(system_configs_path)
     register_action_recognition_dataset(cfg["action_recognition_data_root"], system_configs_path)
     runner = Runner(system_configs_path, args.launcher, mode="test")

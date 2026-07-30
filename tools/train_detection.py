@@ -80,7 +80,19 @@ def main(args):
     logger = MMLogger.get_instance("mmengine", log_level=logging.INFO, file_mode="w")
     system_configs_path = "../configs/tasks/training_detection.py"
     user_system_configs_path = "../configs/user_configs.yaml"
-    load_user_configs(user_system_configs_path, system_configs_path)
+    load_user_configs(
+        user_system_configs_path,
+        system_configs_path,
+        tool="train_detection",
+        flags=dict(
+            test=args.test,
+            feature_extraction=args.feature_extraction,
+            format_dataset=args.format_dataset,
+            calibrate=args.calibrate,
+            deploy=args.deploy,
+            optimize_hyperparams=args.optimize_hyperparams,
+        ),
+    )
 
     training_config = load_config(system_configs_path)
     data_root = training_config["data_root"]

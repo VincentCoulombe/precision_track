@@ -18,11 +18,12 @@ def parse_args():
 def main(args):
     system_configs_path = "../configs/tasks/testing_tracking.py"
     user_system_configs_path = "../configs/user_configs.yaml"
-    load_user_configs(user_system_configs_path, system_configs_path)
+    load_user_configs(user_system_configs_path, system_configs_path, tool="test_tracking")
     config = load_config(system_configs_path)
     load_validation_config(config)
     config["test_cfg"]["validator"] = config.get("validator")
-    check_if_mot_dataset_is_ok(config["mot_data_root"])
+    mot_dataset_ok, feedback = check_if_mot_dataset_is_ok(config["mot_data_root"])
+    assert mot_dataset_ok, f"Invalid MOT dataset at '{config['mot_data_root']}': {feedback}"
     runner = Runner(config, args.launcher, mode="test")
     runner()
 

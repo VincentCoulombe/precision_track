@@ -72,6 +72,12 @@ def post_validate(field: str, config: dict = Body(..., embed=True)):
     return validators.validate_field(field, config)
 
 
+@app.post("/api/validate")
+def post_validate_all(config: dict = Body(..., embed=True), tool: Optional[str] = None):
+    """Whole-config report. ``tool`` narrows it to the parameters that tool actually reads."""
+    return validators.validate_all(config, tool=_tool_name(tool))
+
+
 @app.get("/api/metainfo/classes")
 def get_metainfo_classes(path: str = Query(...)):
     abs_path = resolve_from_tools(path)
@@ -137,10 +143,30 @@ def get_tools():
     return {"tools": TOOLS}
 
 
+def _tool_name(tool: Optional[str]) -> Optional[str]:
+    """``"track.py"`` -> ``"track"``, the identifier the validation registry uses."""
+    if not tool:
+        return None
+    return tool[:-3] if tool.endswith(".py") else tool
+
+
 @app.post("/api/run")
 async def post_run(tool: str = Body(...), values: dict = Body(default={})):
     if tool not in TOOLS:
         raise HTTPException(404, f"Unknown tool: {tool}")
+
+    # Refuse to launch a tool whose own parameters are invalid, while ignoring the ones it
+    # never reads — an unusable data_root must not block a tracking run.
+    report = validators.validate_all(config_io.load_config_plain(), tool=_tool_name(tool))
+    if report["errors"]:
+        raise HTTPException(
+            400,
+            "Cannot run "
+            + tool
+            + " — fix these first:\n"
+            + "\n".join(f"  - [{e['field']}] {e['message']}" for e in report["errors"]),
+        )
+
     try:
         argv = build_argv(tool, values)
     except ValueError as exc:

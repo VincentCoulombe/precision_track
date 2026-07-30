@@ -26,12 +26,17 @@ def build_video_config(
     video_path,
     system_configs_path="../configs/tasks/tracking.py",
     user_system_configs_path="../configs/user_configs.yaml",
+    tool="track",
+    validate=True,
 ):
     """Compute the per-video tracking config (with output paths pointing at this video's
     per-video sub-directory). Kept separate from tracker construction so a shared tracker
-    instance can be re-pointed at each video's outputs in batch mode."""
+    instance can be re-pointed at each video's outputs in batch mode.
+
+    ``validate=False`` skips the config check for callers that already validated once (batch
+    mode revalidates nothing per video)."""
     video_name = os.path.splitext(os.path.basename(video_path))[0]
-    load_user_configs(user_system_configs_path, system_configs_path, dynamic_work_dir_subdir=video_name)
+    load_user_configs(user_system_configs_path, system_configs_path, dynamic_work_dir_subdir=video_name, tool=tool, validate=validate)
     config = Config.fromfile(system_configs_path)
     load_validation_config(config)
     return config
@@ -53,7 +58,11 @@ def decide_pipelined(config):
 
 def main(args):
 
-    config = build_video_config(args.video)
+    config = build_video_config(
+        args.video,
+        tool=getattr(args, "tool", "track"),
+        validate=getattr(args, "validate", True),
+    )
     video = VideoReader(args.video)
     pipelined = decide_pipelined(config)
     if pipelined:

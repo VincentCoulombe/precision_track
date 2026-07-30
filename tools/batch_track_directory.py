@@ -11,8 +11,11 @@ from train_detection import str2bool
 
 from precision_track import PipelinedTracker, Tracker
 from precision_track.registry import TRACKING
-from precision_track.utils import VideoReader, refine_corrections_offline
+from precision_track.utils import VideoReader, assert_user_configs_valid, refine_corrections_offline
 from precision_track.utils.io import SUPPORTED_VIDEO_BACKEND
+
+TOOL = "batch_track_directory"
+USER_CONFIGS_PATH = "../configs/user_configs.yaml"
 
 
 def parse_args():
@@ -48,7 +51,8 @@ def track_directory_shared(videos):
     """Track every video with a SINGLE tracker instance so IDs persist across videos. Outputs
     are saved then reset after each video (into that video's per-video sub-directory) to keep
     RAM flat; only the outputs are reset between videos, never the association/validator state."""
-    first_config = build_video_config(str(videos[0]))
+    # The config was validated once in main(); per-video loads only re-render the paths.
+    first_config = build_video_config(str(videos[0]), tool=TOOL, validate=False)
     pipelined = decide_pipelined(first_config)
 
     assigner = first_config.get("assigner")
@@ -85,7 +89,7 @@ def track_directory_shared(videos):
         pending_refinements = []
         try:
             for i, video in enumerate(videos):
-                config_v = first_config if i == 0 else build_video_config(str(video))
+                config_v = first_config if i == 0 else build_video_config(str(video), tool=TOOL, validate=False)
                 print_log(f"[{i + 1}/{len(videos)}] Tracking {video.name}", logger="current")
                 if i > 0:
                     tracker._advance_to_next_video(config_v.get("outputs"))
@@ -108,7 +112,7 @@ def track_directory_shared(videos):
             verbose=True,
         )
         for i, video in enumerate(videos):
-            config_v = first_config if i == 0 else build_video_config(str(video))
+            config_v = first_config if i == 0 else build_video_config(str(video), tool=TOOL, validate=False)
             print_log(f"[{i + 1}/{len(videos)}] Tracking {video.name}", logger="current")
             if i > 0:
                 # Keep IDs/Kalman state, but rebase the frame clock since img_id restarts at 0.
@@ -132,10 +136,14 @@ def main(args):
         return
 
     print_log(f"Found {len(videos)} video(s) to track in {directory}.", logger="current")
+
+    # Validate once, before any work starts, rather than once per video.
+    assert_user_configs_valid(USER_CONFIGS_PATH, tool=TOOL)
+
     if args.restart_tracker_instance:
         for i, video in enumerate(videos, 1):
             print_log(f"[{i}/{len(videos)}] Tracking {video.name}", logger="current")
-            track_main(SimpleNamespace(video=str(video), profile=False))
+            track_main(SimpleNamespace(video=str(video), profile=False, tool=TOOL, validate=False))
     else:
         track_directory_shared(videos)
 

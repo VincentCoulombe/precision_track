@@ -29,7 +29,7 @@ def main(args):
 
     system_configs_path = "../configs/tasks/tracking.py"
     user_system_configs_path = "../configs/user_configs.yaml"
-    load_user_configs(user_system_configs_path, system_configs_path)
+    load_user_configs(user_system_configs_path, system_configs_path, tool="create_mot_dataset")
 
     config = Config.fromfile(system_configs_path)
     load_validation_config(config)

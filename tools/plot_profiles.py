@@ -6,9 +6,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from mmengine import Config
-
-from precision_track.utils import load_user_configs
 
 
 def identify_peaks(values, std_threshold=2.0):
@@ -207,11 +204,6 @@ def plot_multiple_metrics(data_dict, output_path, std_threshold, palette):
 
 
 def plot_profiling_data(json_path: str, std_threshold: float = 2.0) -> None:
-
-    system_configs_path = "../configs/tasks/tracking.py"
-    user_system_configs_path = "../configs/user_configs.yaml"
-    load_user_configs(user_system_configs_path, system_configs_path)
-
     output_dir = os.path.dirname(json_path)
 
     with open(json_path, "r") as f:
