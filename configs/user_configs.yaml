@@ -2,12 +2,12 @@
 # General on/off options
 # ================================
 booleans:
-  pipelined: true
+  pipelined: false
   with_validation: false
   with_offline_correction_refinement: false
   with_action_recognition: false
   with_group_action_recognition: false
-  with_pose_estimation: false
+  with_pose_estimation: true
 
 # ================================
 # General directories and paths
@@ -21,7 +21,7 @@ general:
 training:
   dataset_name: "mice"
 
-  data_root: "../../datasets/MICE/pose-estimation/"
+  data_root: "../../datasets/MICE/pose-estimation_640x640/"
 
   resume: false
   training_checkpoint: "../checkpoints/model_ap/model_ap.pth"
@@ -38,14 +38,15 @@ training:
 # ================================
 tracking:
   saving_directory: "../work_dir/"
-  num_subjects: { "mouse": 20 }
+  num_subjects: { "mouse": 1 }
 
-  tracking_checkpoint_name: "model_mice_DEPLOYED.pth"
+  tracking_checkpoint_name: "model_mice_DEPLOYED_NVIDIAGeForceRTX3090_FP16.engine"
+
   hyperparameters_file_name: "hyperparameters.json"
 
   output_clustered_features: false
 
-  mot_data_root: "../../datasets/MICE/pose-estimation/benchmark/"
+  mot_data_root: "../../datasets/MICE/re-id/mot_w_aruco/"
 
 # ================================
 # Action Recognition parameters
@@ -53,7 +54,7 @@ tracking:
 action_recognition:
   mart_checkpoint_name: "mart_DEPLOYED.pth"
   action_recognition_data_root: "../../datasets/MICE/sequential/"
-  output_action_recognition_embeddings: False
+  output_action_recognition_embeddings: false
 
 # ================================
 # Group Action Recognition parameters
@@ -74,11 +75,11 @@ validation:
 visualization:
   display_bounding_boxes: true
   display_poses: true
-  display_velocities: true
+  display_velocities: false
   display_species: false
-  display_confidence_scores: true
+  display_confidence_scores: false
   display_actions: false
   display_search_zones: false
   display_validations: false
-  display_untracked_detections: false
+  display_untracked_detections: true
   display_predicted_bounding_boxes: false

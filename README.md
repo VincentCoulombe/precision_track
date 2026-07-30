@@ -288,6 +288,7 @@ All these four files will need to share the same name. Obviously, this mean that
   │ ├── val/
   | | ├── video2.csv
   ├── videos/
+  │ ├── train/
   | | ├── video1.mp4
   │ ├── val/
   | | ├── video2.avi
