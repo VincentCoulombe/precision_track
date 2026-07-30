@@ -109,7 +109,13 @@ def main(args):
     logger = MMLogger.get_instance("mmengine", log_level=logging.INFO, file_mode="w")
     system_configs_path = args.config
     user_system_configs_path = "../configs/user_configs.yaml"
-    load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
+    load_user_configs(
+        user_system_configs_path,
+        system_configs_path,
+        dynamic_ar_flag=True,
+        tool="train_action_recognition",
+        flags=dict(test=args.test, deploy=args.deploy),
+    )
     deploy_cfg = load_config("../configs/tasks/deploying.py")
     register_action_recognition_dataset(deploy_cfg["action_recognition_data_root"], system_configs_path)
 
@@ -150,7 +156,13 @@ def main(args):
         n_group_classes = len(metainfo.get("social_actions", [])) + 1  # Account for added null class
         assert n_group_classes, f"'with_group_action_recognition', but no social_actions are defined in the '{metainfo}' metadata file."
         system_configs_path = "../configs/tasks/training_group_action_recognition.py"
-        load_user_configs(user_system_configs_path, system_configs_path, dynamic_ar_flag=True)
+        load_user_configs(
+            user_system_configs_path,
+            system_configs_path,
+            dynamic_ar_flag=True,
+            tool="train_action_recognition",
+            flags=dict(test=args.test, deploy=args.deploy),
+        )
         runner = Runner(system_configs_path, args.launcher, mode="train")
         runner()
         checkpoint_hook = find_checkpoint_hook(runner)

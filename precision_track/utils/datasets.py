@@ -426,7 +426,16 @@ def resize_coco_dataset(coco_path, output_path, target_size=(640, 640), ann_name
         json.dump(coco_data, f, indent=4)
 
 
-def check_if_mot_dataset_is_ok(dataset_root_dir: str):
+def check_if_mot_dataset_is_ok(dataset_root_dir: str, require_annotations: bool = True):
+    """Check a MOT-style dataset root.
+
+    ``require_annotations=True`` (the default, used when *reading* a benchmark, e.g.
+    ``test_tracking.py``) demands a ``bboxes/val`` .csv per ``videos/val`` video.
+
+    ``require_annotations=False`` only demands the videos. ``create_mot_dataset.py``
+    *produces* the bounding boxes, so requiring them up front would make it impossible to
+    bootstrap a dataset from raw videos.
+    """
     root = Path(dataset_root_dir).resolve()
 
     if not root.is_dir():
@@ -438,13 +447,16 @@ def check_if_mot_dataset_is_ok(dataset_root_dir: str):
     if not videos_val_dir.is_dir():
         return False, f"Your dataset does not contain a 'videos/val' subdirectory: {videos_val_dir}"
 
-    if not bboxes_val_dir.is_dir():
-        return False, f"Your dataset does not contain a 'bboxes/val' subdirectory: {bboxes_val_dir}"
-
     video_files = sorted(f for f in videos_val_dir.iterdir() if f.is_file() and f.suffix.lower() in SUPPORTED_VIDEO_BACKEND)
 
     if not video_files:
         return False, f"Your {videos_val_dir} subdirectory does not contains any videos"
+
+    if not require_annotations:
+        return True, ""
+
+    if not bboxes_val_dir.is_dir():
+        return False, f"Your dataset does not contain a 'bboxes/val' subdirectory: {bboxes_val_dir}"
 
     missing_bboxes = []
     for video_file in video_files:

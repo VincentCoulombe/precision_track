@@ -965,9 +965,46 @@ def load_system_config_dict(system_configs_path: str, final_base: str = "./_base
     return _find_settings(start_path)
 
 
+def assert_user_configs_valid(user_configs: Union[dict, str], tool: Optional[str] = None, flags: Optional[dict] = None) -> None:
+    """Validate a whole ``user_configs.yaml`` for ``tool``; log warnings, abort on errors.
+
+    Exposed separately from :func:`load_user_configs` so a tool that loads the config many
+    times (``batch_track_directory.py``, once per video) can check it exactly once.
+    """
+    if isinstance(user_configs, str):
+        with open(user_configs, "r") as f:
+            user_configs = yaml.safe_load(f)
+
+    from .config_schema import validate_user_config
+
+    report = validate_user_config(user_configs, tool=tool, flags=flags)
+    for warning in report.warnings:
+        print_log(str(warning), logger="current", level=logging.WARNING)
+    if not report.ok:
+        print_log(report.format(), logger="current", level=logging.ERROR)
+        raise SystemExit(1)
+
+
 def load_user_configs(
-    user_configs: Union[dict, str], system_configs_path: str, dynamic_work_dir_subdir: Optional[str] = None, dynamic_ar_flag: Optional[bool] = None
+    user_configs: Union[dict, str],
+    system_configs_path: str,
+    dynamic_work_dir_subdir: Optional[str] = None,
+    dynamic_ar_flag: Optional[bool] = None,
+    tool: Optional[str] = None,
+    flags: Optional[dict] = None,
+    validate: Optional[bool] = None,
 ) -> None:
+    """Inject ``user_configs`` into the settings file behind ``system_configs_path``.
+
+    ``tool`` names the caller (e.g. ``"track"``) so only the parameters that tool actually
+    dereferences are validated — see :mod:`precision_track.utils.config_fields`. ``flags``
+    carries the caller's CLI switches (``{"deploy": True, ...}``) for the checks that only
+    matter when a given stage runs. Leaving ``tool`` unset validates against every tool,
+    which is the conservative default.
+
+    ``validate`` defaults to True only for a top-level load (a path, not an already-parsed
+    dict), since partial dict updates are not whole configs.
+    """
     is_top_level_load = isinstance(user_configs, str)
     if isinstance(user_configs, str):
         with open(user_configs, "r") as f:
@@ -978,16 +1015,11 @@ def load_user_configs(
     if isinstance(dynamic_ar_flag, bool):
         user_configs["booleans"]["with_action_recognition"] = dynamic_ar_flag
 
-    if is_top_level_load:
-        from pydantic import ValidationError
+    if validate is None:
+        validate = is_top_level_load
 
-        from .config_schema import UserConfig, format_config_errors
-
-        try:
-            UserConfig(**user_configs)
-        except ValidationError as e:
-            print_log(format_config_errors(e), logger="current", level=logging.ERROR)
-            raise SystemExit(1)
+    if validate:
+        assert_user_configs_valid(user_configs, tool=tool, flags=flags)
 
     system_configs_path, system_configs = load_system_config_dict(system_configs_path)
 
