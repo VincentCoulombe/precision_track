@@ -1,13 +1,16 @@
 import multiprocessing as mp
 import os
 
+import numpy as np
 import pandas as pd
 import pytest
+import torch
 import yaml
 from mmengine import Config
 
 from precision_track import PipelinedTracker, Tracker
-from precision_track.utils import VideoReader, load_user_configs
+from precision_track.models.group_mart import GMARTPredictions
+from precision_track.utils import VideoReader, empty_fpv_action_recognition, load_user_configs, postprocess_fpv_action_recognition
 
 ROOT = "./tests/"
 
@@ -51,6 +54,94 @@ def set_user_configs(with_action_recognition: bool, user_configs, system_config,
     if metadata_file:
         user_configs["training"]["metainfo"] = metadata_file
     load_user_configs(user_configs, system_config)
+
+
+ACTIONS_MAP = np.array(["Other", "Rearing", "Interacting"], dtype="<U32")
+GROUP_ACTIONS_MAP = np.array(["Interacting"], dtype="<U32")
+
+
+def gmart_predictions(class_logits, social_logits, edge_probs):
+    """Mimic the shapes GMART.predict returns: the batch axis is already stripped."""
+    return GMARTPredictions(
+        class_logits.squeeze(0),
+        torch.randn(1, class_logits.shape[1], 8),
+        edge_probs.squeeze(0),
+        social_logits.squeeze(0),
+    )
+
+
+def data_sample_of(instances_id):
+    return {
+        "pred_track_instances": {
+            "instances_id": np.asarray(instances_id),
+            "valid_action_recognition_context": torch.ones(len(instances_id), dtype=torch.bool),
+        }
+    }
+
+
+@pytest.mark.parametrize("nb_subjects", [0, 1, 2, 3])
+def test_postprocessing_is_shape_stable(nb_subjects):
+    """A single tracked subject must not collapse the instance axis (see the double-squeeze regression)."""
+    preds = gmart_predictions(
+        class_logits=torch.softmax(torch.randn(1, nb_subjects, len(ACTIONS_MAP)), dim=-1),
+        social_logits=torch.softmax(torch.randn(1, nb_subjects, len(GROUP_ACTIONS_MAP) + 1), dim=-1),
+        edge_probs=torch.rand(1, nb_subjects, nb_subjects),
+    )
+    data_sample = data_sample_of(range(nb_subjects))
+
+    out = postprocess_fpv_action_recognition(
+        preds,
+        data_sample,
+        ACTIONS_MAP,
+        group_actions_map=GROUP_ACTIONS_MAP,
+        null_action="Other",
+    )["pred_track_instances"]
+
+    assert len(out["actions"]) == nb_subjects
+    assert len(out["action_scores"]) == nb_subjects
+    assert len(out["target_ids"]) == nb_subjects
+    assert out["action_embeddings"].shape[0] == nb_subjects
+
+
+def test_empty_postprocessing_matches_the_regular_tail():
+    """Frames without any subject bypass the model, but must expose the same fields."""
+    empty = empty_fpv_action_recognition(data_sample_of([]), ACTIONS_MAP.dtype, with_target_ids=True)["pred_track_instances"]
+
+    preds = gmart_predictions(
+        class_logits=torch.empty(1, 0, len(ACTIONS_MAP)),
+        social_logits=torch.empty(1, 0, len(GROUP_ACTIONS_MAP) + 1),
+        edge_probs=torch.empty(1, 0, 0),
+    )
+    postprocessed = postprocess_fpv_action_recognition(
+        preds,
+        data_sample_of([]),
+        ACTIONS_MAP,
+        group_actions_map=GROUP_ACTIONS_MAP,
+        null_action="Other",
+    )["pred_track_instances"]
+
+    for field in ("actions", "action_scores", "target_ids"):
+        assert empty[field].size == 0
+        assert postprocessed[field].size == 0
+
+
+def test_postprocessing_pairs_social_subjects():
+    """The subject above the social threshold gets the group label and points at its partner."""
+    class_logits = torch.tensor([[[0.05, 0.05, 0.9], [0.9, 0.05, 0.05]]])
+    social_logits = torch.tensor([[[0.1, 0.9], [0.9, 0.1]]])
+    edge_probs = torch.tensor([[[0.0, 0.9], [0.9, 0.0]]])
+    data_sample = data_sample_of([10, 20])
+
+    out = postprocess_fpv_action_recognition(
+        gmart_predictions(class_logits, social_logits, edge_probs),
+        data_sample,
+        ACTIONS_MAP,
+        group_actions_map=GROUP_ACTIONS_MAP,
+        null_action="Other",
+    )["pred_track_instances"]
+
+    assert out["actions"].tolist() == ["Interacting", "Other"]
+    assert out["target_ids"].tolist() == ["20", "-1"]
 
 
 @pytest.mark.timeout(10 * 60)

@@ -6,6 +6,7 @@ import torch
 from mmengine import Config
 
 from precision_track.models import ActionRecognitionPreprocessor
+from precision_track.utils import kwargs_to_args
 
 ROOT = "./tests/"
 
@@ -45,6 +46,15 @@ def preprocessor_config():
 def preprocessor(metainfo, preprocessor_config):
     """Create a ActionRecognitionPreprocessor instance with mocked dependencies"""
     preprocessor_config["metainfo"] = metainfo
+    return ActionRecognitionPreprocessor(**preprocessor_config)
+
+
+@pytest.fixture
+def priors_preprocessor(metainfo, preprocessor_config):
+    """Same, but with the pairwise priors that group action recognition consumes."""
+    preprocessor_config["metainfo"] = metainfo
+    preprocessor_config["with_distance_prior"] = True
+    preprocessor_config["with_keypoint_priors"] = True
     return ActionRecognitionPreprocessor(**preprocessor_config)
 
 
@@ -520,6 +530,32 @@ class TestEdgeCases:
             out = preprocessor.forward(data)
 
             assert isinstance(out, dict)
+
+    @pytest.mark.parametrize("num_instances", [0, 1, 2, 3])
+    def test_priors_emitted_for_any_instance_count(self, priors_preprocessor, num_instances):
+        """The analyzer's input_names always asks for the priors, so they must be emitted
+        whatever the number of tracked instances, otherwise kwargs_to_args raises a KeyError."""
+        embd_size = priors_preprocessor._embd_size
+        num_keypoints = priors_preprocessor._cur_kpts.shape[1]
+        num_pairs = len(priors_preprocessor.src_kpt_idxs)
+
+        track_instance = create_track_instance(
+            num_instances=num_instances,
+            embd_size=embd_size,
+            num_keypoints=num_keypoints,
+            ids=np.arange(num_instances),
+            labels=np.zeros(num_instances, dtype=np.int64),
+        )
+
+        data = {"data_samples": MockDataSample(pred_track_instances=track_instance, img_id=0)}
+
+        out = priors_preprocessor.forward(data)
+
+        assert out["distance_priors"].shape == (num_instances, num_instances)
+        assert out["keypoint_priors"].shape == (num_instances, num_instances, num_pairs)
+        assert "valid_mask" in out
+
+        kwargs_to_args(out, ["features", "poses", "dynamics", "distance_priors", "keypoint_priors"])
 
     def test_id_reuse_after_expiration(self, preprocessor):
         block_size = preprocessor._block_size

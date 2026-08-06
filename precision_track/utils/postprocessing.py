@@ -135,6 +135,41 @@ def postprocess_one_stage_detections(
     return formatted_outputs
 
 
+def _drop_batch_dim(tensor: torch.Tensor, expected_ndim: int) -> torch.Tensor:
+    """Strip a leading batch axis only if the tensor still carries one.
+
+    ``squeeze(0)`` cannot be used here: with a single tracked instance the instance
+    axis is also of size 1 and would be collapsed along with (or instead of) the batch.
+    """
+    return tensor[0] if tensor.ndim == expected_ndim + 1 else tensor
+
+
+def _single_data_sample(data_samples: Union[List[PoseDataSample], PoseDataSample]) -> PoseDataSample:
+    if isinstance(data_samples, List):
+        assert len(data_samples) == 1, "Action Recognition does not support batches."
+        return data_samples[0]
+    return data_samples
+
+
+def empty_fpv_action_recognition(
+    data_samples: Union[List[PoseDataSample], PoseDataSample],
+    actions_dtype: Optional[Any] = "<U32",
+    with_target_ids: Optional[bool] = False,
+):
+    """The fields an action recognition frame carries when no subject is tracked.
+
+    Frames without instances are fed to no model at all: the pairwise graph of an empty
+    set of subjects is undefined, and every runtime chokes on 0-sized inputs.
+    """
+    data_sample = _single_data_sample(data_samples)
+    pred_track_instances = data_sample["pred_track_instances"]
+    pred_track_instances["actions"] = np.empty(0, dtype=actions_dtype)
+    pred_track_instances["action_scores"] = np.empty(0, dtype=np.float32)
+    if with_target_ids:
+        pred_track_instances["target_ids"] = np.empty(0, dtype=str)
+    return data_sample
+
+
 def postprocess_fpv_action_recognition(
     preds: Union[torch.Tensor, tuple],
     data_samples: Union[List[PoseDataSample], PoseDataSample],
@@ -145,23 +180,19 @@ def postprocess_fpv_action_recognition(
     group_actions_map: Optional[np.ndarray] = None,
     null_action: Optional[str] = None,
 ):
-    if isinstance(data_samples, List):
-        assert len(data_samples) == 1, "Action Recognition does not support batches."
-        data_sample = data_samples[0]
-    else:
-        data_sample = data_samples
+    data_sample = _single_data_sample(data_samples)
     if isinstance(preds, list):
         preds = preds[0]
 
     edge_probs = None
     social_logits = None
     if isinstance(preds, tuple):
-        data_sample["pred_track_instances"]["action_embeddings"] = preds[1]
+        data_sample["pred_track_instances"]["action_embeddings"] = _drop_batch_dim(preds[1], 2)
         if len(preds) >= 3:
-            edge_probs = preds[2].squeeze(0)
+            edge_probs = _drop_batch_dim(preds[2], 2)
         if len(preds) >= 4:
-            social_logits = preds[3].squeeze(0)
-        preds = preds[0].squeeze(0)
+            social_logits = _drop_batch_dim(preds[3], 2)
+        preds = _drop_batch_dim(preds[0], 2)
 
     if isinstance(preds, torch.Tensor):
         preds = preds.detach().cpu().numpy().astype(np.float32)
@@ -183,7 +214,7 @@ def postprocess_fpv_action_recognition(
         valid_ids = data_sample["pred_track_instances"]["instances_id"]
         target_ids = np.full(len(valid_ids), "-1", dtype=object)
 
-        if np.any(social_actions):
+        if social_actions.size > 0:
             actions[is_social] = group_actions_map[social_actions - 1]
             target_ids[is_social] = [",".join(map(str, valid_ids[edge_probs[i] >= social_action_threshold])) or "-1" for i in is_social]
 

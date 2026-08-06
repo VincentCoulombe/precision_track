@@ -1,21 +1,21 @@
 _base_ = "./_base_.py"
 
 # Common
-metainfo = '../configs/metadata/stripedmice.py'
+metainfo = '../configs/metadata/mice.py'
 wandb_logging = False
 # /Common
 
 # 1) Detection
-with_pose_estimation = False
+with_pose_estimation = True
 half_precision = True
 
 widen_factor = 0.5
 deepen_factor = 0.33
 #   1.1) Training
 data_mode = _base_.data_mode
-data_root = '../../datasets/MICE/pose-estimation/'
+data_root = '../../datasets/MICE/pose-estimation_640x640/'
 dataset_name = 'mice'
-deploying_directory = '../checkpoints/stripedmice/'
+deploying_directory = '../checkpoints/mice/'
 deployed_name = "model_" + dataset_name + "_DEPLOYED.pth"
 training_work_dir = _base_.work_dir + "training_runs/" + dataset_name + "/"
 resume = False
@@ -82,25 +82,25 @@ deployment_device = "auto"
 
 
 # 2) Tracking
-tracking_checkpoint_name = 'model_stripedmice_DEPLOYED.onnx'
+tracking_checkpoint_name = 'model_mice_DEPLOYED_NVIDIAGeForceRTX3090_FP16.engine'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
-pipelined = True
-saving_directory = '../work_dir/test23_mosaic_2026-05-01T07_46_42_trimmed_1min'
+pipelined = False
+saving_directory = '../work_dir/Vertical'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
-with_validation = True
-with_offline_correction_refinement = True
+with_validation = False
+with_offline_correction_refinement = False
 with_action_recognition = False
 with_group_action_recognition = False
 
-num_subjects = {'mouse': 5}
+num_subjects = {'mouse': 1}
 stitching_algorithm = dict(
     type="SearchBasedStitching",
     capped_classes=num_subjects,
-    beta=0.5,
-    match_thr=0.9,
+    beta=0.25,
+    match_thr=0.99,
 )
 
 #   2.1) Tuning
@@ -118,7 +118,7 @@ hyperparams = deploying_directory + hyperparameters_file_name
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
-mot_data_root = '../../datasets/stripedmice/mot/'
+mot_data_root = '../../datasets/MICE/re-id/mot_w_aruco/'
 testing_tracking_output_file = testing_work_dir + "mean_CLEAR_metrics_over_all_videos.csv"
 testing_tracking_output_file_2 = testing_work_dir + "mean_purity_metrics_over_all_videos.csv"
 testing_tracking_output_file_3 = testing_work_dir + "mean_throughput_per_substep.csv"
@@ -257,15 +257,15 @@ action_recognition_val_interval = 1000
 
 action_recognition_data_root = '../../datasets/MICE/sequential/'
 
-action_recognition_train_sequences = ["videos/train/13-10-02.avi", "videos/train/13-20-02.avi", "videos/train/13-40-02.avi"]
-action_recognition_train_bboxes_gt_paths = ["bboxes/train/13-10-02.csv", "bboxes/train/13-20-02.csv", "bboxes/train/13-40-02.csv"]
-action_recognition_train_keypoints_gt_paths = ["keypoints/train/13-10-02.csv", "keypoints/train/13-20-02.csv", "keypoints/train/13-40-02.csv"]
-action_recognition_train_actions_gt_paths = ["actions/train/13-10-02.csv", "actions/train/13-20-02.csv", "actions/train/13-40-02.csv"]
+action_recognition_train_sequences = ['videos/train/13-10-02.avi', 'videos/train/13-20-02.avi', 'videos/train/13-40-02.avi']
+action_recognition_train_bboxes_gt_paths = ['bboxes/train/13-10-02.csv', 'bboxes/train/13-20-02.csv', 'bboxes/train/13-40-02.csv']
+action_recognition_train_keypoints_gt_paths = ['keypoints/train/13-10-02.csv', 'keypoints/train/13-20-02.csv', 'keypoints/train/13-40-02.csv']
+action_recognition_train_actions_gt_paths = ['actions/train/13-10-02.csv', 'actions/train/13-20-02.csv', 'actions/train/13-40-02.csv']
 
-action_recognition_val_sequences = ["videos/val/14-20-02.avi"]
-action_recognition_val_bboxes_gt_paths = ["bboxes/val/14-20-02.csv"]
-action_recognition_val_keypoints_gt_paths = ["keypoints/val/14-20-02.csv"]
-action_recognition_val_actions_gt_paths = ["actions/val/14-20-02.csv"]
+action_recognition_val_sequences = ['videos/val/14-20-02.avi']
+action_recognition_val_bboxes_gt_paths = ['bboxes/val/14-20-02.csv']
+action_recognition_val_keypoints_gt_paths = ['keypoints/val/14-20-02.csv']
+action_recognition_val_actions_gt_paths = ['actions/val/14-20-02.csv']
 
 #   3.2) /Training
 
@@ -284,13 +284,13 @@ action_recognition_test_actions_gt_paths = action_recognition_val_actions_gt_pat
 # 4) Visualization
 display_bounding_boxes = True
 display_poses = True
-display_velocities = True
+display_velocities = False
 display_species = False
-display_confidence_scores = True
+display_confidence_scores = False
 display_actions = False
 display_search_zones = False
-display_validations = True
-display_untracked_detections = False
+display_validations = False
+display_untracked_detections = True
 display_predicted_bounding_boxes = False
 # 4) /Visualization
 output_clustered_features = False

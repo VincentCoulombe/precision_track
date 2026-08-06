@@ -72,14 +72,14 @@ if _base_.with_action_recognition and _base_.with_group_action_recognition:
         ),
         runtime=dict(
             model=dict(
-                type="GMART",
+                type="RelationshipDetectionPoseBaselineModel",
                 mart_config=mart,
                 mart_checkpoint=_base_.mart_checkpoint,
                 metainfo=_base_.metainfo,
                 with_keypoint_priors=True,
                 _delete_=True,
             ),
-            checkpoint=_base_.gmart_checkpoint,
+            checkpoint=None,
             input_shapes=list(_base_.analyzer.runtime.input_shapes)
             + [
                 dict(type="DistancePriorsShape"),

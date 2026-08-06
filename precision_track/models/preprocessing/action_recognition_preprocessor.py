@@ -301,7 +301,7 @@ class ActionRecognitionPreprocessor(BaseDataPreprocessor):
             out["dynamics"] = self.materialize(self.block_vels, running_idxs)
         if self._with_actions:
             out["actions"] = self.materialize(self.block_actions, running_idxs)
-        if self._need_kpt_state and running_idxs.numel() > 1:
+        if self._need_kpt_state:
             out.update(self._compute_priors(running_idxs))
             out["valid_mask"] = None
         out["data_samples"] = data["data_samples"]
