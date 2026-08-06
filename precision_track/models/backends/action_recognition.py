@@ -9,7 +9,7 @@ from mmengine.logging import print_log
 from mmengine.runner.amp import autocast
 
 from precision_track.registry import MODELS
-from precision_track.utils import PoseDataSample, kwargs_to_args, parse_pose_metainfo, postprocess_fpv_action_recognition
+from precision_track.utils import PoseDataSample, empty_fpv_action_recognition, kwargs_to_args, parse_pose_metainfo, postprocess_fpv_action_recognition
 
 from .base import BaseBackend
 
@@ -96,6 +96,9 @@ class ActionRecognitionBackend(BaseBackend):
     ) -> Union[list[dict], dict]:
         with autocast(enabled=self.half_precision):
             data = self.preprocess(data_samples)
+            if data["features"].shape[0] == 0:
+                # No subject to analyze. Note that the preprocessing still had to run, as it holds the temporal context of the tracks.
+                return empty_fpv_action_recognition(data["data_samples"], self.actions.dtype, self.group_actions.size > 0)
             preds = self._runtime.predict(kwargs_to_args(data, self.input_names), data["data_samples"])
             outputs = self.postprocess(preds, data["data_samples"])
         return outputs

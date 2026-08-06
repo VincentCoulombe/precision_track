@@ -452,6 +452,20 @@ def _check_gar_requires_ar(cfg, ctx):
     return None
 
 
+def _check_gar_needs_multiple_subjects(cfg, ctx):
+    num_subjects = get(cfg, "tracking", "num_subjects") or {}
+    if not isinstance(num_subjects, dict):
+        return None
+    total = sum(v for v in num_subjects.values() if isinstance(v, int) and v > 0)
+    if 0 < total < 2:
+        return (
+            f"booleans.with_group_action_recognition is true but tracking.num_subjects totals {total} "
+            "subject — social interactions require at least two individuals, so the interaction and "
+            "social action outputs will always be empty. " + doc_pointer("group_action_recognition")
+        )
+    return None
+
+
 def _check_ar_requires_pose(cfg, ctx):
     b = cfg.get("booleans", {})
     if (b.get("with_action_recognition") or b.get("with_group_action_recognition")) and not b.get("with_pose_estimation"):
@@ -575,6 +589,12 @@ FIELDS: Sequence[ConfigField] = (
     ),
     # --- cross-section ---
     ConfigField("booleans.with_group_action_recognition", _check_gar_requires_ar),
+    ConfigField(
+        "booleans.with_group_action_recognition",
+        _check_gar_needs_multiple_subjects,
+        when=_gar_on,
+        severity="warning",
+    ),
     ConfigField("booleans.with_pose_estimation", _check_ar_requires_pose),
     ConfigField(
         "booleans.with_offline_correction_refinement",

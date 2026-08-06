@@ -32,9 +32,24 @@ def shipped_config():
         return yaml.safe_load(f)
 
 
+#: The boolean state the gating tables below start from. ``user_configs.yaml`` is meant to be
+#: edited, so the matrix is pinned here rather than inherited from whatever the developer running
+#: the suite happens to have enabled locally.
+BASELINE_BOOLEANS = dict(
+    pipelined=False,
+    with_validation=False,
+    with_offline_correction_refinement=False,
+    with_action_recognition=False,
+    with_group_action_recognition=False,
+    with_pose_estimation=True,
+)
+
+
 @pytest.fixture
 def cfg(shipped_config):
-    return copy.deepcopy(shipped_config)
+    cfg = copy.deepcopy(shipped_config)
+    cfg["booleans"].update(BASELINE_BOOLEANS)
+    return cfg
 
 
 def errors_for(cfg, tool=None, flags=None):

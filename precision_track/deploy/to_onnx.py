@@ -94,7 +94,9 @@ def mart_to_onnx(
 
     distance_priors = data.get("distance_priors")
     keypoint_priors = data.get("keypoint_priors")
-    has_gar = distance_priors is not None
+    has_gar = bool(deploy_cfg[analyzer_key].get("data_preprocessor", {}).get("with_distance_prior", False))
+    if has_gar:
+        assert distance_priors is not None, "GAR export requested but the preprocessor produced no distance_priors."
 
     if has_gar:
         _model = torch_model
