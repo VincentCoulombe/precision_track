@@ -48,6 +48,7 @@ TRAIN_DETECTION = "train_detection"
 TEST_DETECTION = "test_detection"
 TRAIN_ACTION_RECOGNITION = "train_action_recognition"
 TEST_ACTION_RECOGNITION = "test_action_recognition"
+PRETRAIN_ACTION_RECOGNITION = "pretrain_action_recognition"
 TEST_TRACKING = "test_tracking"
 TRACK = "track"
 BATCH_TRACK_DIRECTORY = "batch_track_directory"
@@ -63,6 +64,7 @@ CONFIG_TOOLS = frozenset(
         TEST_DETECTION,
         TRAIN_ACTION_RECOGNITION,
         TEST_ACTION_RECOGNITION,
+        PRETRAIN_ACTION_RECOGNITION,
         TEST_TRACKING,
         TRACK,
         BATCH_TRACK_DIRECTORY,
@@ -75,10 +77,15 @@ ALL_TOOLS = CONFIG_TOOLS | {PLOT_PROFILES, VISUALIZE_APPEARANCES}
 
 #: Tools that build a live tracking pipeline (detector + assigner) from the deployed checkpoints.
 PIPELINE_TOOLS = frozenset({TRACK, BATCH_TRACK_DIRECTORY, CREATE_MOT_DATASET, TEST_TRACKING})
-#: Tools that train or evaluate MART / GMART.
+#: Tools that train or evaluate MART / GMART against *labelled* actions. Unsupervised
+#: pretraining is deliberately excluded: it reconstructs masked embeddings from raw video and
+#: needs neither an action-recognition dataset nor an existing MART checkpoint.
 AR_TOOLS = frozenset({TRAIN_ACTION_RECOGNITION, TEST_ACTION_RECOGNITION})
 #: Tools that need a real detector checkpoint on disk.
-DETECTOR_TOOLS = PIPELINE_TOOLS | AR_TOOLS
+DETECTOR_TOOLS = PIPELINE_TOOLS | AR_TOOLS | {PRETRAIN_ACTION_RECOGNITION}
+#: Tools that *consume* an already-trained MART/GMART checkpoint. Pretraining produces one
+#: from scratch, so requiring it to pre-exist would make the tool impossible to run.
+MART_CONSUMER_TOOLS = DETECTOR_TOOLS - {PRETRAIN_ACTION_RECOGNITION}
 #: Tools that resolve the validation configuration (``visualize`` does so via ``load_writers``).
 VALIDATION_TOOLS = PIPELINE_TOOLS | {VISUALIZE}
 
@@ -564,7 +571,7 @@ FIELDS: Sequence[ConfigField] = (
     ConfigField(
         "action_recognition.mart_checkpoint_name",
         _checkpoint_check("action_recognition", "mart_checkpoint_name", allow_empty=False),
-        tools=DETECTOR_TOOLS,
+        tools=MART_CONSUMER_TOOLS,
         when=_ar_on,
     ),
     ConfigField(
@@ -577,7 +584,7 @@ FIELDS: Sequence[ConfigField] = (
     ConfigField(
         "group_action_recognition.gmart_checkpoint_name",
         _checkpoint_check("group_action_recognition", "gmart_checkpoint_name", allow_empty=False),
-        tools=DETECTOR_TOOLS,
+        tools=MART_CONSUMER_TOOLS,
         when=_gar_on,
     ),
     # --- validation ---
