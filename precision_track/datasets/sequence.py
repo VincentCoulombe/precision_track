@@ -1427,10 +1427,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
         return dict(inputs=inputs, data_samples=inputs_ds)
 
     def _pick_random_seqs(self):
-        seq_idxs = np.arange(self._nb_sequences)
-        selected_seq_idxs = []
-        for _ in range(self.nb_simulteneous_seq):
-            selected_seq_idxs.append(np.random.choice(seq_idxs, replace=False))
+        assert (
+            self._nb_sequences >= self.nb_simulteneous_seq
+        ), f"Cannot randomly select {self.nb_simulteneous_seq} sequences from a pool of only {self._nb_sequences} sequences."
+        selected_seq_idxs = np.random.choice(self._nb_sequences, size=self.nb_simulteneous_seq, replace=False).tolist()
         self.data_prefix = copy.deepcopy(self._all_data_prefix)
         for k, v in self.data_prefix.items():
             v = infer_paths(v)
