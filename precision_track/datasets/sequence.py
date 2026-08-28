@@ -1538,6 +1538,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
                                 self.instance_sequences[id_][s] = []
                             self.instance_sequences[id_][s].append(frame_id)
                             self._length += 1
+            assert self._length > self.block_size, (
+                f"The sequences yielded {self._length} usable frames, which is not enough for a block size of {self.block_size}. "
+                "The detector found no instance to track in them."
+            )
         self.instances = list(self.instance_sequences.keys())
 
         seq_counter = 0
