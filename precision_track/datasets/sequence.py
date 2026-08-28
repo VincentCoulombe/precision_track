@@ -1577,11 +1577,12 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 analyzer=None,
                 verbose=True,
             )
+            empty_frames = 0
             for i in range(seq_length):
                 pred_track_instances = Dict()
                 for o in results.outputs:
                     frame_output = torch.tensor(o[i])
-                    if len(frame_output) > 0:
+                    if frame_output.numel() > 0:
                         if o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[0]:
                             pred_track_instances.labels = frame_output[:, 1]
                             pred_track_instances.instances_id = frame_output[:, 2]
@@ -1596,7 +1597,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
                         elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[3]:
                             pred_track_instances.features = frame_output
                     else:
-                        pred_track_instances.instances_id = frame_output
+                        pred_track_instances.instances_id = frame_output.reshape(-1)
+
+                if len(pred_track_instances.instances_id) == 0:
+                    empty_frames += 1
 
                 light_ds = PoseDataSample()
                 light_ds.pred_track_instances = pred_track_instances
@@ -1604,6 +1608,12 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 light_ds.seq_id = sequence_idx
 
                 data_list[sequence_idx].append(light_ds)
+
+            if empty_frames:
+                self.logger.warning(
+                    f"{empty_frames}/{seq_length} frames of {sequence} hold no detection. "
+                    "Those frames will not contribute any training sample."
+                )
 
         return data_list
 
