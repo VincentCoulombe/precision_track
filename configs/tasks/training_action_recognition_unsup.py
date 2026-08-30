@@ -62,6 +62,7 @@ outputs = [
         type="CsvBoundingBoxes",
         path=_base_.work_dir + "/bboxes.csv",
         instance_data="pred_track_instances",
+        subtype="tracked_bboxes",
         precision=64,
     ),
     dict(

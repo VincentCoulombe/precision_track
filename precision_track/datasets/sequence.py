@@ -1427,10 +1427,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
         return dict(inputs=inputs, data_samples=inputs_ds)
 
     def _pick_random_seqs(self):
-        seq_idxs = np.arange(self._nb_sequences)
-        selected_seq_idxs = []
-        for _ in range(self.nb_simulteneous_seq):
-            selected_seq_idxs.append(np.random.choice(seq_idxs, replace=False))
+        assert (
+            self._nb_sequences >= self.nb_simulteneous_seq
+        ), f"Cannot randomly select {self.nb_simulteneous_seq} sequences from a pool of only {self._nb_sequences} sequences."
+        selected_seq_idxs = np.random.choice(self._nb_sequences, size=self.nb_simulteneous_seq, replace=False).tolist()
         self.data_prefix = copy.deepcopy(self._all_data_prefix)
         for k, v in self.data_prefix.items():
             v = infer_paths(v)
@@ -1538,6 +1538,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
                                 self.instance_sequences[id_][s] = []
                             self.instance_sequences[id_][s].append(frame_id)
                             self._length += 1
+            assert self._length > self.block_size, (
+                f"The sequences yielded {self._length} usable frames, which is not enough for a block size of {self.block_size}. "
+                "The detector found no instance to track in them."
+            )
         self.instances = list(self.instance_sequences.keys())
 
         seq_counter = 0
@@ -1577,11 +1581,23 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 analyzer=None,
                 verbose=True,
             )
+            tracked_frames = max((len(o) for o in results.outputs), default=0)
+            if tracked_frames < seq_length:
+                self.logger.warning(
+                    f"{sequence} announces {seq_length} frames, but only {tracked_frames} of them could be decoded and tracked. "
+                    "The video is either truncated or holds a corrupted frame; the missing frames are ignored."
+                )
+                seq_length = tracked_frames
+
+            empty_frames = 0
             for i in range(seq_length):
                 pred_track_instances = Dict()
                 for o in results.outputs:
-                    frame_output = torch.tensor(o[i])
-                    if len(frame_output) > 0:
+                    try:
+                        frame_output = torch.tensor(o[i])
+                    except IndexError:
+                        frame_output = torch.zeros(0)
+                    if frame_output.numel() > 0:
                         if o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[0]:
                             pred_track_instances.labels = frame_output[:, 1]
                             pred_track_instances.instances_id = frame_output[:, 2]
@@ -1596,7 +1612,10 @@ class MAEDataset(OfflineRandomSequenceDataset):
                         elif o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[3]:
                             pred_track_instances.features = frame_output
                     else:
-                        pred_track_instances.instances_id = frame_output
+                        pred_track_instances.instances_id = frame_output.reshape(-1)
+
+                if len(pred_track_instances.instances_id) == 0:
+                    empty_frames += 1
 
                 light_ds = PoseDataSample()
                 light_ds.pred_track_instances = pred_track_instances
@@ -1604,6 +1623,12 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 light_ds.seq_id = sequence_idx
 
                 data_list[sequence_idx].append(light_ds)
+
+            if empty_frames:
+                self.logger.warning(
+                    f"{empty_frames}/{seq_length} frames of {sequence} hold no detection. "
+                    "Those frames will not contribute any training sample."
+                )
 
         return data_list
 

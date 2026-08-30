@@ -154,6 +154,8 @@ action_recognition_bboxes_gt_format = "CsvBoundingBoxes"
 action_recognition_keypoints_gt_format = "CsvKeypoints"
 action_recognition_actions_gt_format = "CsvActions"
 
+inference_resolution = (1536, 1536)
+
 assigner = dict(
     nb_frames_retain=block_size,
 )
