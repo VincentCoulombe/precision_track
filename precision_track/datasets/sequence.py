@@ -1581,11 +1581,22 @@ class MAEDataset(OfflineRandomSequenceDataset):
                 analyzer=None,
                 verbose=True,
             )
+            tracked_frames = max((len(o) for o in results.outputs), default=0)
+            if tracked_frames < seq_length:
+                self.logger.warning(
+                    f"{sequence} announces {seq_length} frames, but only {tracked_frames} of them could be decoded and tracked. "
+                    "The video is either truncated or holds a corrupted frame; the missing frames are ignored."
+                )
+                seq_length = tracked_frames
+
             empty_frames = 0
             for i in range(seq_length):
                 pred_track_instances = Dict()
                 for o in results.outputs:
-                    frame_output = torch.tensor(o[i])
+                    try:
+                        frame_output = torch.tensor(o[i])
+                    except IndexError:
+                        frame_output = torch.zeros(0)
                     if frame_output.numel() > 0:
                         if o.__class__.__name__ == self.UNSUP_MANDATORY_OUTPUTS[0]:
                             pred_track_instances.labels = frame_output[:, 1]
