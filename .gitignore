@@ -176,6 +176,9 @@ profiles/*
 *.npy
 *.prof
 precision_track/evaluation/comparisons/*
+dlc/projects/*
+sleap/datasets/*
+sleap/models/*
 precision_track/.mim
 *.egg-info
 *.h5

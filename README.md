@@ -162,6 +162,11 @@ This file
 
 - `tools/README.md`
 
+### Benchmarking-related Documentation
+
+- `dlc/README.md` — train a DeepLabCut model on your PrecisionTrack dataset and track with it
+- `sleap/README.md` — train a SLEAP model on your PrecisionTrack dataset and track with it
+
 ### GUI
 
 - `web_ui/README.md`
