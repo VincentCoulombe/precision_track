@@ -1,0 +1,8 @@
+# Extra dependencies for the DeepLabCut benchmarking pipeline (dlc/).
+# Install into the DLC environment, on top of deeplabcut itself:
+#   pip install "deeplabcut[pytorch]"
+#   pip install -r dlc/requirements.txt
+sleap-io>=0.5.0
+tables>=3.8
+tabulate==0.9.0
+PyYAML>=6.0
