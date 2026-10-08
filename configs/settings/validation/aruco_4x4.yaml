@@ -1,0 +1,43 @@
+type: ArucoValidation
+validated_classes: ["mouse"]
+num_tags: 50
+tags_size: 4
+predefined_dict: DICT_4X4_50
+parameters:
+  minMarkerPerimeterRate: 0.025
+  maxMarkerPerimeterRate: 0.035
+  adaptiveThreshWinSizeMin: 7
+  adaptiveThreshWinSizeMax: 23
+  adaptiveThreshWinSizeStep: 10
+  perspectiveRemovePixelPerCell: 7
+  perspectiveRemoveIgnoredMarginPerCell: 0.35
+  MinCornerDistanceRate: 0.15
+refinement: none
+tag_kpt: 7
+kpt_conf_thr: 0.5
+estimation_range: 120
+timeout_after: 0.02
+min_sample_size: 25
+valid_tags:
+  [
+    7,
+    10,
+    17,
+    24,
+    34,
+    132,
+    136,
+    190,
+    211,
+    216,
+    37,
+    85,
+    116,
+    127,
+    129,
+    238,
+    319,
+    393,
+    396,
+    408,
+  ]
