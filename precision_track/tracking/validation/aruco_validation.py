@@ -78,6 +78,8 @@ class ArucoValidation(BaseValidation):
         self.parameters.cornerRefinementMethod = self.REFINEMENTS[refinement]
         self.valid_tags = np.array(valid_tags)
         self.warned_full_frame = False
+        self.warned_extra_instances = False
+        self.warned_frame_size = False
 
         assert isinstance(tag_kpt, int)
         self.tag_kpt = tag_kpt
@@ -136,14 +138,36 @@ class ArucoValidation(BaseValidation):
                 heapq.heappush(priority_queue, (float(confirmed + score), (cls, int(inst_id), xy.tolist())))
         return priority_queue
 
+    def _validatable(self, instance_id: int) -> bool:
+        """Whether the instance can be linked to a tag. The detection counts hold one row per
+        tag, but instances ids are handed out by an ever growing per-class counter, so a
+        sequence yielding more instances than there are declared tags produces ids that fall
+        outside of the counts."""
+        if instance_id <= 0:
+            return False
+        if instance_id > len(self.valid_tags):
+            if not self.warned_extra_instances:
+                self.logger.warning(
+                    msg=f"ARUCO VALIDATION: Instance {instance_id} is beyond the {len(self.valid_tags)} declared tags and "
+                    "will not be validated. Make sure that 'valid_tags' covers every subject of the validated classes."
+                )
+                self.warned_extra_instances = True
+            return False
+        return True
+
     def _estimate_range(self, xy: np.ndarray):
-        cxcywh = clip(np.array([xy[0], xy[1], self.estimation_range, self.estimation_range]), "cxcywh", self.frame_size[0], self.frame_size[1])
-        return (
-            int(cxcywh[0] - cxcywh[2] / 2),
-            int(cxcywh[1] - cxcywh[3] / 2),
-            int(cxcywh[2]),
-            int(cxcywh[3]),
+        height, width = self.frame_size[:2]
+        if not np.isfinite(xy[:2]).all():
+            # A degenerate keypoint cannot be turned into pixel indices.
+            return 0, 0, 0, 0
+        half_range = self.estimation_range / 2
+        x1, y1, x2, y2 = clip(
+            np.array([xy[0] - half_range, xy[1] - half_range, xy[0] + half_range, xy[1] + half_range]),
+            "xyxy",
+            width,
+            height,
         )
+        return int(x1), int(y1), int(x2 - x1), int(y2 - y1)
 
     def _detect_markers(
         self,
@@ -242,6 +266,12 @@ class ArucoValidation(BaseValidation):
 
         if self._frame_size is None:
             self.frame_size = tracking_results["ori_shape"][:2]
+        if not self.warned_frame_size and tuple(frame.shape[:2]) != tuple(self.frame_size[:2]):
+            self.logger.warning(
+                msg=f"ARUCO VALIDATION: The frames are {tuple(frame.shape[:2])} but the validation is bounded by "
+                f"{tuple(self.frame_size[:2])}. Tags outside of the smallest of the two will not be read."
+            )
+            self.warned_frame_size = True
 
         started_at = perf_counter()
         self._init_validation(tracking_results)
@@ -255,29 +285,34 @@ class ArucoValidation(BaseValidation):
             cls, instance_id, xy = heapq.heappop(priorities)[1]
             if cls not in to_switch:
                 to_switch[cls] = []
-            if 0 < instance_id:
-                x, y, w, h = self._estimate_range(np.array(xy, dtype=np.float64))
-                cropped_frame = frame[y : y + h, x : x + w]
-                # save frame
-                # cv2.imwrite(f"./{instance_id}_{perf_counter()}.jpg", cropped_frame)
-                valid_ids, valid_idx, _ = self._detect_markers(
-                    cropped_frame,
-                    tracking_results,
-                    ajustments=np.array([x, y, 0, 0]),
-                    full_frame=False,
-                )
-                if valid_ids.size > 0:
-                    tracking_results["validation_instances"]["instances_id"].extend([self.tag2instance_id[t] for t in valid_ids])
-                    switches, switched_tag_id = self._register_validate_detections(tracking_results, instance_id, valid_idx, frame_id)
-                    if switches is not None:
-                        insts_id = track_instances["instances_id"]
-                        _, detected_instance_id = switches
-                        if not self._switching_back(to_switch[cls], instance_id, detected_instance_id):
-                            to_switch[cls].append(switches)
-                            mask_a = insts_id == instance_id
-                            mask_b = insts_id == detected_instance_id
-                            insts_id[mask_a] = detected_instance_id
-                            insts_id[mask_b] = instance_id
-                            self._register_correction(tracking_results, instance_id, detected_instance_id, switched_tag_id)
+            if not self._validatable(instance_id):
+                continue
+            x, y, w, h = self._estimate_range(np.array(xy, dtype=np.float64))
+            cropped_frame = frame[y : y + h, x : x + w]
+            if cropped_frame.size == 0:
+                # Either the keypoint lies outside of the frame or the frame is smaller than
+                # the size the validation is bounded by. Reading an empty crop is a hard error.
+                continue
+            # save frame
+            # cv2.imwrite(f"./{instance_id}_{perf_counter()}.jpg", cropped_frame)
+            valid_ids, valid_idx, _ = self._detect_markers(
+                cropped_frame,
+                tracking_results,
+                ajustments=np.array([x, y, 0, 0]),
+                full_frame=False,
+            )
+            if valid_ids.size > 0:
+                tracking_results["validation_instances"]["instances_id"].extend([self.tag2instance_id[t] for t in valid_ids])
+                switches, switched_tag_id = self._register_validate_detections(tracking_results, instance_id, valid_idx, frame_id)
+                if switches is not None:
+                    insts_id = track_instances["instances_id"]
+                    _, detected_instance_id = switches
+                    if not self._switching_back(to_switch[cls], instance_id, detected_instance_id):
+                        to_switch[cls].append(switches)
+                        mask_a = insts_id == instance_id
+                        mask_b = insts_id == detected_instance_id
+                        insts_id[mask_a] = detected_instance_id
+                        insts_id[mask_b] = instance_id
+                        self._register_correction(tracking_results, instance_id, detected_instance_id, switched_tag_id)
         tracking_results["corrected_instances_id"] = to_switch
         return tracking_results, to_switch
