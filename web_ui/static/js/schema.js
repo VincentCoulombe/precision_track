@@ -20,6 +20,11 @@ export const SCHEMA = [
       { key: "with_action_recognition", type: "bool", help: "Enable the MART model to recognize actions." },
       { key: "with_group_action_recognition", type: "bool", help: "Enable the GMART model for social actions. Needs action recognition on." },
       { key: "with_pose_estimation", type: "bool", help: "Enable full pose (keypoints + skeleton)." },
+      {
+        key: "save_embeddings",
+        type: "bool",
+        help: "Save the detection and action embeddings as CSV (slows tracking down). Drives both embedding outputs on and off.",
+      },
     ],
   },
   {
@@ -91,7 +96,11 @@ export const SCHEMA = [
         baseField: "training.deploying_directory",
         validate: true,
       },
-      { key: "output_clustered_features", type: "bool", help: "Save clustered features (slows tracking down)." },
+      {
+        key: "output_clustered_features",
+        type: "bool",
+        help: "Derived from booleans.save_embeddings — set that instead; editing this has no effect.",
+      },
       { key: "mot_data_root", type: "path", help: "MOT dataset used to benchmark tracking.", picker: { mode: "dir" }, validate: true },
     ],
   },
@@ -111,7 +120,11 @@ export const SCHEMA = [
         validate: true,
       },
       { key: "action_recognition_data_root", type: "path", help: "Action-recognition dataset (MOT-style).", picker: { mode: "dir" }, validate: true },
-      { key: "output_action_recognition_embeddings", type: "bool", help: "Save MART action embeddings (slows tracking down)." },
+      {
+        key: "output_action_recognition_embeddings",
+        type: "bool",
+        help: "Derived from booleans.save_embeddings — set that instead; editing this has no effect.",
+      },
     ],
   },
   {

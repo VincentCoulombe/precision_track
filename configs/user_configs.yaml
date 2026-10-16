@@ -8,6 +8,7 @@ booleans:
   with_action_recognition: false
   with_group_action_recognition: false
   with_pose_estimation: true
+  save_embeddings: false
 
 # ================================
 # General directories and paths

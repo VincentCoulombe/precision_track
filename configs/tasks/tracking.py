@@ -158,8 +158,8 @@ outputs = [
 if _base_.output_clustered_features:
     outputs += [
         dict(
-            type="NpyEmbeddingOutput",
-            path=_base_.saving_directory + "/features.npy",
+            type="CsvEmbeddingOutput",
+            path=_base_.saving_directory + "/detection_embeddings.csv",
             ids_field="instances_id",
         ),
     ]
@@ -168,8 +168,8 @@ if _base_.output_clustered_features:
 if _base_.output_action_recognition_embeddings:
     outputs += [
         dict(
-            type="NpyEmbeddingOutput",
-            path=_base_.saving_directory + "/action_embeddings.npy",
+            type="CsvEmbeddingOutput",
+            path=_base_.saving_directory + "/action_embeddings.csv",
             ids_field="instances_id",
             embs_field="action_embeddings",
         ),
