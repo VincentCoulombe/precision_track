@@ -108,7 +108,6 @@ model = dict(
         norm_cfg=dict(type="BN"),
         act_cfg=dict(type="SiLU"),
     ),
-    # feature_extraction_head=None,
     test_cfg=dict(data_postprocessor=data_postprocessor, input_size=input_size),
     data_postprocessor=data_postprocessor,
 )

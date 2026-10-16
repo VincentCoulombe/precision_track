@@ -487,6 +487,29 @@ def _check_refine_requires_validation(cfg, ctx):
     return None
 
 
+def _check_save_embeddings_overrides(cfg, ctx):
+    """``booleans.save_embeddings`` is authoritative, so the two embedding flags it drives are
+    derived. Setting one of them directly has no effect, which is worth saying out loud."""
+    save = bool(cfg.get("booleans", {}).get("save_embeddings"))
+    overridden = [
+        name
+        for name, value in (
+            ("tracking.output_clustered_features", get(cfg, "tracking", "output_clustered_features")),
+            (
+                "action_recognition.output_action_recognition_embeddings",
+                get(cfg, "action_recognition", "output_action_recognition_embeddings"),
+            ),
+        )
+        if value is not None and bool(value) != save
+    ]
+    if overridden:
+        return (
+            f"booleans.save_embeddings is {save} and overrides {', '.join(overridden)}, which will be "
+            f"forced to {save}. Toggle booleans.save_embeddings instead. " + doc_pointer("booleans")
+        )
+    return None
+
+
 def _display_requires(flag: str, boolean: str, why: str) -> Check:
     def _check(cfg, ctx):
         if cfg.get("visualization", {}).get(flag) and not cfg.get("booleans", {}).get(boolean):
@@ -599,6 +622,12 @@ FIELDS: Sequence[ConfigField] = (
     ConfigField(
         "booleans.with_offline_correction_refinement",
         _check_refine_requires_validation,
+        severity="warning",
+    ),
+    ConfigField(
+        "booleans.save_embeddings",
+        _check_save_embeddings_overrides,
+        tools=PIPELINE_TOOLS,
         severity="warning",
     ),
     ConfigField(

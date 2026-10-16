@@ -82,11 +82,11 @@ deployment_device = "auto"
 
 
 # 2) Tracking
-tracking_checkpoint_name = 'model_mice_DEPLOYED_NVIDIAGeForceRTX3090_FP16.engine'
+tracking_checkpoint_name = 'model_mice_DEPLOYED.pth'
 tracking_checkpoint = deploying_directory + tracking_checkpoint_name
 
 pipelined = False
-saving_directory = '../work_dir/Vertical'
+saving_directory = '../work_dir/Vert_7'
 tracking_batch_size = 30
 num_tentatives = 3
 nb_frames_retain = 10
@@ -118,7 +118,7 @@ hyperparams = deploying_directory + hyperparameters_file_name
 low_thr = low_thr_range[1]
 high_thr = high_thr_range[3]
 init_thr = init_thr_range[1]
-mot_data_root = '../../datasets/MICE/re-id/mot_w_aruco/'
+mot_data_root = '../../datasets/stripedmice/mot/'
 testing_tracking_output_file = testing_work_dir + "mean_CLEAR_metrics_over_all_videos.csv"
 testing_tracking_output_file_2 = testing_work_dir + "mean_purity_metrics_over_all_videos.csv"
 testing_tracking_output_file_3 = testing_work_dir + "mean_throughput_per_substep.csv"
@@ -290,9 +290,10 @@ display_confidence_scores = False
 display_actions = False
 display_search_zones = False
 display_validations = False
-display_untracked_detections = True
+display_untracked_detections = False
 display_predicted_bounding_boxes = False
 # 4) /Visualization
+save_embeddings = False
 output_clustered_features = False
 output_action_recognition_embeddings = False
 output_appearance_database = False

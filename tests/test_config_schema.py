@@ -21,6 +21,7 @@ from precision_track.utils.config_fields import (
     run_checks,
 )
 from precision_track.utils.config_schema import UserConfig, validate_user_config
+from precision_track.utils.io import apply_derived_booleans
 from precision_track.utils.paths import USER_CONFIG_PATH, resolve_from_tools
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -42,6 +43,7 @@ BASELINE_BOOLEANS = dict(
     with_action_recognition=False,
     with_group_action_recognition=False,
     with_pose_estimation=True,
+    save_embeddings=False,
 )
 
 
@@ -338,3 +340,77 @@ def test_web_ui_and_cli_share_one_implementation(cfg):
 
     ui_all = {e["field"] for e in validators.validate_all(cfg, tool="train_detection")["errors"]}
     assert ui_all == errors_for(cfg, tool="train_detection")
+
+
+# --------------------------------------------------------------------------- #
+# booleans.save_embeddings
+# --------------------------------------------------------------------------- #
+def warnings_for(cfg, tool=None, flags=None):
+    return {i.field for i in validate_user_config(cfg, tool=tool, flags=flags).warnings}
+
+
+@pytest.mark.parametrize("save_embeddings", [True, False])
+@pytest.mark.parametrize("stated", [True, False])
+def test_save_embeddings_is_authoritative(cfg, save_embeddings, stated):
+    """``save_embeddings`` forces both embedding flags to its own value, in both directions,
+    whatever the user stated for them individually."""
+    cfg["booleans"]["save_embeddings"] = save_embeddings
+    cfg["tracking"]["output_clustered_features"] = stated
+    cfg["action_recognition"]["output_action_recognition_embeddings"] = stated
+
+    apply_derived_booleans(cfg)
+
+    assert cfg["tracking"]["output_clustered_features"] is save_embeddings
+    assert cfg["action_recognition"]["output_action_recognition_embeddings"] is save_embeddings
+
+
+def test_save_embeddings_derivation_is_a_noop_on_a_partial_config():
+    """``load_user_configs`` is also called with partial dicts (tools/train_detection.py).
+    Deriving there would inject the embedding flags out of nowhere."""
+    partial = dict(training=dict(data_root="x"))
+
+    apply_derived_booleans(partial)
+
+    assert partial == dict(training=dict(data_root="x"))
+
+
+def test_save_embeddings_derivation_needs_the_key_itself():
+    """A ``booleans`` section that predates the switch must be left alone, not treated as false."""
+    legacy = dict(booleans=dict(with_pose_estimation=True), tracking=dict(output_clustered_features=True))
+
+    apply_derived_booleans(legacy)
+
+    assert legacy["tracking"]["output_clustered_features"] is True
+
+
+@pytest.mark.parametrize("tool", sorted(PIPELINE_TOOLS))
+@pytest.mark.parametrize(
+    "section, key",
+    [
+        ("tracking", "output_clustered_features"),
+        ("action_recognition", "output_action_recognition_embeddings"),
+    ],
+)
+def test_overriding_a_derived_embedding_flag_warns(cfg, tool, section, key):
+    cfg["booleans"]["save_embeddings"] = False
+    cfg[section][key] = True
+
+    report = validate_user_config(cfg, tool=tool)
+
+    assert "booleans.save_embeddings" in {i.field for i in report.warnings}
+    assert "booleans.save_embeddings" not in {i.field for i in report.errors}
+    assert report.ok, "an overridden derived flag is a warning, never a hard failure"
+
+
+@pytest.mark.parametrize("save_embeddings", [True, False])
+def test_agreeing_embedding_flags_do_not_warn(cfg, save_embeddings):
+    cfg["booleans"]["save_embeddings"] = save_embeddings
+    cfg["tracking"]["output_clustered_features"] = save_embeddings
+    cfg["action_recognition"]["output_action_recognition_embeddings"] = save_embeddings
+
+    assert "booleans.save_embeddings" not in warnings_for(cfg, tool="track")
+
+
+def test_shipped_config_ships_the_embedding_flags_in_agreement(shipped_config):
+    """The shipped yaml must not itself trip the warning."""
+    assert "booleans.save_embeddings" not in warnings_for(shipped_config, tool="track")

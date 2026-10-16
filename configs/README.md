@@ -58,6 +58,15 @@ This guide explains **how to configure PrecisionTrack** by editing a single file
   - Set as `true` only if your COCO formatted dataset (`data_root`) contain keypoints.
   - Mandatory to perform **action recognition** and **group action recognition**
 
+- **<u>save_embeddings</u>**  
+  The single switch for saving the embeddings PrecisionTrack computes while it tracks.
+
+  When `true`, tracking writes both of these files to your `saving_directory`:
+  - `detection_embeddings.csv` — the detector's appearance feature vector for every tracked subject.
+  - `action_embeddings.csv` — the MART action embedding for every tracked subject. This one additionally requires **with_action_recognition** to be `true`; with action recognition off there is no MART model to produce embeddings, so only the detection file is written.
+
+  **Warning** saving the embeddings will SIGNIFICANTLY slow down the tracking process and the files grow large on long recordings. Enable it only for the clips you intend to analyse offline.
+
 ---
 
 # 2. General directories and paths
@@ -182,9 +191,6 @@ Here is an example of a valid `hyperparameters_file_name`.
 
 **NOTE** PrecisionTrack will revert back to default values for every missing keys.
 
-- **<u>output_clustered_features</u>**
-  If enabled, will save your clustered features at the following path: `<saving_directory>/features.npy`, which you will then be able to use for further analysis. **Warning** saving the clustered features will SIGNIFICANTLY slow down the tracking process.
-
 - **<u>mot_data_root</u>**
   Path to your MOT dataset. Expected structure:
 
@@ -242,9 +248,6 @@ Here is an example of a valid `hyperparameters_file_name`.
 
   **NOTE**: We achieved our MOT-styled bounding boxes and keypoints annotations by following [Julien Audet-Welke's guide](https://github.com/juauw/CVAT_pipeline) and our action labels by reformatting annotations obtained through manual labelling on the [BORIS](https://www.boris.unito.it/) software.
 
-- **<u>output_action_recognition_embeddings</u>**
-  If enabled, will save the action embeddings produced by your MART model at the following path: `<saving_directory>/action_embeddings.npy`, which you will then be able to use for further analysis. **Warning** saving the clustered features will SIGNIFICANTLY slow down the tracking process.
-
 ---
 
 # 6. Group Action Recognition parameters
@@ -281,10 +284,10 @@ Here is an example of a valid `hyperparameters_file_name`.
   That guide also explains an important behavioural detail of the appearance pipeline: re-identification results are **unstable during an initial warm-up period** and only stabilize once every enabled subject has been seen at least once. Please read it before interpreting your re-identification output.
 
 - **<u>output_appearance_database</u>**
-  If enabled, saves the appearance database (the embeddings used by the re-identification model to distinguish individuals) at `<saving_directory>/appearance_database.npy`, which you can then use for further analysis. **Warning**: saving the appearance database will SIGNIFICANTLY slow down the tracking process. This option is only relevant when running **appearance-based** validation.
+  If enabled, saves the appearance database (the embeddings used by the re-identification model to distinguish individuals) at `<saving_directory>/appearance_database.pth`, which you can then use for further analysis. **Warning**: saving the appearance database will SIGNIFICANTLY slow down the tracking process. This option is only relevant when running **appearance-based** validation.
 
   **NOTE**: You can use the `./tools/visualize_appearances.py` tool to visualize your appearance features offline — i.e. once tracking is completed and you have access to at least the following three files:
-  - `<saving_directory>/appearance_database.npy`
+  - `<saving_directory>/appearance_database.pth`
   - `<saving_directory>/tracked_bboxes.csv`
   - `<path to your video>`
 
@@ -306,7 +309,7 @@ Here is an example of a valid `hyperparameters_file_name`.
 
 - **<u>display_search_zones</u>**: Render the tracked subject's search zones (as described in the manuscript), given that a `stitching_search_areas.csv` file exists in the `saving_directory`.
 
-- **<u>display_validations</u>**: Render the tracked subject's validations (Tailtag detections), given that a `tracked_validations.csv` file exists in the `saving_directory`.
+- **<u>display_validations</u>**: Render the tracked subject's validations, given that a `tracked_tailtag_validations.csv` (Tailtag/ArUco detections) or a `tracked_appearance_validations.csv` (appearance re-identification) file exists in the `saving_directory`.
 
 - **<u>display_untracked_detections</u>**: Render detected bounding boxes (will be bright white), given that a `detected_bboxes.csv` file exists in the `saving_directory`.
 

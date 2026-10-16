@@ -985,6 +985,27 @@ def assert_user_configs_valid(user_configs: Union[dict, str], tool: Optional[str
         raise SystemExit(1)
 
 
+def apply_derived_booleans(user_configs: dict) -> dict:
+    """``booleans.save_embeddings`` is authoritative over the two embedding outputs.
+
+    It forces ``tracking.output_clustered_features`` and
+    ``action_recognition.output_action_recognition_embeddings`` to its own value, in both
+    directions, so the two low-level flags are derived rather than independently settable.
+    :func:`precision_track.utils.config_fields` warns whenever one of them disagrees.
+
+    Mutates and returns ``user_configs``. A no-op unless the ``booleans`` section is present
+    and actually carries the key, so the callers that pass a partial dict (e.g.
+    ``tools/train_detection.py``, which passes only ``{"training": {...}}``) are untouched.
+    """
+    booleans = user_configs.get("booleans")
+    if not isinstance(booleans, dict) or "save_embeddings" not in booleans:
+        return user_configs
+    save_embeddings = bool(booleans["save_embeddings"])
+    user_configs.setdefault("tracking", {})["output_clustered_features"] = save_embeddings
+    user_configs.setdefault("action_recognition", {})["output_action_recognition_embeddings"] = save_embeddings
+    return user_configs
+
+
 def load_user_configs(
     user_configs: Union[dict, str],
     system_configs_path: str,
@@ -1020,6 +1041,10 @@ def load_user_configs(
 
     if validate:
         assert_user_configs_valid(user_configs, tool=tool, flags=flags)
+
+    # After validation, so the warning about an overridden flag still sees the user's own
+    # values, but before the injection below, which must write the derived ones.
+    apply_derived_booleans(user_configs)
 
     system_configs_path, system_configs = load_system_config_dict(system_configs_path)
 
@@ -1152,5 +1177,7 @@ def filter_outputs(validator, stitching_algorithm, analyzer, outputs: Optional[l
 
     if patterns_to_remove:
         combined_pattern = re.compile("|".join(patterns_to_remove), re.IGNORECASE)
-        outputs = [d for d in outputs if not combined_pattern.search(d.get("type", "").lower())]
+        # The embedding outputs share a single type, so the field they read has to be matched
+        # too: an 'action_embeddings' output is meaningless without an analyzer.
+        outputs = [d for d in outputs if not combined_pattern.search(f"{d.get('type', '')} {d.get('embs_field', '')}".lower())]
     return outputs

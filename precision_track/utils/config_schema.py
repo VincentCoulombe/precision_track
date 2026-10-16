@@ -37,6 +37,7 @@ class BooleansConfig(BaseModel):
     with_action_recognition: bool
     with_group_action_recognition: bool
     with_pose_estimation: bool
+    save_embeddings: bool
 
 
 class GeneralConfig(BaseModel):

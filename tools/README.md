@@ -167,17 +167,32 @@ Before calling each tool. Else, PyTorch might create a segfault error (internal 
 - **Inputs:**
   - `video` (positional) — path to the recording file.
   - `--profile` — set to `true` to record per-frame timing data. Saves a `profile_<timestamp>.json` to your `saving_directory`. Not supported in pipelined mode. Default to `false`.
-- **Outputs:** All the available outputs will be saved at the defined `work_dir` from the settings. Heres a list of all the possible outputs:
-  - `tracked_bboxes.csv`: Contains the MOT formatted bounding boxes of all the tracked subjects over the whole recording.
+- **Outputs:** All the available outputs are written to a **per-video sub-directory** of your `saving_directory`: `<saving_directory>/<video_name>/`. Heres a list of all the possible outputs:
+
+  Every per-track output below shares the same first three columns — `frame_id, class_id, instance_id` — and the same rows, so `(frame_id, class_id, instance_id)` is a **unique key you can join any two of them on**.
+
+  **Always produced**
+  - `tracked_bboxes.csv`: Contains the MOT formatted bounding boxes of all the tracked subjects over the whole recording. Columns: `frame_id, class_id, instance_id, cx, cy, w, h, score`.
+  - `detected_bboxes.csv`: Contains the MOT formatted bounding boxes of all the detected subjects for every frame of the recording. Same columns, with `instance_id` always `-1` since detections are not yet tracked.
+  - `predicted_bboxes.csv`: Where the motion model expects every tracked subject to be on the **next** frame. Same columns as `tracked_bboxes.csv`.
+  - `tracked_velocities.csv`: Contains the MOT formatted velocities of all the tracked subjects over the whole recording. Columns: `frame_id, class_id, instance_id, vx, vy, erraticity`.
+  - `timestamps.csv`: Contains a mapping between the frame ids and the actual time the video has been running (in seconds). Columns: `frame_id, timestamps(s)`.
+
+  **Conditional**
+  - `tracked_kpts.csv`: Contains the MOT formatted keypoints of all the tracked subjects over the whole recording. Columns: `frame_id, class_id, instance_id, x0, y0, score0, x1, …`. Only available when `with_pose_estimation` is enabled.
   - `tracked_identities.csv`: Same as `tracked_bboxes.csv`, but the third column holds the validated `instances_identity` (e.g. an appearance identity name or an ArUco tag number) instead of the tracker-assigned `instance_id`. The identity is carried forward from the most recent confirmation, so a subject's rows stay empty until its identity is first confirmed. Only available when a validation/ReID algorithm is used.
-  - `detected_bboxes.csv`: Contains the MOT formatted bounding boxes of all the detected subjects for every frame of the recording.
-  - `tracked_kpts.csv`: Contains the MOT formatted keypoints of all the tracked subjects over the whole recording.
-  - `tracked_velocities.csv`: Contains the MOT formatted velocities of all the tracked subjects over the whole recording.
-  - `stitching_search_areas.csv`: Contains the MOT formatted search areas over the whole recording. Only available when a stitching algorithm is used.
-  - `tracked_validations.csv`: Contains the MOT formatted validations over the whole recording. Only available when a validation/ReID algorithm is used.
-  - `tracked_corrections.csv`: Contains the MOT formatted corrections over the whole recording. Only available when a validation/ReID algorithm is used.
-  - `tracked_actions.csv`: Contains the MOT formatted actions over the whole recording. Only available when an action recognition algorithm is used.
-  - `timestamps.csv`: Contains a mapping between the frame ids and the actual time the video has been running (in seconds).
+  - `tracked_tailtag_validations.csv`: The Tailtag (ArUco) detections over the whole recording. Columns: `frame_id, class_id, instance_id, cx, cy, w, h, tags_precision` — note that `class_id` here carries the **detected tag id**, and `instance_id` is `-1` until the tag is bound to a track. Only available when the Tailtag validation algorithm is used.
+  - `tracked_appearance_validations.csv`: The appearance re-identification results over the whole recording. Columns: `frame_id, class_id, instance_id, identity`, then one `<identity>_score` column per enabled subject. A `?` in `identity` marks a frame where a correction fired. Only available when the appearance/ReID validation algorithm is used.
+  - `tracked_corrections.csv`: Contains the MOT formatted corrections over the whole recording. Columns: `frame_id, class_id, instance_id, corrected_id`. Only available when a validation/ReID algorithm is used.
+  - `tracked_actions.csv`: Contains the MOT formatted actions over the whole recording. Columns: `frame_id, class_id, instance_id, action, target_ids, action_scores`. `target_ids` lists the comma-separated partners of a social action (empty otherwise); `action` reads `Analyzing...` while a track is still filling the model's temporal context, and falls back to your metadata's `null_action` when `action_scores` is below the threshold. Only available when an action recognition algorithm is used.
+  - `stitching_search_areas.csv`: Contains the MOT formatted search areas over the whole recording. Columns: `frame_id, class_id, instance_id, cx, cy, w, h`. Only available when `with_validation`
+  - `detection_embeddings.csv`: The detector's appearance feature vector for every tracked subject. Only available when `save_embeddings` is enabled.
+  - `action_embeddings.csv`: The MART action embedding for every tracked subject, same schema as `detection_embeddings.csv`. Only available when `save_embeddings` **and** `with_action_recognition` are enabled.
+
+  **NOTE**: `track.py` writes boxes as centre-based `cx, cy, w, h`, whereas `create_mot_dataset.py` (below) writes top-left `x, y, w, h` to match the MOT ground-truth schema.
+
+  **NOTE**: The embedding and appearance-database outputs will SIGNIFICANTLY slow down tracking and grow large on long recordings. Enable them only for the clips you intend to analyse offline.
+
 - **Examples**
   ```bash
   python track.py video data/sample.mp4

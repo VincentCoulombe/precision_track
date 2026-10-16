@@ -825,3 +825,68 @@ class CsvTimestamps(BaseCsvOutput):
 
     def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
         pass
+
+
+@OUTPUTS.register_module()
+class CsvEmbeddingOutput(BaseCsvOutput):
+    SUPPORTED_PRECISION = {16: "float16"}
+
+    def __init__(
+        self,
+        path: str,
+        instance_data: str = "pred_track_instances",
+        ids_field: str = "instances_id",
+        embs_field: str = "features",
+        *args,
+        **kwargs,
+    ) -> None:
+        """
+        Args:
+            path (str): The path to either save the content of the output to a csv or to read a csv into it.
+            instance_data (str, optional): The name of the relevant instances data inside the dict. Defaults to "pred_track_instances".
+            ids_field (str, optional): The field holding the instances ids. Defaults to "instances_id".
+            embs_field (str, optional): The field holding the embeddings. Defaults to "features".
+        """
+        super().__init__(
+            path=path,
+            precision=16,
+            columns=[],
+            instance_data=instance_data,
+            ids_field=ids_field,
+        )
+        self.embs_field = embs_field
+        assert self.instance_data == "pred_track_instances", (
+            "CsvEmbeddingOutput only supports the 'pred_track_instances' instance data: untracked "
+            "detections carry no instance_id, so their rows could not be joined on."
+        )
+
+    def reset(self) -> None:
+        self.columns = []
+        super().reset()
+
+    def __call__(self, det_data_sample: dict):
+        instance_data, frame_id = self._get_ds_info(det_data_sample)
+        embeddings = instance_data.get(self.embs_field, None)
+        i = 0
+        if embeddings is not None:
+            ids = self._set_ids(instance_data)
+            embeddings = to_numpy(embeddings)
+            for id_, label, embedding in zip(
+                ids,
+                instance_data["labels"],
+                embeddings,
+            ):
+                label = to_numpy(label)
+                if id_ >= 0:
+                    self._set_columns(embedding)
+                    self._add_row(frame_id, label, id_, *embedding)
+                    i += 1
+        self._update_frame_id_mapping(frame_id, i)
+
+    def _set_columns(self, embedding: np.ndarray):
+        """Resolve the embedding dimension once, from the first embedding ever seen."""
+        if not self.columns:
+            self.columns = [f"emb_{i}" for i in range(len(embedding))]
+
+    def scale(self, ori_scale: Tuple[int, int], new_scale: Tuple[int, int]) -> None:
+        pass
